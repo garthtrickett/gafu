@@ -2,8 +2,8 @@ from aqt import mw
 from aqt.qt import *
 from aqt.utils import showInfo
 import sys
-from gafu import reading
-from gafu import config
+from gafu_anki_addon import reading
+from gafu_anki_addon import config
 import subprocess
 import pprint
 import re
@@ -67,7 +67,7 @@ def ichiran_output_to_kanji_hirigana_array(result):
     return new_list
 
 
-def add_leading_spaces_from_sentence(new_list):
+def add_leading_spaces_from_sentence(new_list, japanese):
     output = []
     for word in new_list:
         if "[" in word:
@@ -77,8 +77,11 @@ def add_leading_spaces_from_sentence(new_list):
             word_outside_brackets = word
         if " " + word_outside_brackets in japanese:
             output.append(" " + word)
+        if word_outside_brackets + "、" in japanese:
+            output.append(word + "、")
         else:
             output.append(word)
+    print(output)
     return output
 
 
@@ -114,19 +117,20 @@ def process_kanji_hirigana_into_kanji_with_furigana(new_list):
     return result_list
 
 
-def ichiran_output_to_bracket_furigana(ichiran_output):
+def ichiran_output_to_bracket_furigana(ichiran_output, japanese):
     new_list = ichiran_output_to_kanji_hirigana_array(ichiran_output)
-    new_list = add_leading_spaces_from_sentence(new_list)
+    new_list = add_leading_spaces_from_sentence(new_list, japanese)
     kanji_with_furigana = process_kanji_hirigana_into_kanji_with_furigana(new_list)
     return kanji_with_furigana
 
 
-japanese = "私はギャングが玄関から漏れる明かりを受けて横たわっているのを見た。"
+japanese = "昨日、ひょんなことで父親の戸籍抄本のコピーを見てしまいました。"
 cmd = ['docker', 'exec', '-it', 'ichiran-main-1', 'ichiran-cli', '-i', japanese]
 result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-kanji_with_furigana_array = ichiran_output_to_bracket_furigana(result)
-kanji_with_furigana_string = ''.join(kanji_with_furigana_array)
+kanji_with_furigana_array = ichiran_output_to_bracket_furigana(result,  japanese)
 print(kanji_with_furigana_array)
+kanji_with_furigana_string = ''.join(kanji_with_furigana_array)
+print(kanji_with_furigana_string)
 
 
 
