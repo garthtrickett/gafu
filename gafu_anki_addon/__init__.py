@@ -133,7 +133,7 @@ def ichiran_output_to_bracket_furigana(ichiran_output, japanese):
     return kanji_with_furigana
 
 
-japanese = "この夏は記録的な少雨で、稲の生育が極端に悪く、農家は困っている"
+japanese = "人の手で稲刈りをしていた時代は、農家は家族総出で作業を行っていた。"
 cmd = ['docker', 'exec', '-it', 'ichiran-main-1', 'ichiran-cli', '-i', japanese]
 result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
 kanji_with_furigana_array = ichiran_output_to_bracket_furigana(result,  japanese)
