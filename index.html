@@ -1,0 +1,19 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>海豚は魚を食べます。</title>
+  </head>
+  <body>
+    <p>ぽんぽん 音[おと]が 鳴[な]り 響[ひび]いていた。</p>
+  </body>
+</html>
+
+<script>
+  const text = document.querySelector("p").innerHTML;
+  const furiganaText = text.replace(
+    /(\S+)\[(.+?)\]/g,
+    "<ruby><rb>$1</rb><rt>$2</rt></ruby>",
+  );
+  document.querySelector("p").innerHTML = furiganaText;
+</script>
