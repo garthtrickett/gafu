@@ -81,15 +81,19 @@ def add_leading_spaces_from_sentence(new_list, japanese):
             output.append(word + "、")
         else:
             output.append(word)
-    print(output)
     return output
 
 
 def add_furigana(s: str) -> str:
     if '[' not in s or ']' not in s:
         return s
+
     outside, inside = s.split('[')
+    jap_comma_after_brackets = False
+    if "、" in inside:
+        jap_comma_after_brackets = True
     inside = inside.split(']')[0]
+
     outside = outside.strip()
     inside = inside.strip()
     n = min(len(outside), len(inside))
@@ -106,11 +110,15 @@ def add_furigana(s: str) -> str:
         else:
             break
     if common_start == 0 and common_end == 0:
-        return ' ' + s.replace(' ', '')
+        output = ' ' + s.replace(' ', '')
     elif common_start > 0:
-        return f" {outside}[{inside[common_start:]}]"
+        output = f" {outside}[{inside[common_start:]}]"
     else:
-        return f" {outside[:len(outside)-common_end]}[{inside[:len(inside)-common_end]}]{outside[len(outside)-common_end:]}"
+        output = f" {outside[:len(outside)-common_end]}[{inside[:len(inside)-common_end]}]{outside[len(outside)-common_end:]}"
+
+    if jap_comma_after_brackets == True:
+        output = output + "、"
+    return output
 
 def process_kanji_hirigana_into_kanji_with_furigana(new_list):
     result_list = [add_furigana(item) for item in new_list]
@@ -120,11 +128,12 @@ def process_kanji_hirigana_into_kanji_with_furigana(new_list):
 def ichiran_output_to_bracket_furigana(ichiran_output, japanese):
     new_list = ichiran_output_to_kanji_hirigana_array(ichiran_output)
     new_list = add_leading_spaces_from_sentence(new_list, japanese)
+    print(new_list)
     kanji_with_furigana = process_kanji_hirigana_into_kanji_with_furigana(new_list)
     return kanji_with_furigana
 
 
-japanese = "昨日、ひょんなことで父親の戸籍抄本のコピーを見てしまいました。"
+japanese = "この夏は記録的な少雨で、稲の生育が極端に悪く、農家は困っている"
 cmd = ['docker', 'exec', '-it', 'ichiran-main-1', 'ichiran-cli', '-i', japanese]
 result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
 kanji_with_furigana_array = ichiran_output_to_bracket_furigana(result,  japanese)
