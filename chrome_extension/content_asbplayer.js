@@ -9,48 +9,19 @@ floatingBox.style.backgroundColor = "white";
 floatingBox.style.border = "1px solid black";
 floatingBox.style.padding = "10px";
 floatingBox.style.color = "black"; // Set the text color to black
-// Add an event listener to the document object
-document.addEventListener("keydown", (event) => {
-  // Check if the Escape key was pressed
-  if (event.key === "Escape") {
-    // Hide the floating box
-    floatingBox.style.display = "none";
-  }
-});
 
 // Add the floating box element to the page
 document.body.appendChild(floatingBox);
 
-let style = document.createElement("style");
-
-style.textContent = `
-.token {
-  position: relative;
-  cursor: pointer;
+function findSpacesTabsIndices(text) {
+  let indices = [];
+  for (let i = 0; i < text.length; i++) {
+    if ([" ", "\t", "　", "\n", "？", "！"].includes(text[i])) {
+      indices.push(i);
+    }
+  }
+  return indices;
 }
-
-.token:hover::after {
-  all: initial;    
-  content: attr(data-tooltip);
-  position: absolute;
-  bottom: 100%;
-  left: 50%;
-  transform: translateX(-50%);
-  padding: 10px;
-  border: 1px solid #333;
-  background-color: #fff;
-  font-size: 20px; /* Adjust the font size here */
-  width: 200px;
-  height: 100px;
-  white-space: pre-wrap; /* This will allow the tooltip text to wrap */
-}
-
-rt {
-  font-size: 50%; /* This will make the furigana smaller */
-}
-`;
-
-document.head.appendChild(style);
 
 // Function to update the span content
 function updateSpanContent(sub_num, lines, japanese) {
@@ -64,17 +35,16 @@ function updateSpanContent(sub_num, lines, japanese) {
   // Options for the observer (which mutations to observe)
   let config = { childList: true };
 
-  let indices = [];
-  let index = japanese.indexOf(" ");
-  while (index != -1) {
-    indices.push(index);
-    index = japanese.indexOf(" ", index + 1);
-  }
+  indices = findSpacesTabsIndices(japanese);
+  console.log(indices);
+  console.log("japanese");
+  console.log(japanese);
 
   // Callback function to execute when mutations are observed
   let callback = function (mutationsList, observer) {
     let span = jss5_div.querySelector("span");
     if (span) {
+      console.log("this is triggered");
       // Calculate the indices of the lines to display
       let start = sub_num * 2;
       let end = start + 2;
@@ -117,8 +87,6 @@ function updateSpanContent(sub_num, lines, japanese) {
         textContent = textContent.replace(" ", "");
         charCount += textContent.length;
         console.log(textContent);
-        console.log(textContent.length);
-        console.log(charCount);
 
         if (indices.includes(charCount)) {
           span_indices.push(span_num);
@@ -137,17 +105,14 @@ function updateSpanContent(sub_num, lines, japanese) {
       span.querySelectorAll("[class^='token-']").forEach((tokenSpan) => {
         tokenSpan.addEventListener("mouseover", (event) => {
           // Add your code here to be triggered when the token span is hovered over
-          console.log("Token span hovered over:", tokenSpan.textContent);
           let tokenNumber = tokenSpan.className.match(/token-(\d+)/)[1];
-          console.log("Token number:", tokenNumber);
-          console.log(meaning_array[tokenNumber]);
 
           // Replace all occurrences of "NEWLINE" with an HTML line break element
           let meaning = meaning_array[tokenNumber].replace(/NEWLINE/g, "<br>");
           meaning = meaning.replace(/《[^》]*》/g, "");
 
           // Update the content of the floating box
-          floatingBox.innerHTML = meaning;
+          floatingBox.innerHTML = values[tokenNumber] + "<br>" + meaning;
 
           // Update the position of the floating box
           let rect = tokenSpan.getBoundingClientRect();
@@ -248,4 +213,24 @@ fileInput.addEventListener("change", () => {
     waitForNode(lines);
   };
   reader.readAsText(file);
+  let iframe = document.querySelector("iframe.jss48");
+  let video = iframe.contentWindow.document.querySelector("video");
+
+  // Add an event listener for the play event
+  video.addEventListener("play", (event) => {
+    // Hide the floating box
+    floatingBox.style.display = "none";
+  });
+});
+
+document.addEventListener("keydown", (event) => {
+  // Check if the Escape, ArrowRight, or ArrowLeft key was pressed
+  if (
+    event.key === "Escape" ||
+    event.key === "ArrowRight" ||
+    event.key === "ArrowLeft"
+  ) {
+    // Hide the floating box
+    floatingBox.style.display = "none";
+  }
 });

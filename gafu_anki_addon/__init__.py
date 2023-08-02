@@ -1,4 +1,5 @@
 import sys
+sys.path.append("/home/user/files/code/gafu/lib/python3.11/site-packages")
 
 from aqt import mw
 from aqt.qt import *
@@ -8,6 +9,13 @@ import pprint
 import re
 from anki.hooks import addHook
 from gafu_anki_addon import ichiran
+from pykakasi import kakasi
+import requests
+from bs4 import BeautifulSoup
+from gafu_anki_addon import reading
+from gafu_anki_addon import config
+
+mecab  = reading.MecabController()
 # Things to build
 # sentence generator as a button in the card editor
 # combine below code with gpt api to generate furigana and hover lookup for asbplayer
@@ -51,37 +59,69 @@ def update_morph_audio():
 def on_my_addon():
     update_morph_audio()
 
-addHook("profileLoaded", lambda: mw.form.menuTools.addAction("Update MorphAudio", on_my_addon))
+addHook("profileLoaded", lambda: mw.form.menuTools.addAction("Remove Duplicates MorphAudio", on_my_addon))
 
 
-def print_generated_sentence():
-    # Get all notes that have a GeneratedSentence field
-    notes = mw.col.findNotes("GeneratedSentence:*")
+
+def get_sentences_for_word_from_massif(word):
+    url = 'https://massif.la/ja/search?q="' + word + '"'
+    response = requests.get(url)
+    soup = BeautifulSoup(response.text, 'html.parser')
+
+    li_elements = soup.find_all('li', class_='text-japanese')
+    sentences = []
+
+    count = 0
+    for li in li_elements:
+        # Get the text from the first div element inside the li element
+        text = li.div.text
+        # Check if the text has less than 15 characters
+        if len(text) < 16:
+            # Check if the first character of the text is not the same as the first character of any of the strings in sentences
+            if not any(text[0] == sentence[0] for sentence in sentences):
+                print(text)
+                count += 1
+                sentences.append(text)
+                # Stop after printing the first 4 texts with less than 15 characters
+                if count == 4:
+                    break
+
+    return sentences
+
+
+
+def check_generated_sentence():
+    # Get the collection
+    col = mw.col
+    # Get all the notes in the collection
+    notes = col.find_notes("")
     for note_id in notes:
-        note = mw.col.getNote(note_id)
-        # Check if the GeneratedSentence field is not empty
-        if note['GeneratedSentence']:
-            chat = ChatOpenAI(
-            model="gpt-3.5-turbo",
-            openai_api_key=openai_api_key,
-            )
+        note = col.get_note(note_id)
+        # Check if the note has a GeneratedSentence field
+        if "Sentence1" in note:
+            # Check if the GeneratedSentence field is equal to x
+            if note["Sentence1"] == "x":
+                # Do something with the note
+                print(note['Morph'])
+                sentences = get_sentences_for_word_from_massif(note['Morph'])
 
-            prompt =  "Write a japanese sentence that contains the word " + note['Morph'] + " where the other words in the sentence help the reader guess what the 海豚 means. Output only the japanese sentence no explanation" 
+                # Update the Anki note fields with the sentences
+                for i, sentence in enumerate(sentences, 1):
+                    field_name = f"Sentence{i}"
+                    note[field_name] = mecab.reading(sentence)
+                note.flush()
+                    
+                
 
+def check_generated_sentence_action():
+    # Replace x with the value you want to check for
+    check_generated_sentence()
+    showInfo("Done checking GeneratedSentence field")
 
-            messages = [
-                HumanMessage(content=prompt),
-            ]
-            chat_result = chat(messages)
-            print(chat_result.content) 
-            #  cmd = ['docker', 'exec', '-it', 'ichiran-main-1', 'ichiran-cli', '-i', subs_list[0]]
-            # result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-            # kanji_with_furigana_array = ichiran.ichiran_output_to_bracket_furigana(result,  subs_list[0])
-            # kanji_with_furigana_string = ''.join(kanji_with_furigana_array)
-            # kanji_with_furigana_csv = ', '.join(f'"{item}"' for item in kanji_with_furigana_array)
-            # print(kanji_with_furigana_array)
+# Create a new action
+action = QAction("Check GeneratedSentence", mw)
+# Set the action to run the check_generated_sentence_action function when triggered
+action.triggered.connect(check_generated_sentence_action)
+# Add the action to the Tools menu
+mw.form.menuTools.addAction(action)
 
-def on_print_generated_sentence():
-    print_generated_sentence()
-
-addHook("profileLoaded", lambda: mw.form.menuTools.addAction("Print GeneratedSentence", on_print_generated_sentence))

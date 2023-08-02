@@ -97,8 +97,6 @@ def ichiran_output_to_bracket_furigana(ichiran_output, japanese):
     new_list = ichiran_output_to_kanji_hirigana_array(ichiran_output)
     # new_list = add_leading_spaces_from_sentence(new_list, japanese)
     kanji_with_furigana = process_kanji_hirigana_into_kanji_with_furigana(new_list)
-    print(new_list)
-    print(japanese)
     return kanji_with_furigana
 
 
