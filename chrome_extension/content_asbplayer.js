@@ -1,4 +1,145 @@
 // content_asbplayer.js
+/*
+ * Copyright (C) 2023  Yomitan Authors
+ * Copyright (C) 2020-2022  Yomichan Authors
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
+/**
+ * This class is used to control the document focus when a non-body element contains the main scrollbar.
+ * Web browsers will not automatically focus a custom element with the scrollbar on load, which results in
+ * keyboard shortcuts (e.g. arrow keys) not controlling page scroll. Instead, this class will manually
+ * focus a dummy element inside the main content, which gives keyboard scroll focus to that element.
+ */
+class DocumentFocusController {
+  /**
+   * Creates a new instance of the class.
+   * @param {?string} autofocusElementSelector A selector string which can be used to specify an element which
+   *   should be automatically focused on prepare.
+   */
+  constructor(autofocusElementSelector = null) {
+    this._autofocusElement =
+      autofocusElementSelector !== null
+        ? document.querySelector(autofocusElementSelector)
+        : null;
+    this._contentScrollFocusElement = document.querySelector(
+      "#content-scroll-focus",
+    );
+  }
+
+  /**
+   * Initializes the instance.
+   */
+  prepare() {
+    window.addEventListener("focus", this._onWindowFocus.bind(this), false);
+    this._updateFocusedElement(false);
+    if (
+      this._autofocusElement !== null &&
+      document.activeElement !== this._autofocusElement
+    ) {
+      this._autofocusElement.focus({ preventScroll: true });
+    }
+  }
+
+  /**
+   * Removes focus from a given element.
+   * @param {Element} element The element to remove focus from.
+   */
+  blurElement(element) {
+    if (document.activeElement !== element) {
+      return;
+    }
+    element.blur();
+    this._updateFocusedElement(false);
+  }
+
+  // Private
+
+  _onWindowFocus() {
+    this._updateFocusedElement(false);
+  }
+
+  _updateFocusedElement(force) {
+    const target = this._contentScrollFocusElement;
+    if (target === null) {
+      return;
+    }
+
+    const { activeElement } = document;
+    if (
+      force ||
+      activeElement === null ||
+      activeElement === document.documentElement ||
+      activeElement === document.body
+    ) {
+      // Get selection
+      const selection = window.getSelection();
+      const selectionRanges1 = this._getSelectionRanges(selection);
+
+      // Note: This function will cause any selected text to be deselected on Firefox.
+      target.focus({ preventScroll: true });
+
+      // Restore selection
+      const selectionRanges2 = this._getSelectionRanges(selection);
+      if (!this._areRangesSame(selectionRanges1, selectionRanges2)) {
+        this._setSelectionRanges(selection, selectionRanges1);
+      }
+    }
+  }
+
+  _getSelectionRanges(selection) {
+    const ranges = [];
+    for (let i = 0, ii = selection.rangeCount; i < ii; ++i) {
+      ranges.push(selection.getRangeAt(i));
+    }
+    return ranges;
+  }
+
+  _setSelectionRanges(selection, ranges) {
+    selection.removeAllRanges();
+    for (const range of ranges) {
+      selection.addRange(range);
+    }
+  }
+
+  _areRangesSame(ranges1, ranges2) {
+    const ii = ranges1.length;
+    if (ii !== ranges2.length) {
+      return false;
+    }
+
+    for (let i = 0; i < ii; ++i) {
+      const range1 = ranges1[i];
+      const range2 = ranges2[i];
+      try {
+        if (
+          range1.compareBoundaryPoints(Range.START_TO_START, range2) !== 0 ||
+          range1.compareBoundaryPoints(Range.END_TO_END, range2) !== 0
+        ) {
+          return false;
+        }
+      } catch (e) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+}
+
+// START GAFU CODE
 
 // Create the floating box element
 let floatingBox = document.createElement("div");
@@ -11,7 +152,30 @@ floatingBox.style.padding = "10px";
 floatingBox.style.color = "black"; // Set the text color to black
 
 // Add the floating box element to the page
-document.body.appendChild(floatingBox);
+
+// Create a new div element
+let translationBox = document.createElement("div");
+// Set the ID of the div element
+translationBox.id = "translation-box";
+// Set the CSS styles of the div element
+translationBox.style.display = "none";
+translationBox.style.position = "absolute";
+translationBox.style.border = "1px solid black";
+translationBox.style.backgroundColor = "white";
+translationBox.style.padding = "10px";
+translationBox.style.color = "black"; // Set the text color to black
+// Append the div element to the body
+
+// Create a new div element with id gafu
+let gafuDiv = document.createElement("div");
+gafuDiv.id = "gafu";
+
+// Append the floating box and translation box elements to the gafu div
+gafuDiv.appendChild(floatingBox);
+gafuDiv.appendChild(translationBox);
+
+// Append the gafu div to the body
+document.body.appendChild(gafuDiv);
 
 function findSpacesTabsIndices(text) {
   let indices = [];
@@ -36,20 +200,27 @@ function updateSpanContent(sub_num, lines, japanese) {
   let config = { childList: true };
 
   indices = findSpacesTabsIndices(japanese);
-  console.log(indices);
-  console.log("japanese");
-  console.log(japanese);
 
   // Callback function to execute when mutations are observed
   let callback = function (mutationsList, observer) {
     let span = jss5_div.querySelector("span");
+    span.id = "ichiran_subtitles";
+
+    let rect = span.getBoundingClientRect();
+    translationBox.style.left = rect.left + 150 + "px";
+    translationBox.style.top = rect.top - floatingBox.offsetHeight - 150 + "px"; // Subtract a value from the top property
+
     if (span) {
-      console.log("this is triggered");
       // Calculate the indices of the lines to display
-      let start = sub_num * 2;
-      let end = start + 2;
+
+      let start = sub_num * 3;
+      let end = start + 3;
       // Extract the lines and store them in separate variables
-      let [japanese, meaning] = lines.slice(start, end);
+      let [japanese, meaning, translation] = lines.slice(start, end);
+
+      let translationBox = document.querySelector("#translation-box");
+      translationBox.textContent = translation;
+
       let meaning_array = meaning.split("||");
 
       // Split the japanese variable into an array of values
@@ -73,7 +244,6 @@ function updateSpanContent(sub_num, lines, japanese) {
       const spans = doc.querySelectorAll("span");
 
       let charCount = 0;
-      console.log(indices);
 
       let span_num = 0;
       let span_indices = [];
@@ -86,7 +256,6 @@ function updateSpanContent(sub_num, lines, japanese) {
 
         textContent = textContent.replace(" ", "");
         charCount += textContent.length;
-        console.log(textContent);
 
         if (indices.includes(charCount)) {
           span_indices.push(span_num);
@@ -107,21 +276,27 @@ function updateSpanContent(sub_num, lines, japanese) {
           // Add your code here to be triggered when the token span is hovered over
           let tokenNumber = tokenSpan.className.match(/token-(\d+)/)[1];
 
+          const documentFocusController = new DocumentFocusController(
+            "#floating-box",
+          );
+          documentFocusController.prepare();
+
           // Replace all occurrences of "NEWLINE" with an HTML line break element
           let meaning = meaning_array[tokenNumber].replace(/NEWLINE/g, "<br>");
           meaning = meaning.replace(/《[^》]*》/g, "");
 
           // Update the content of the floating box
-          floatingBox.innerHTML = values[tokenNumber] + "<br>" + meaning;
+          floatingBox.innerHTML = meaning;
 
           // Update the position of the floating box
           let rect = tokenSpan.getBoundingClientRect();
           floatingBox.style.left = rect.left - 50 + "px";
           floatingBox.style.top =
-            rect.top - floatingBox.offsetHeight - 10 + "px"; // Subtract a value from the top property
+            rect.top - floatingBox.offsetHeight - 100 + "px"; // Subtract a value from the top property
           // Show the floating box
           floatingBox.style.display = "block";
         });
+        floatingBox.setAttribute("tabindex", "0");
       });
     }
   };
@@ -142,6 +317,14 @@ function startObserving(targetNode, lines) {
 
   // Callback function to execute when mutations are observed
   let callback = function (mutationsList, observer) {
+    var documentFocusController = new DocumentFocusController(
+      "#translation-box",
+    );
+    documentFocusController.prepare();
+
+    translationBox.style.display = "none";
+
+    floatingBox.style.display = "none";
     // Get the parent node
     let parentNode = document.querySelector(".MuiTableBody-root");
 
@@ -167,6 +350,9 @@ function startObserving(targetNode, lines) {
       sub_num = selectedIndex;
       updateSpanContent(sub_num, lines, japanese);
     }
+
+    const documentFocusController = new DocumentFocusController("#translation");
+    documentFocusController.prepare();
   };
 
   // Create an observer instance linked to the callback function
@@ -223,14 +409,34 @@ fileInput.addEventListener("change", () => {
   });
 });
 
-document.addEventListener("keydown", (event) => {
-  // Check if the Escape, ArrowRight, or ArrowLeft key was pressed
-  if (
-    event.key === "Escape" ||
-    event.key === "ArrowRight" ||
-    event.key === "ArrowLeft"
-  ) {
-    // Hide the floating box
-    floatingBox.style.display = "none";
+document.addEventListener(
+  "keydown",
+  (event) => {
+    // Check if the Escape key was pressed
+    if (
+      event.key === "Escape" ||
+      event.key === "ArrowRight" ||
+      event.key === "ArrowLeft"
+    ) {
+      // Hide the floating box
+      floatingBox.style.display = "none";
+      translationBox.style.display = "none";
+    }
+  },
+  { capture: true },
+);
+
+document.addEventListener("keydown", function (event) {
+  if (event.key === "e") {
+    const documentFocusController = new DocumentFocusController(
+      "#translation-box",
+    );
+    documentFocusController.prepare();
+
+    console.log("KEYDOWN");
+    // Update the content of the div element
+    // Show the div element
+    let translationBox = document.querySelector("#translation-box");
+    translationBox.style.display = "block";
   }
 });
