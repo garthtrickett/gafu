@@ -23,6 +23,21 @@ mecab  = reading.MecabController()
 
 
 
+def copy_morph_to_morphfurigana():
+    deck = mw.col.decks.current()
+    card_ids = mw.col.db.list("select id from cards where did=?", deck['id'])
+    for card_id in card_ids:
+        card = mw.col.getCard(card_id)
+        note = card.note()
+        if 'Morph' in note and 'MorphFurigana' in note:
+            morph_with_furigana = mecab.reading(note['Morph']) 
+            note['MorphFurigana'] = morph_with_furigana
+            note.flush()
+
+action = QAction("Copy Morph to MorphFurigana", mw)
+action.triggered.connect(copy_morph_to_morphfurigana)
+mw.form.menuTools.addAction(action)
+
 
 def filter_sound_field(field):
     kakasi_converter = kakasi()

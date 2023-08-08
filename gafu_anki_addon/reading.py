@@ -150,7 +150,7 @@ class ReadingNode:
         if useRubyTags:
             return "<ruby>%s<rp>(</rp><rt>%s</rt><rp>)</rp></ruby>" % (self.text, self.reading)
         else:
-            return '%s[%s]' % (self.text, self.reading)
+            return ' %s[%s]' % (self.text, self.reading)
 
 class RegexDefinition:
     def __init__(self, text: str, regexGroupIndex: Optional[int]):

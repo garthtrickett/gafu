@@ -196,116 +196,117 @@ function updateSpanContent(sub_num, lines, japanese) {
     "html > body > #root > div:first-child > .jss2 > .jss5",
   );
 
-  // Options for the observer (which mutations to observe)
-  let config = { childList: true };
-
   indices = findSpacesTabsIndices(japanese);
 
-  // Callback function to execute when mutations are observed
-  let callback = function (mutationsList, observer) {
-    let span = jss5_div.querySelector("span");
-    span.id = "ichiran_subtitles";
+  let span = jss5_div.querySelector("span");
 
-    let rect = span.getBoundingClientRect();
+  if (span) {
+    // Calculate the indices of the lines to display
+
+    let start = sub_num * 3;
+    let end = start + 3;
+    // Extract the lines and store them in separate variables
+    let [japanese, meaning, translation] = lines.slice(start, end);
+
+    let translationBox = document.querySelector("#translation-box");
+    translationBox.textContent = translation;
+
+    let meaning_array = meaning.split("||");
+
+    // Split the japanese variable into an array of values
+    japanese = japanese.replace(/"/g, "");
+    let values = japanese.split("; ");
+    // Apply the regular expression replacement to each value
+    let token_position = 0;
+    let furiganaValues = values.map((value) => {
+      let furiganaValue = value.replace(
+        /(\S+)\[(.+?)\]/g,
+        "<ruby><rb>$1</rb><rt>$2</rt></ruby>",
+      );
+
+      let token_num = token_position;
+      token_position += 1;
+      return `<span class='token-${token_num}'>${furiganaValue}</span>`;
+    });
+
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(furiganaValues, "text/html");
+    const spans = doc.querySelectorAll("span");
+
+    let charCount = 0;
+
+    let span_num = 0;
+    let span_indices = [];
+    for (let span of spans) {
+      const rt = span.querySelector("rt");
+      let textContent = span.textContent;
+      if (rt) {
+        textContent = textContent.replace(rt.textContent, "");
+      }
+
+      textContent = textContent.replace(" ", "");
+      charCount += textContent.length;
+
+      if (indices.includes(charCount)) {
+        span_indices.push(span_num);
+        charCount = charCount + 1;
+      }
+      span_num = span_num + 1;
+    }
+
+    for (let i = span_indices.length - 1; i >= 0; i--) {
+      furiganaValues.splice(span_indices[i] + 1, 0, "<br>");
+    }
+
+    // Join the resulting array of strings and update the content of the span element
+    joined_furigana = furiganaValues.join(" ");
+
+    let clone = span.cloneNode(true);
+    span.parentNode.insertBefore(clone, span.nextSibling);
+    clone.innerHTML = joined_furigana;
+    clone.id = "ichiran_subtitles";
+
+    let sibling = span.nextSibling;
+    while (sibling) {
+      let nextSibling = sibling.nextSibling;
+      if (sibling !== clone) {
+        sibling.remove();
+      }
+      sibling = nextSibling;
+    }
+
+    let rect = clone.getBoundingClientRect();
     translationBox.style.left = rect.left + 150 + "px";
     translationBox.style.top = rect.top - floatingBox.offsetHeight - 150 + "px"; // Subtract a value from the top property
 
-    if (span) {
-      // Calculate the indices of the lines to display
+    clone.querySelectorAll("[class^='token-']").forEach((tokenSpan) => {
+      tokenSpan.addEventListener("mouseover", (event) => {
+        // Add your code here to be triggered when the token span is hovered over
+        let tokenNumber = tokenSpan.className.match(/token-(\d+)/)[1];
 
-      let start = sub_num * 3;
-      let end = start + 3;
-      // Extract the lines and store them in separate variables
-      let [japanese, meaning, translation] = lines.slice(start, end);
-
-      let translationBox = document.querySelector("#translation-box");
-      translationBox.textContent = translation;
-
-      let meaning_array = meaning.split("||");
-
-      // Split the japanese variable into an array of values
-      japanese = japanese.replace(/"/g, "");
-      let values = japanese.split("; ");
-      // Apply the regular expression replacement to each value
-      let token_position = 0;
-      let furiganaValues = values.map((value) => {
-        let furiganaValue = value.replace(
-          /(\S+)\[(.+?)\]/g,
-          "<ruby><rb>$1</rb><rt>$2</rt></ruby>",
+        const documentFocusController = new DocumentFocusController(
+          "#floating-box",
         );
+        documentFocusController.prepare();
 
-        let token_num = token_position;
-        token_position += 1;
-        return `<span class='token-${token_num}'>${furiganaValue}</span>`;
+        // Replace all occurrences of "NEWLINE" with an HTML line break element
+        let meaning = meaning_array[tokenNumber].replace(/NEWLINE/g, "<br>");
+        meaning = meaning.replace(/《[^》]*》/g, "");
+
+        // Update the content of the floating box
+        floatingBox.innerHTML = meaning;
+
+        // Update the position of the floating box
+        let rect = tokenSpan.getBoundingClientRect();
+        floatingBox.style.left = rect.left - 50 + "px";
+        floatingBox.style.top =
+          rect.top - floatingBox.offsetHeight - 100 + "px"; // Subtract a value from the top property
+        // Show the floating box
+        floatingBox.style.display = "block";
       });
-
-      const parser = new DOMParser();
-      const doc = parser.parseFromString(furiganaValues, "text/html");
-      const spans = doc.querySelectorAll("span");
-
-      let charCount = 0;
-
-      let span_num = 0;
-      let span_indices = [];
-      for (let span of spans) {
-        const rt = span.querySelector("rt");
-        let textContent = span.textContent;
-        if (rt) {
-          textContent = textContent.replace(rt.textContent, "");
-        }
-
-        textContent = textContent.replace(" ", "");
-        charCount += textContent.length;
-
-        if (indices.includes(charCount)) {
-          span_indices.push(span_num);
-          charCount = charCount + 1;
-        }
-        span_num = span_num + 1;
-      }
-
-      for (let i = span_indices.length - 1; i >= 0; i--) {
-        furiganaValues.splice(span_indices[i] + 1, 0, "<br>");
-      }
-
-      // Join the resulting array of strings and update the content of the span element
-      span.innerHTML = furiganaValues.join(" ");
-
-      span.querySelectorAll("[class^='token-']").forEach((tokenSpan) => {
-        tokenSpan.addEventListener("mouseover", (event) => {
-          // Add your code here to be triggered when the token span is hovered over
-          let tokenNumber = tokenSpan.className.match(/token-(\d+)/)[1];
-
-          const documentFocusController = new DocumentFocusController(
-            "#floating-box",
-          );
-          documentFocusController.prepare();
-
-          // Replace all occurrences of "NEWLINE" with an HTML line break element
-          let meaning = meaning_array[tokenNumber].replace(/NEWLINE/g, "<br>");
-          meaning = meaning.replace(/《[^》]*》/g, "");
-
-          // Update the content of the floating box
-          floatingBox.innerHTML = meaning;
-
-          // Update the position of the floating box
-          let rect = tokenSpan.getBoundingClientRect();
-          floatingBox.style.left = rect.left - 50 + "px";
-          floatingBox.style.top =
-            rect.top - floatingBox.offsetHeight - 100 + "px"; // Subtract a value from the top property
-          // Show the floating box
-          floatingBox.style.display = "block";
-        });
-        floatingBox.setAttribute("tabindex", "0");
-      });
-    }
-  };
-
-  // Create an observer instance linked to the callback function
-  let observer = new MutationObserver(callback);
-
-  // Start observing the target node for configured mutations
-  observer.observe(jss5_div, config);
+      floatingBox.setAttribute("tabindex", "0");
+    });
+  }
 }
 
 // Function to start observing
@@ -317,11 +318,6 @@ function startObserving(targetNode, lines) {
 
   // Callback function to execute when mutations are observed
   let callback = function (mutationsList, observer) {
-    var documentFocusController = new DocumentFocusController(
-      "#translation-box",
-    );
-    documentFocusController.prepare();
-
     translationBox.style.display = "none";
 
     floatingBox.style.display = "none";
@@ -350,9 +346,6 @@ function startObserving(targetNode, lines) {
       sub_num = selectedIndex;
       updateSpanContent(sub_num, lines, japanese);
     }
-
-    const documentFocusController = new DocumentFocusController("#translation");
-    documentFocusController.prepare();
   };
 
   // Create an observer instance linked to the callback function
@@ -360,6 +353,27 @@ function startObserving(targetNode, lines) {
 
   // Start observing the target node for configured mutations
   observer.observe(targetNode, config);
+
+  let iframe = document.querySelector("iframe");
+
+  var jss5_div = iframe.contentDocument.querySelector(
+    "html > body > #root > div:first-child > .jss2 > .jss5",
+  );
+
+  let observer_two = new MutationObserver(function (mutations) {
+    mutations.forEach(function (mutation) {
+      if (mutation.type === "childList") {
+        let spanElements = jss5_div.querySelectorAll("span");
+        if (spanElements.length > 1) {
+          spanElements[0].style.display = "none";
+        }
+        spanElements[1].style.display = "block";
+      }
+    });
+  });
+
+  let config_two = { childList: true, subtree: true };
+  observer_two.observe(jss5_div, config_two);
 }
 
 // Function to wait for the target node
@@ -399,7 +413,7 @@ fileInput.addEventListener("change", () => {
     waitForNode(lines);
   };
   reader.readAsText(file);
-  let iframe = document.querySelector("iframe.jss48");
+  let iframe = document.querySelector("iframe.jss49");
   let video = iframe.contentWindow.document.querySelector("video");
 
   // Add an event listener for the play event
@@ -427,7 +441,7 @@ document.addEventListener(
 );
 
 document.addEventListener("keydown", function (event) {
-  if (event.key === "e") {
+  if (event.key === "w") {
     const documentFocusController = new DocumentFocusController(
       "#translation-box",
     );
