@@ -195,12 +195,30 @@ function updateSpanContent(sub_num, lines, japanese) {
   var jss5_div = iframe.contentDocument.querySelector(
     "html > body > #root > div:first-child > .jss2 > .jss5",
   );
-
   indices = findSpacesTabsIndices(japanese);
 
-  let span = jss5_div.querySelector("span");
+  // Define a function that returns a Promise that resolves with the span element when it's found
+  function findSpan() {
+    return new Promise((resolve, reject) => {
+      // Define a function to check if a child has been added to the jss5_div element
+      function checkChildAdded() {
+        let span = jss5_div.querySelector("span");
+        if (span) {
+          // a child has been added, resolve the Promise with the span element
+          resolve(span);
 
-  if (span) {
+          // stop checking
+          clearInterval(intervalId);
+        }
+      }
+
+      // Call the checkChildAdded function at a specified interval (e.g. every 100ms)
+      let intervalId = setInterval(checkChildAdded, 1);
+    });
+  }
+
+  // Use the findSpan function to get the span element when it's found
+  findSpan().then((span) => {
     // Calculate the indices of the lines to display
 
     let start = sub_num * 3;
@@ -306,7 +324,9 @@ function updateSpanContent(sub_num, lines, japanese) {
       });
       floatingBox.setAttribute("tabindex", "0");
     });
-  }
+    // Use the span element here
+    console.log(span);
+  });
 }
 
 // Function to start observing

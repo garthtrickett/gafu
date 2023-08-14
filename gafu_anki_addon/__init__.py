@@ -39,6 +39,21 @@ action.triggered.connect(copy_morph_to_morphfurigana)
 mw.form.menuTools.addAction(action)
 
 
+def sentence_to_sentencefurigana():
+    deck = mw.col.decks.current()
+    card_ids = mw.col.db.list("select id from cards where did=?", deck['id'])
+    for card_id in card_ids:
+        card = mw.col.getCard(card_id)
+        note = card.note()
+        if 'Sentence' in note and 'SentenceFurigana' in note:
+            sentence_with_furigana = mecab.reading(note['Sentence']) 
+            note['SentenceFurigana'] = sentence_with_furigana
+            note.flush()
+
+action = QAction("Generate SentenceFurigana from Sentence", mw)
+action.triggered.connect(sentence_to_sentencefurigana)
+mw.form.menuTools.addAction(action)
+
 def filter_sound_field(field):
     kakasi_converter = kakasi()
     kakasi_converter.setMode('H', 'K')
