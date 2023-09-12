@@ -66,40 +66,6 @@ def process_sub(sub, filename):
     # if sub.index > 15:
     # sys.exit()
 
-    try:
-        response = g4f.ChatCompletion.create(
-            model=g4f.Model.gpt_4,
-            messages=[{"role": "user", "content": prompt}],
-            provider=g4f.Provider.ChatgptAi,
-        )
-
-        match = re.search(r"(?<=\n\n)(\d+\. .+\n)+", response)
-        if match:
-            # Split the matched string into lines and remove the numbers at the beginning of each line
-            gpt_info_lines = [
-                re.sub(r"^\d+\. ", "", line)
-                for line in match.group().split("\n")
-                if line
-            ]
-
-        else:
-            print("No numbered list found")
-            gpt_info_lines = []
-
-        # translation = g4f.ChatCompletion.create(model=g4f.Model.gpt_4, messages=[
-        # {"role": "user", "content": prompt_two}], provider=g4f.Provider.ChatgptAi)
-
-    except Exception as e:
-        print(f"An error occurred: {e}")
-        # Run a command using subprocess
-        p = subprocess.Popen(
-            ["/usr/bin/node", "../../../Applications/vpn_ip_swapper/vpn_ip_swapper.js"],
-            stdout=subprocess.PIPE,
-        )
-        out = p.stdout.read()
-        print(out)
-        gpt_info_lines = []
-        translation = "No Translation"
 
     directory = os.path.dirname(filename)
     filename = os.path.join(directory, "ichiran_subs.txt")
@@ -108,14 +74,11 @@ def process_sub(sub, filename):
         "; ".join(['"' + word + '"' for word in kanji_with_furigana_array]) + "\n"
     )
 
-    if len(kanji_with_furigana_array) == len(gpt_info_lines):
-        info_lines_string = "|| ".join(gpt_info_lines) + "\n"
-    else:
-        all_meanings = []
-        for individual_tokens_meanings in info_lines:
-            joined_meaning = "NEWLINE".join(individual_tokens_meanings)
-            all_meanings.append(joined_meaning)
-        info_lines_string = "|| ".join(all_meanings) + "\n"
+    all_meanings = []
+    for individual_tokens_meanings in info_lines:
+        joined_meaning = "NEWLINE".join(individual_tokens_meanings)
+        all_meanings.append(joined_meaning)
+    info_lines_string = "|| " +  "\n"
 
     # translation = translation + '\n'
 
