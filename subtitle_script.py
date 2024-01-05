@@ -1,19 +1,20 @@
-import asyncio, json
-import pysubs2
-import pysrt
-import time
-import subprocess
-import sys
+import os
 import re
-
-from gafu_lib import ichiran
-
+import subprocess
+import pysrt
 import g4f
+from gafu_lib import ichiran
+from pysrt import SubRipItem, SubRipTime, SubRipFile
+
+
+g4f.debug.logging = True  # Enable debug logging
+g4f.debug.version_check = False  # Disable automatic version checking
 
 
 # ffmpeg -i subs.ass subs.srt
 
 subs_per_process = 1
+
 
 def get_info_lines(result):
     lines = result.stdout.splitlines()
@@ -43,29 +44,13 @@ def append_to_file(filename, sentence, meanings, translation):
 
 
 def process_sub(sub, filename):
-    print(sub)
+    # 'index', 'start', 'end', 'position', 'text'
     cmd = ["docker", "exec", "-it", "ichiran-main-1", "ichiran-cli", "-i", sub.text]
     result = subprocess.run(
         cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
     )
     kanji_with_furigana_array = ichiran.ichiran_output_to_bracket_furigana(result, sub)
-    kanji_with_furigana_string = ", ".join(
-        f'"{item}"' for item in kanji_with_furigana_array
-    )
     info_lines = get_info_lines(result)  # here while i'm not using bing results
-
-    prompt = (
-        "Translate each of the tokens the following japanese comma seperated sentence one by one but in the context of the sentence. Make the output a numbered list. Only output one list."
-        + kanji_with_furigana_string
-    )
-
-    prompt_two = (
-        "Translate the following sentence into English. Return only the sentence no explanation. "
-        + sub.text
-    )
-    # if sub.index > 15:
-    # sys.exit()
-
 
     directory = os.path.dirname(filename)
     filename = os.path.join(directory, "ichiran_subs.txt")
@@ -78,12 +63,30 @@ def process_sub(sub, filename):
     for individual_tokens_meanings in info_lines:
         joined_meaning = "NEWLINE".join(individual_tokens_meanings)
         all_meanings.append(joined_meaning)
-    info_lines_string = "|| " +  "\n"
+    info_lines_string = "|| " + "\n"
 
-    # translation = translation + '\n'
+    
+    premsg = "Translate "
+    postmsg = " reply only with translation wrapped in $$"
 
-    translation = "No Translation \n"
+    prompt = premsg + sub.text + postmsg
 
+    response = g4f.ChatCompletion.create(
+        model=g4f.models.gpt_4,
+        tone="Precise",
+        provider=g4f.Provider.Bing,
+        messages=[{"role": "user", "content": prompt}],
+    )
+
+    print(response)
+    match = re.search(r'\$\$(.*?)\$\$', response)
+
+    # Extract the matched substring
+    if match:
+        translation = match.group(1) + "\n"
+    else:
+        translation = "No translation \n"
+        
     append_to_file(
         filename, kanji_with_furigana_array_into_string, info_lines_string, translation
     )
@@ -98,25 +101,34 @@ def process_sub(sub, filename):
         f.write(str(sub.index))
 
 
+
+    # Create the new filename
+    eng_filename = os.path.join(directory, "eng.srt")
+    eng_subs = pysrt.open(eng_filename, encoding='utf-8') if os.path.exists(eng_filename) else []
+
+    # Create a new subtitle item
+    start_time = SubRipTime(sub.start.hours, sub.start.minutes, sub.start.seconds, sub.start.milliseconds)
+    start_time.milliseconds += 1
+    end_time = SubRipTime(sub.end.hours, sub.end.minutes, sub.end.seconds, sub.end.milliseconds)
+    new_sub = SubRipItem(index=len(eng_subs)+1, start=start_time, end=end_time, text=translation.strip())
+
+    # Append the new subtitle item to the list
+    eng_subs.append(new_sub)
+
+    
+    eng_subs = SubRipFile(items=eng_subs)
+    # Save the updated .srt file
+    eng_subs.save(eng_filename, encoding='utf-8')
+
+
 def loop_through_subs(subs, filename):
     # Load the .srt file
 
-    temp_subs = []  # Temporary list to hold subtitles
-
-    # TIME START
-    start_time = time.time()
-
-    # Loop through each subtitle in the file
     for sub in subs:
         # Add the text of the subtitle to the list
         # if sub_num % subs_per_process + 1 == subs_per_process:
         if 1:
             process_sub(sub, filename)
-
-
-import os
-import subprocess
-import pysubs2
 
 
 def main(sub_num=None, filename=None):

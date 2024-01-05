@@ -12,10 +12,6 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://animebook.github.io/*", "https://jisho.org/*"],
-      "js": ["content.js"]
-    },
-    {
       "matches": ["https://killergerbah.github.io/asbplayer/*"],
       "js": ["content_asbplayer.js"]
     }
