@@ -36,11 +36,9 @@ def get_info_lines(result):
     return results
 
 
-def append_to_file(filename, sentence, meanings, translation):
+def append_to_file(filename, sentence):
     with open(filename, "a") as f:
         f.write(sentence)
-        f.write(meanings)
-        f.write(translation)
 
 
 def process_sub(sub, filename):
@@ -59,13 +57,6 @@ def process_sub(sub, filename):
         "; ".join(['"' + word + '"' for word in kanji_with_furigana_array]) + "\n"
     )
 
-    all_meanings = []
-    for individual_tokens_meanings in info_lines:
-        joined_meaning = "NEWLINE".join(individual_tokens_meanings)
-        all_meanings.append(joined_meaning)
-    info_lines_string = "|| " + "\n"
-
-    
     premsg = "Translate "
     postmsg = " reply only with translation wrapped in $$"
 
@@ -88,7 +79,7 @@ def process_sub(sub, filename):
         translation = "No translation \n"
         
     append_to_file(
-        filename, kanji_with_furigana_array_into_string, info_lines_string, translation
+        filename, kanji_with_furigana_array_into_string
     )
 
     # Write a counter to a file

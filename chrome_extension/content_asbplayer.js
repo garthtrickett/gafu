@@ -51,10 +51,17 @@ function updateSpanContent(sub_num, lines, japanese) {
   findSpan().then((span) => {
     // Calculate the indices of the lines to display
 
-    let start = sub_num * 3;
-    let end = start + 3;
+    // Because there is english subs now need to take one off sub_num
+    if (sub_num > 0) {
+      sub_num = sub_num / 2;
+    }
+
     // Extract the lines and store them in separate variables
-    let [japanese, meaning, translation] = lines.slice(start, end);
+
+    let japanese = lines[sub_num];
+
+    console.log(sub_num);
+    console.log(japanese);
 
     // Split the japanese variable into an array of values
     japanese = japanese.replace(/"/g, "");
@@ -103,8 +110,6 @@ function updateSpanContent(sub_num, lines, japanese) {
 
     // Join the resulting array of strings and update the content of the span element
     joined_furigana = furiganaValues.join(" ");
-    console.log("joined furigana");
-    console.log(joined_furigana);
     // create a clone of the span
     // Create a new span element
     let ichiran_span = document.createElement("span");
@@ -134,7 +139,6 @@ function startObserving(targetNode, lines) {
 
   // Callback function to execute when mutations are observed
   let callback = function (mutationsList, observer) {
-    console.log("got to here");
     // Get the parent node
     let parentNode = document.querySelector(".MuiTableBody-root");
 
