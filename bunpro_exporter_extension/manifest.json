@@ -1,0 +1,16 @@
+{
+  "manifest_version": 3,
+  "name": "Bunpro Grammer Point Exporter",
+  "version": "1.0",
+  "permissions": ["activeTab", "scripting", "tabs"],
+  "host_permissions": ["http://localhost:8765/"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://bunpro.jp/grammar_points/*"],
+      "js": ["content.js"]
+    }
+  ]
+}
