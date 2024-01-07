@@ -12,5 +12,12 @@
       "matches": ["https://bunpro.jp/grammar_points/*"],
       "js": ["content.js"]
     }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["get_next_props.js"],
+      "matches": ["<all_urls>"],
+      "use_dynamic_url": false
+    }
   ]
 }
