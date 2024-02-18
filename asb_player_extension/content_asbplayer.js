@@ -51,10 +51,11 @@ function updateSpanContent(sub_num, lines, japanese) {
   findSpan().then((span) => {
     // Calculate the indices of the lines to display
 
+    console.log(sub_num);
     // Because there is english subs now need to take one off sub_num
-    if (sub_num > 0) {
-      sub_num = sub_num / 2;
-    }
+    // if (sub_num > 0) {
+    //   sub_num = sub_num / 2;
+    // }
 
     // Extract the lines and store them in separate variables
 

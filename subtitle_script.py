@@ -41,7 +41,7 @@ def append_to_file(filename, sentence):
         f.write(sentence)
 
 
-def process_sub(sub, filename):
+def process_sub(sub, base_filename):
     # 'index', 'start', 'end', 'position', 'text'
     cmd = ["docker", "exec", "-it", "ichiran-main-1", "ichiran-cli", "-i", sub.text]
     result = subprocess.run(
@@ -50,37 +50,40 @@ def process_sub(sub, filename):
     kanji_with_furigana_array = ichiran.ichiran_output_to_bracket_furigana(result, sub)
     info_lines = get_info_lines(result)  # here while i'm not using bing results
 
-    directory = os.path.dirname(filename)
+    directory = os.path.dirname(base_filename)
     filename = os.path.join(directory, "ichiran_subs.txt")
 
     kanji_with_furigana_array_into_string = (
         "; ".join(['"' + word + '"' for word in kanji_with_furigana_array]) + "\n"
     )
 
-    premsg = "Translate "
-    postmsg = " reply only with translation wrapped in $$"
+    # premsg = "Translate "
+    # postmsg = " reply only with translation wrapped in $$"
 
-    prompt = premsg + sub.text + postmsg
+    # prompt = premsg + sub.text + postmsg
 
-    response = g4f.ChatCompletion.create(
-        model=g4f.models.gpt_4,
-        tone="Precise",
-        provider=g4f.Provider.Bing,
-        messages=[{"role": "user", "content": prompt}],
-    )
+    # response = g4f.ChatCompletion.create(
+    #     model=g4f.models.gpt_4_turbo,
+    #     tone="Precise",
+    #     provider=g4f.Provider.Bing,
+    #     messages=[{"role": "user", "content": prompt}],
+    # )
 
-    print(response)
-    match = re.search(r'\$\$(.*?)\$\$', response)
+    # print(response)
+    # match = re.search(r'\$\$(.*?)\$\$', response)
 
-    # Extract the matched substring
-    if match:
-        translation = match.group(1) + "\n"
-    else:
-        translation = "No translation \n"
-        
-    append_to_file(
-        filename, kanji_with_furigana_array_into_string
-    )
+    # # Extract the matched substring
+    # if match:
+    #     translation = match.group(1) + "\n"
+    # else:
+    translation = "No translation \n"
+
+    eng_filename = base_filename + '_eng.srt'
+    txt_filename = base_filename + '.txt'
+
+    if kanji_with_furigana_array_into_string:  # Check if the string is not empty
+        print(kanji_with_furigana_array_into_string)
+        append_to_file(txt_filename, kanji_with_furigana_array_into_string)
 
     # Write a counter to a file
     directory = os.path.dirname(filename)
@@ -91,10 +94,8 @@ def process_sub(sub, filename):
         # Write the value of sub_num to the file
         f.write(str(sub.index))
 
-
-
     # Create the new filename
-    eng_filename = os.path.join(directory, "eng.srt")
+    eng_filename = base_filename + '_eng.srt'
     eng_subs = pysrt.open(eng_filename, encoding='utf-8') if os.path.exists(eng_filename) else []
 
     # Create a new subtitle item
@@ -135,12 +136,17 @@ def main(sub_num=None, filename=None):
         print(f"{filename} is not a valid file")
         return
 
-    directory = os.path.dirname(filename)
+    # Get the base filename from the selected file
+    base_filename = os.path.splitext(filename)[0]
 
     subs = pysrt.open(filename)
-    directory = os.path.dirname(filename)
 
-    sub_num_counter_filename = os.path.join(directory, "ichiran_subs_counter.txt")
+    dir_name = os.path.dirname(filename)
+
+    # Concatenate the directory name with your filename
+    sub_num_counter_filename = os.path.join(dir_name, "ichiran_subs_counter.txt")
+
+
 
     # Check if the file exists
     if os.path.exists(sub_num_counter_filename):
@@ -153,7 +159,7 @@ def main(sub_num=None, filename=None):
     else:
         print(f"File not found: {sub_num_counter_filename}")
 
-    loop_through_subs(subs, filename)
+    loop_through_subs(subs, base_filename)  # Pass the base filename to the function
 
 
 if __name__ == "__main__":

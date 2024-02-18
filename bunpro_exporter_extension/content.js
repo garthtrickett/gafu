@@ -56,30 +56,54 @@ window.onload = function () {
                 structure = data.reviewable.polite_structure;
               }
             }
+
             let exampleSentences = data.included.exampleSentences;
+
+            console.log(exampleSentences);
+
+            let parser = new DOMParser();
+
+            for (let i = exampleSentences.length - 1; i >= 0; i--) {
+              // Parse the HTML content
+              let doc = parser.parseFromString(
+                exampleSentences[i].content,
+                "text/html",
+              );
+
+              // Extract the Japanese text
+              let japaneseText = doc.body.textContent;
+
+              // Remove text within parentheses
+              japaneseText = japaneseText.replace(/（[^）]*）/g, "");
+
+              // Check the character length
+              if (japaneseText.length > 100) {
+                // Remove the item from exampleSentences
+                exampleSentences.splice(i, 1);
+              }
+            }
+
+            console.log(exampleSentences);
 
             let furiganaRegex = /(\p{Script=Han}+)（(\p{Script=Hiragana}+)）/gu;
 
-            let content =
-              "<span class='vocab-popout' data-vocab-id='58'>お茶（ちゃ）</span><span class='gp-popout' data-gp-id='10'><strong>が</strong></span><span class='gp-popout vocab-popout' data-gp-id='24' data-vocab-id='377'>冷（つめ）たい</span><span class='gp-popout' data-gp-id='2'>です</span>。";
-
-            let formattedContent = content.replace(furiganaRegex, " $1[$2]");
-
-            console.log(formattedContent);
-
             let japaneseSentences = {};
             let translationSentences = {};
+            let audioSentences = {};
 
             for (let i = 0; i < exampleSentences.length; i++) {
               let japaneseKey = `japanese_sentence_${i + 1}`;
               let translationKey = `translation_sentence_${i + 1}`;
+              let audioKey = `audio_sentence_${i + 1}`;
               japaneseSentences[japaneseKey] = exampleSentences[
                 i
               ].content.replace(furiganaRegex, " $1[$2]");
               translationSentences[translationKey] =
                 exampleSentences[i].translation;
+
+              audioSentences[audioKey] =
+                "[sound:" + exampleSentences[i].male_audio_url + "]";
             }
-            console.log(japaneseSentences);
 
             chrome.runtime.sendMessage({
               action: "addNote",
@@ -94,9 +118,10 @@ window.onload = function () {
                   structure,
                   ...japaneseSentences,
                   ...translationSentences,
+                  ...audioSentences,
                 },
                 options: {
-                  allowDuplicate: true,
+                  allowDuplicate: false,
                 },
                 tags: [], // add any tags if needed
               },

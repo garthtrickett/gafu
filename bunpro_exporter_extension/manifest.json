@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Bunpro Grammer Point Exporter",
   "version": "1.0",
-  "permissions": ["activeTab", "scripting", "tabs"],
+  "permissions": ["activeTab", "scripting", "tabs", "downloads"],
   "host_permissions": ["http://localhost:8765/"],
   "background": {
     "service_worker": "background.js"
