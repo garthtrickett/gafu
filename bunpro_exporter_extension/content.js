@@ -48,7 +48,9 @@ window.onload = function () {
             let slug = data.reviewable.slug;
             let id = String(data.reviewable.id);
             let meaning = data.reviewable.meaning;
-            let caution = data.reviewable.caution;
+            let caution = data.reviewable.caution
+              ? data.reviewable.caution
+              : "";
             let structure = data.reviewable.structure;
             if (!structure) {
               structure = data.reviewable.casual_structure;
@@ -105,7 +107,7 @@ window.onload = function () {
                 "[sound:" + exampleSentences[i].male_audio_url + "]";
             }
 
-            chrome.runtime.sendMessage({
+            let payload = {
               action: "addNote",
               note: {
                 deckName: "Bunpro",
@@ -125,13 +127,15 @@ window.onload = function () {
                 },
                 tags: [], // add any tags if needed
               },
-            });
+            };
+            console.log(payload);
+            let result = chrome.runtime.sendMessage(payload);
+
+            console.log("message sent to anki", result);
           }
         },
         false,
       );
-
-      console.log("last thing in script");
     });
 
     // Append the button to the ul

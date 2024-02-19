@@ -1,6 +1,6 @@
 // background.js
 chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
-  console.log("got to here");
+  console.log("note", request.note);
   if (request.action === "addNote") {
     fetch("http://localhost:8765", {
       method: "POST",
