@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 
 from aqt import mw 
-from aqt.utils import showInfo
 from aqt import gui_hooks
 from anki.hooks import addHook
 import random
@@ -133,7 +132,6 @@ def onShowAnswer():
 addHook("showAnswer", onShowAnswer)
 
 def deleteSentence(selected_field_number):
-
     field_number = int(selected_field_number)
 
     # Get the current card
@@ -145,12 +143,23 @@ def deleteSentence(selected_field_number):
     note["audio_sentence_" + str(field_number)] = ""
     note["translation_sentence_" + str(field_number)] = ""
 
+    # Find the highest non-empty "japanese_sentence_*" field
+    highest_field = 15
+    for i in range(15, 0, -1):
+        if note["japanese_sentence_" + str(i)]:
+            highest_field = i
+            break
+
     # Shift up all the non-empty fields
-    for i in range(field_number, 15):
+    for i in range(field_number, highest_field):
         if note["japanese_sentence_" + str(i + 1)]:
             note["japanese_sentence_" + str(i)] = note["japanese_sentence_" + str(i + 1)]
             note["audio_sentence_" + str(i)] = note["audio_sentence_" + str(i + 1)]
             note["translation_sentence_" + str(i)] = note["translation_sentence_" + str(i + 1)]
+            # Clear the next field after shifting
+            note["japanese_sentence_" + str(i + 1)] = ""
+            note["audio_sentence_" + str(i + 1)] = ""
+            note["translation_sentence_" + str(i + 1)] = ""
         else:
             break
 
@@ -160,10 +169,6 @@ def deleteSentence(selected_field_number):
     # Rerender the current card
     mw.reviewer.card.render_output()
     mw.reset()
-
-    # Show a message box to confirm that the action was performed
-    showInfo("Fields deleted and shifted up")
-
 
 
 
