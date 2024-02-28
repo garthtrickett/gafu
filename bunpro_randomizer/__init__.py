@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 
-from aqt import mw
+from aqt import mw 
+from aqt.utils import showInfo
+from aqt import gui_hooks
 from anki.hooks import addHook
 import random
 import re
@@ -8,7 +10,9 @@ import urllib
 
 
 
+
 def onShowQuestion():
+
     # Get the current card
     card = mw.reviewer.card
     note = card.note()
@@ -39,8 +43,6 @@ def onShowQuestion():
     audio_url = re.search(r'\[sound:(.*?)\]', selectedAudioContent).group(1)
 
 
-    print("mwstate: ")
-    print(mw.state)
 
     # Generate JavaScript code to create new divs with the content of the selected fields
     js_code = """
@@ -53,6 +55,7 @@ def onShowQuestion():
         for (var i = 0; i < existingElements.length; i++) {
             existingElements[i].parentNode.removeChild(existingElements[i]);
         }
+        
     }
 
     // Call the cleanup function before creating new elements
@@ -71,6 +74,7 @@ def onShowQuestion():
     audioElement.id = 'audio_sentence_' + selected_field_number;
     audioElement.src = audioUrl;
     audioElement.controls = true;
+    audioElement.autoplay = true;  
     document.body.appendChild(audioElement);
 
 
@@ -86,11 +90,17 @@ def onShowQuestion():
     if (gramDiv) {
         gramDiv.style.display = 'none';
     }
+
+
+
     """
     js_code = js_code.replace('selected_field_number', str(selected_field_number))
 
     # Execute the JavaScript code
     mw.web.eval(js_code)
+
+    print("Selected field Number: ")
+    print(selected_field_number)
 
 
 addHook("showQuestion", onShowQuestion)
@@ -111,6 +121,7 @@ def onShowAnswer():
     if (gramDiv) {
         gramDiv.style.display = 'none';
     }   
+
     """
 
     
@@ -120,3 +131,52 @@ def onShowAnswer():
 
 
 addHook("showAnswer", onShowAnswer)
+
+def deleteSentence(selected_field_number):
+
+    field_number = int(selected_field_number)
+
+    # Get the current card
+    card = mw.reviewer.card
+    note = card.note()
+
+    # Delete the contents of the chosen fields
+    note["japanese_sentence_" + str(field_number)] = ""
+    note["audio_sentence_" + str(field_number)] = ""
+    note["translation_sentence_" + str(field_number)] = ""
+
+    # Shift up all the non-empty fields
+    for i in range(field_number, 15):
+        if note["japanese_sentence_" + str(i + 1)]:
+            note["japanese_sentence_" + str(i)] = note["japanese_sentence_" + str(i + 1)]
+            note["audio_sentence_" + str(i)] = note["audio_sentence_" + str(i + 1)]
+            note["translation_sentence_" + str(i)] = note["translation_sentence_" + str(i + 1)]
+        else:
+            break
+
+    # Update the note to save the changes
+    note.flush()
+
+    # Rerender the current card
+    mw.reviewer.card.render_output()
+    mw.reset()
+
+    # Show a message box to confirm that the action was performed
+    showInfo("Fields deleted and shifted up")
+
+
+
+
+def on_bridge_cmd(handled, cmd, context):
+    if cmd.startswith("myButton.clicked:"):
+        # Extract the number from the cmd string
+        num = cmd.split(":")[1]
+
+        # Call your function here with num as an argument
+        print("THIS HAPPENED, number is:", num)
+        deleteSentence(num)
+        return (True, None)
+    return handled
+
+
+gui_hooks.webview_did_receive_js_message.append(on_bridge_cmd)
