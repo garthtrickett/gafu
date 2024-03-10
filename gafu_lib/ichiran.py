@@ -2,6 +2,7 @@
 import subprocess
 import pprint
 import re
+pp = pprint.PrettyPrinter(indent=4)
 
 def remove_compound_words(strings: list) -> list:
     result = []
@@ -15,7 +16,6 @@ def remove_compound_words(strings: list) -> list:
 
 
 def ichiran_output_to_kanji_hirigana_array(result):
-
     lines = result.stdout.splitlines()
     star_lines = [line for line in lines if line.startswith('*')]
 
@@ -33,6 +33,42 @@ def ichiran_output_to_kanji_hirigana_array(result):
 
     new_list = [item.replace('【', '[').replace('】', ']') for item in new_list]
     return new_list
+
+
+
+def find_rule_end_positions(sentence, rules):
+    rule_end_positions = []
+    for rule in rules:
+        rule_end = rule[-1]
+        for i in range(len(sentence)):
+            if sentence[i] == rule_end:
+                rule_end_positions.append(i)
+    return rule_end_positions
+
+def find_grammar_rules(kanji_with_furigana_array, parts_of_speech_array, rules):
+    rule_matches = []
+    for rule in rules:
+        rule_end = rule[-1]
+        for i in range(1, len(kanji_with_furigana_array)):
+            if kanji_with_furigana_array[i] == rule_end and parts_of_speech_array[i-1] in rule[:-1]:
+                rule_matches.append(rule)
+    return rule_matches
+
+
+def extract_first_pos_tags(result):
+    lines = result.stdout.splitlines()
+    pos_tags = []
+
+    for line in lines:
+        if line.startswith('1.'):
+            match = re.search(r'\[([a-z0-9]+)\]', line)
+            if match:
+                pos_tags.append(match.group(1))
+        elif 'Conjugation' in line:
+            match = re.search(r'\[([a-z0-9]+)\]', line)
+            if match:
+                pos_tags.append(match.group(1))
+    return pos_tags
 
 
 def add_leading_spaces_from_sentence(new_list, japanese):
@@ -93,9 +129,8 @@ def process_kanji_hirigana_into_kanji_with_furigana(new_list):
     return result_list
 
 
-def ichiran_output_to_bracket_furigana(ichiran_output, japanese):
+def ichiran_output_to_bracket_furigana(ichiran_output):
     new_list = ichiran_output_to_kanji_hirigana_array(ichiran_output)
-    # new_list = add_leading_spaces_from_sentence(new_list, japanese)
     kanji_with_furigana = process_kanji_hirigana_into_kanji_with_furigana(new_list)
     return kanji_with_furigana
 

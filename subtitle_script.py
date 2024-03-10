@@ -1,10 +1,14 @@
 import os
+import sys
 import re
 import subprocess
 import pysrt
 import g4f
 from gafu_lib import ichiran
 from pysrt import SubRipItem, SubRipTime, SubRipFile
+import pprint
+pp = pprint.PrettyPrinter(indent=4)
+
 
 
 g4f.debug.logging = True  # Enable debug logging
@@ -47,7 +51,17 @@ def process_sub(sub, base_filename):
     result = subprocess.run(
         cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
     )
-    kanji_with_furigana_array = ichiran.ichiran_output_to_bracket_furigana(result, sub)
+
+
+    kanji_with_furigana_array = ichiran.ichiran_output_to_bracket_furigana(result)
+    parts_of_speech_array = ichiran.extract_first_pos_tags(result)
+    pp.pprint(kanji_with_furigana_array)
+    pp.pprint(parts_of_speech_array)
+    rules = [['n','adj-i','adj-na','です'],['n','adj-na','だ']]
+    n_desu_pairs = ichiran.find_grammar_rules(kanji_with_furigana_array, parts_of_speech_array, rules)
+    pp.pprint(n_desu_pairs)
+
+    sys.exit()
     info_lines = get_info_lines(result)  # here while i'm not using bing results
 
     directory = os.path.dirname(base_filename)
@@ -57,25 +71,6 @@ def process_sub(sub, base_filename):
         "; ".join(['"' + word + '"' for word in kanji_with_furigana_array]) + "\n"
     )
 
-    # premsg = "Translate "
-    # postmsg = " reply only with translation wrapped in $$"
-
-    # prompt = premsg + sub.text + postmsg
-
-    # response = g4f.ChatCompletion.create(
-    #     model=g4f.models.gpt_4_turbo,
-    #     tone="Precise",
-    #     provider=g4f.Provider.Bing,
-    #     messages=[{"role": "user", "content": prompt}],
-    # )
-
-    # print(response)
-    # match = re.search(r'\$\$(.*?)\$\$', response)
-
-    # # Extract the matched substring
-    # if match:
-    #     translation = match.group(1) + "\n"
-    # else:
     translation = "No translation \n"
 
     eng_filename = base_filename + '_eng.srt'
@@ -126,7 +121,7 @@ def loop_through_subs(subs, filename):
 def main(sub_num=None, filename=None):
     try:
         env = os.environ.copy()
-        env["FZF_DEFAULT_COMMAND"] = "find ~/files/jp/anime -type f"
+        env["FZF_DEFAULT_COMMAND"] = "find ~/files/jp/ -type f"
         filename = subprocess.check_output(["fzf"], env=env).decode().strip()
     except subprocess.CalledProcessError:
         print("No file selected")
