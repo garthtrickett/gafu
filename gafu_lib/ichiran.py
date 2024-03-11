@@ -45,41 +45,60 @@ def find_rule_end_positions(sentence, rules):
                 rule_end_positions.append(i)
     return rule_end_positions
 
-def match_single_element_rule(kanji_with_furigana_array, rule):
-    return [rule for i in range(len(kanji_with_furigana_array)) if kanji_with_furigana_array[i] == rule[0]]
+def match_single_element_rule(kanji_with_furigana_array, parts_of_speech_array, rule):
+    return [rule for i in range(len(kanji_with_furigana_array)) if kanji_with_furigana_array[i] == rule[0] or parts_of_speech_array[i] == rule[0]]
 
 def match_multi_element_rule(kanji_with_furigana_array, parts_of_speech_array, rule):
     rule_matches = []
-    rule_start = rule[0]
-    rule_end = rule[-1]
-    rule_pos_tags_start = rule_start.split(',')
-    for i in range(1, len(kanji_with_furigana_array)):
-        if kanji_with_furigana_array[i] == rule_end:
-            pos_tags_start = parts_of_speech_array[i-1].split(',')
-            if any(pos_tag in rule_pos_tags_start for pos_tag in pos_tags_start):
+    if len(rule) == 2:
+        rule_start = rule[0].split(',')
+        rule_end = rule[1]
+        for i in range(len(kanji_with_furigana_array) - 1):
+            pos_tags_start = parts_of_speech_array[i].split(',')
+            if kanji_with_furigana_array[i+1] == rule_end and any(pos_tag in rule_start for pos_tag in pos_tags_start):
                 rule_matches.append(rule)
+    else:
+        rule_start = rule[0].split(',')
+        rule_end = rule[-1].split(',')
+        rule_middle = rule[1]
+        for i in range(1, len(kanji_with_furigana_array) - 1):
+            if kanji_with_furigana_array[i] == rule_middle:
+                pos_tags_start = parts_of_speech_array[i-1].split(',')
+                pos_tags_end = parts_of_speech_array[i+1].split(',')
+                if any(pos_tag in rule_start for pos_tag in pos_tags_start) and any(pos_tag in rule_end for pos_tag in pos_tags_end):
+                    rule_matches.append(rule)
     return rule_matches
 
 def find_grammar_rules(kanji_with_furigana_array, parts_of_speech_array, rules):
     rule_matches = []
     for rule in rules:
         if len(rule) == 1:
-            rule_matches.extend(match_single_element_rule(kanji_with_furigana_array, rule))
+            rule_matches.extend(match_single_element_rule(kanji_with_furigana_array, parts_of_speech_array, rule))
         else:
             rule_matches.extend(match_multi_element_rule(kanji_with_furigana_array, parts_of_speech_array, rule))
     return rule_matches
-
 
 
 def extract_first_pos_tags(result):
     lines = result.stdout.splitlines()
     pos_tags = []
 
-    for line in lines:
-        if line.startswith('1.') or 'Conjugation' in line:
-            match = re.search(r'\[([a-z0-9,-]+)\]', line)
-            if match:
-                pos_tags.append(match.group(1))
+
+    for i in range(len(lines)):
+        if lines[i].startswith('* '):
+            # Check the next line for the part of speech tag
+
+            if i+1 < len(lines): 
+                if lines[i+1].startswith('1.'):
+                    match = re.search(r'\[([a-z0-9,-]+)\]', lines[i+1])
+                    if match:
+                        pos_tags.append(match.group(1))
+                # This deals with the cojugation case that spits out /n /n
+                elif lines[i+1] == '':
+                    match = re.search(r'\[([a-z0-9,-]+)\]', lines[i+2])
+                    if match:
+                        pos_tags.append(match.group(1))
+
     return pos_tags
 
 

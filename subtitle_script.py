@@ -47,67 +47,68 @@ def append_to_file(filename, sentence):
 
 def process_sub(sub, base_filename):
     # 'index', 'start', 'end', 'position', 'text'
-    sub.text = "あれは私のペンです"
+    # sub.text = "寿司を食べている"
     cmd = ["docker", "exec", "-it", "ichiran-main-1", "ichiran-cli", "-i", sub.text]
     result = subprocess.run(
         cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
     )
-    pp.pprint(result)
 
 
     kanji_with_furigana_array = ichiran.ichiran_output_to_bracket_furigana(result)
     pp.pprint(kanji_with_furigana_array)
     parts_of_speech_array = ichiran.extract_first_pos_tags(result)
+    print(result)
     pp.pprint(parts_of_speech_array)
-    rules = [['n,pn,adj-i,adj-na','です'],['n,pn,adj-na','だ'], ['n,pn', 'も'], ['は'], ['これ'], ['それ'], ['あれ'], ['n', 'の', 'n']]
+    rules = [['n,pn,adj-i,adj-na','です'],['n,pn,adj-na','だ'], ['n,pn', 'も'], ['は'], ['これ'], ['それ'], ['あれ'], ['n,pn', 'の', 'n,pn'],
+    ['いい'], ['よくない'], ['よかった'], ['よくなかった'],  [' いいです'], ['よくないです'], ['よかったです'], ['よくなかったです'], ['adj-na', 'な'], ['か']]
     n_desu_pairs = ichiran.find_grammar_rules(kanji_with_furigana_array, parts_of_speech_array, rules)
     pp.pprint(n_desu_pairs)
+    # sys.exit()
 
-    sys.exit()
-    info_lines = get_info_lines(result)  # here while i'm not using bing results
+    # info_lines = get_info_lines(result)  # here while i'm not using bing results
 
-    directory = os.path.dirname(base_filename)
-    filename = os.path.join(directory, "ichiran_subs.txt")
+    # directory = os.path.dirname(base_filename)
+    # filename = os.path.join(directory, "ichiran_subs.txt")
 
-    kanji_with_furigana_array_into_string = (
-        "; ".join(['"' + word + '"' for word in kanji_with_furigana_array]) + "\n"
-    )
+    # kanji_with_furigana_array_into_string = (
+    #     "; ".join(['"' + word + '"' for word in kanji_with_furigana_array]) + "\n"
+    # )
 
-    translation = "No translation \n"
+    # translation = "No translation \n"
 
-    eng_filename = base_filename + '_eng.srt'
-    txt_filename = base_filename + '.txt'
+    # eng_filename = base_filename + '_eng.srt'
+    # txt_filename = base_filename + '.txt'
 
-    if kanji_with_furigana_array_into_string:  # Check if the string is not empty
-        print(kanji_with_furigana_array_into_string)
-        append_to_file(txt_filename, kanji_with_furigana_array_into_string)
+    # if kanji_with_furigana_array_into_string:  # Check if the string is not empty
+    #     print(kanji_with_furigana_array_into_string)
+    #     append_to_file(txt_filename, kanji_with_furigana_array_into_string)
 
-    # Write a counter to a file
-    directory = os.path.dirname(filename)
-    filename = os.path.join(directory, "ichiran_subs_counter.txt")
+    # # Write a counter to a file
+    # directory = os.path.dirname(filename)
+    # filename = os.path.join(directory, "ichiran_subs_counter.txt")
 
-    # Open the file for writing
-    with open(filename, "w") as f:
-        # Write the value of sub_num to the file
-        f.write(str(sub.index))
+    # # Open the file for writing
+    # with open(filename, "w") as f:
+    #     # Write the value of sub_num to the file
+    #     f.write(str(sub.index))
 
-    # Create the new filename
-    eng_filename = base_filename + '_eng.srt'
-    eng_subs = pysrt.open(eng_filename, encoding='utf-8') if os.path.exists(eng_filename) else []
+    # # Create the new filename
+    # eng_filename = base_filename + '_eng.srt'
+    # eng_subs = pysrt.open(eng_filename, encoding='utf-8') if os.path.exists(eng_filename) else []
 
-    # Create a new subtitle item
-    start_time = SubRipTime(sub.start.hours, sub.start.minutes, sub.start.seconds, sub.start.milliseconds)
-    start_time.milliseconds += 1
-    end_time = SubRipTime(sub.end.hours, sub.end.minutes, sub.end.seconds, sub.end.milliseconds)
-    new_sub = SubRipItem(index=len(eng_subs)+1, start=start_time, end=end_time, text=translation.strip())
+    # # Create a new subtitle item
+    # start_time = SubRipTime(sub.start.hours, sub.start.minutes, sub.start.seconds, sub.start.milliseconds)
+    # start_time.milliseconds += 1
+    # end_time = SubRipTime(sub.end.hours, sub.end.minutes, sub.end.seconds, sub.end.milliseconds)
+    # new_sub = SubRipItem(index=len(eng_subs)+1, start=start_time, end=end_time, text=translation.strip())
 
-    # Append the new subtitle item to the list
-    eng_subs.append(new_sub)
+    # # Append the new subtitle item to the list
+    # eng_subs.append(new_sub)
 
     
-    eng_subs = SubRipFile(items=eng_subs)
-    # Save the updated .srt file
-    eng_subs.save(eng_filename, encoding='utf-8')
+    # eng_subs = SubRipFile(items=eng_subs)
+    # # Save the updated .srt file
+    # eng_subs.save(eng_filename, encoding='utf-8')
 
 
 def loop_through_subs(subs, filename):
