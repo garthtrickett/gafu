@@ -47,17 +47,19 @@ def append_to_file(filename, sentence):
 
 def process_sub(sub, base_filename):
     # 'index', 'start', 'end', 'position', 'text'
+    sub.text = "あれは私のペンです"
     cmd = ["docker", "exec", "-it", "ichiran-main-1", "ichiran-cli", "-i", sub.text]
     result = subprocess.run(
         cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
     )
+    pp.pprint(result)
 
 
     kanji_with_furigana_array = ichiran.ichiran_output_to_bracket_furigana(result)
-    parts_of_speech_array = ichiran.extract_first_pos_tags(result)
     pp.pprint(kanji_with_furigana_array)
+    parts_of_speech_array = ichiran.extract_first_pos_tags(result)
     pp.pprint(parts_of_speech_array)
-    rules = [['n','adj-i','adj-na','です'],['n','adj-na','だ']]
+    rules = [['n,pn,adj-i,adj-na','です'],['n,pn,adj-na','だ'], ['n,pn', 'も'], ['は'], ['これ'], ['それ'], ['あれ'], ['n', 'の', 'n']]
     n_desu_pairs = ichiran.find_grammar_rules(kanji_with_furigana_array, parts_of_speech_array, rules)
     pp.pprint(n_desu_pairs)
 

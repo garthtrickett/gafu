@@ -45,14 +45,30 @@ def find_rule_end_positions(sentence, rules):
                 rule_end_positions.append(i)
     return rule_end_positions
 
+def match_single_element_rule(kanji_with_furigana_array, rule):
+    return [rule for i in range(len(kanji_with_furigana_array)) if kanji_with_furigana_array[i] == rule[0]]
+
+def match_multi_element_rule(kanji_with_furigana_array, parts_of_speech_array, rule):
+    rule_matches = []
+    rule_start = rule[0]
+    rule_end = rule[-1]
+    rule_pos_tags_start = rule_start.split(',')
+    for i in range(1, len(kanji_with_furigana_array)):
+        if kanji_with_furigana_array[i] == rule_end:
+            pos_tags_start = parts_of_speech_array[i-1].split(',')
+            if any(pos_tag in rule_pos_tags_start for pos_tag in pos_tags_start):
+                rule_matches.append(rule)
+    return rule_matches
+
 def find_grammar_rules(kanji_with_furigana_array, parts_of_speech_array, rules):
     rule_matches = []
     for rule in rules:
-        rule_end = rule[-1]
-        for i in range(1, len(kanji_with_furigana_array)):
-            if kanji_with_furigana_array[i] == rule_end and parts_of_speech_array[i-1] in rule[:-1]:
-                rule_matches.append(rule)
+        if len(rule) == 1:
+            rule_matches.extend(match_single_element_rule(kanji_with_furigana_array, rule))
+        else:
+            rule_matches.extend(match_multi_element_rule(kanji_with_furigana_array, parts_of_speech_array, rule))
     return rule_matches
+
 
 
 def extract_first_pos_tags(result):
@@ -60,12 +76,8 @@ def extract_first_pos_tags(result):
     pos_tags = []
 
     for line in lines:
-        if line.startswith('1.'):
-            match = re.search(r'\[([a-z0-9]+)\]', line)
-            if match:
-                pos_tags.append(match.group(1))
-        elif 'Conjugation' in line:
-            match = re.search(r'\[([a-z0-9]+)\]', line)
+        if line.startswith('1.') or 'Conjugation' in line:
+            match = re.search(r'\[([a-z0-9,-]+)\]', line)
             if match:
                 pos_tags.append(match.group(1))
     return pos_tags
