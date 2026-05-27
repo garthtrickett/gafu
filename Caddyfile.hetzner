@@ -1,0 +1,18 @@
+{
+    on_demand_tls {
+        ask http://life-io-backend:42069/api/infra/caddy-ask
+    }
+}
+
+# Root marketing and platform registration domain
+life-io.xyz {
+    reverse_proxy life-io-backend:42069
+}
+
+# On-Demand SSL configuration for dynamically generated subdomains (languages/tenants)
+*.life-io.xyz {
+    tls {
+        on_demand
+    }
+    reverse_proxy life-io-backend:42069
+}

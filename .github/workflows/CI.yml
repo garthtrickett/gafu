@@ -1,0 +1,54 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.HETZNER_SERVER_IP }}
+          username: root
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          command_timeout: 30m 
+          script: |
+            set -e
+
+            echo "🧹 Pruning Docker system to free up disk space..."
+            docker system prune -af
+
+            echo "📂 Navigating to app directory..."
+            mkdir -p /opt/life-io
+            cd /opt/life-io
+
+            if [ ! -d ".git" ]; then
+              echo "✨ Cloning repository..."
+              git clone https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/garthtrickett/bedrock.git .
+            else
+              echo "🔄 Ensuring remote URL uses HTTPS token..."
+              git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/garthtrickett/bedrock.git
+            fi
+
+            echo "⬇️ Pulling latest changes..."
+            git fetch origin main
+            git reset --hard origin/main
+
+            echo "🏗️ Rebuilding and Restarting Containers..."
+            docker compose -f docker-compose.prod.yml up -d --build --remove-orphans
+
+            echo "⏳ Waiting for backend to initialize..."
+            sleep 10
+
+            echo "🔄 Running Database Migrations..."
+            docker compose -f docker-compose.prod.yml exec -T life-io-backend bun run db:migrate
+
+            echo "🌱 Running Database Seed..."
+            docker compose -f docker-compose.prod.yml exec -T life-io-backend bun run db:seed
+
+            echo "✅ Deployment Successfully Completed!"
