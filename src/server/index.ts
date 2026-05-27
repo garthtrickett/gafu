@@ -10,6 +10,7 @@ import { staticPlugin } from "@elysiajs/static";
 import { effectPlugin } from "./middleware/effect-plugin";
 import { authRoutes } from "./routes/auth";
 import { syncRoutes } from "./routes/sync.ts";
+import { aiRoutes } from "./routes/ai";
 
 export const app = new Elysia()
   .onError(({ code, error, request }) => {
@@ -33,8 +34,9 @@ export const app = new Elysia()
     console.info(`📱 [Client ${level.toUpperCase()}] ${message} ${formattedData} (URL: ${url})`);
     return { success: true };
   })
-    .use(authRoutes)
+  .use(authRoutes)
   .use(syncRoutes)
+  .use(aiRoutes)
   .use(cors({
     origin: [
       /localhost.*/,
