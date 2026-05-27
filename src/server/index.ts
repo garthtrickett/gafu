@@ -9,6 +9,7 @@ import { cors } from "@elysiajs/cors";
 import { staticPlugin } from "@elysiajs/static";
 import { effectPlugin } from "./middleware/effect-plugin";
 import { authRoutes } from "./routes/auth";
+import { syncRoutes } from "./routes/sync.ts";
 
 export const app = new Elysia()
   .onError(({ code, error, request }) => {
@@ -28,7 +29,8 @@ export const app = new Elysia()
     console.info(`📱 [Client ${level.toUpperCase()}] ${message} ${formattedData} (URL: ${url})`);
     return { success: true };
   })
-  .use(authRoutes)
+    .use(authRoutes)
+  .use(syncRoutes)
   .use(cors({
     origin: [
       /localhost.*/,
@@ -55,11 +57,14 @@ export const app = new Elysia()
   .get("/icon-192.png", () => Bun.file("./dist/icon-192.png"))
   .get("/icon-512.png", () => Bun.file("./dist/icon-512.png"))
   .get("/apple-touch-icon.png", () => Bun.file("./dist/apple-touch-icon.png"))
-  .get("*", ({ set }) => {
+    .get("*", ({ set }) => {
     set.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, proxy-revalidate";
     set.headers["Pragma"] = "no-cache";
     set.headers["Expires"] = "0";
-    return Bun.file("./dist/index.html");
+    if (existsSync("./dist/index.html")) {
+      return Bun.file("./dist/index.html");
+    }
+    return "Development Server: Build output is not present in `./dist`. Use the Vite dev server on port 3000.";
   });
 
 if (process.env.NODE_ENV !== "test") {
