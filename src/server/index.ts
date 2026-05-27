@@ -1,4 +1,10 @@
 import { Elysia } from "elysia";
+import { existsSync, mkdirSync } from "node:fs";
+
+// Ensure the dist/assets directory exists so @elysiajs/static doesn't crash on startup during development
+if (!existsSync("./dist/assets")) {
+  mkdirSync("./dist/assets", { recursive: true });
+}
 import { cors } from "@elysiajs/cors";
 import { staticPlugin } from "@elysiajs/static";
 import { effectPlugin } from "./middleware/effect-plugin";
