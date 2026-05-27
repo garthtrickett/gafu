@@ -24,8 +24,8 @@ export const userState = signal<UserProfile | null>(null);
 
 export const isAuthenticated = computed(() => tokenState.value !== null);
 
-export const initAuth = ()
-  => Effect.gen(function* () {
+export const initAuth = () =>
+  Effect.gen(function* () {
     const token = tokenState.value;
     yield* clientLog("debug", `[AuthStore:initAuth] Initializing authentication. Raw token state: "${token}"`);
     if (!token) {

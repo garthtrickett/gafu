@@ -23,8 +23,8 @@ const savePullTimestamp = (ts: number): Promise<void> => {
   return set(LAST_PULL_KEY, ts, syncMetadataStore);
 };
 
-export const executeDeltaPull = ()
-  => Effect.gen(function* () {
+export const executeDeltaPull = () =>
+  Effect.gen(function* () {
     yield* clientLog("debug", "[DeltaPull] executeDeltaPull loop checkpoint triggered.");
 
     if (!isOnlineState.value) {
