@@ -164,7 +164,7 @@ const signupView = (): ViewResult => {
           if (err instanceof Error) {
             msg = err.message;
           } else if (err !== null && typeof err === "object" && "error" in err) {
-            const errorObj = err as { error: unknown };
+            const errorObj = err;
             msg = String(errorObj.error);
           } else {
             msg = String(err);
