@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Effect } from "effect";
-import { login, signup, tokenState, userState } from "./authStore.ts";
+import { login, signup, tokenState, userState } from "./authStore.ts";\nimport { LocationLive } from "../LocationService.ts";
 
 describe("Authentication Client Store Suite", () => {
   beforeEach(() => {
@@ -18,9 +18,9 @@ describe("Authentication Client Store Suite", () => {
       ok: true,
       json: () => Promise.resolve({ token: mockToken, user: mockUser })
     });
-    global.fetch = fetchMock;
+    global.fetch = fetchMock as any;
 
-    await Effect.runPromise(login("test@site.com", "password123"));
+    await Effect.runPromise(login("test@site.com", "password123").pipe(Effect.provide(LocationLive)));
 
     expect(tokenState.value).toBe(mockToken);
     expect(userState.value).toEqual(mockUser);
@@ -32,10 +32,10 @@ describe("Authentication Client Store Suite", () => {
       ok: false,
       json: () => Promise.resolve({ error: "Invalid credentials" })
     });
-    global.fetch = fetchMock;
+    global.fetch = fetchMock as any;
 
     const run = login("bad@site.com", "password123").pipe(Effect.either);
-    const result = await Effect.runPromise(run);
+    const result = await Effect.runPromise(run.pipe(Effect.provide(LocationLive)));
 
     expect(result._tag).toBe("Left");
     expect(tokenState.value).toBeNull();

@@ -9,11 +9,7 @@ const STORE_NAME = "metadata";
 const syncMetadataStore = createStore(DB_NAME, STORE_NAME);
 const LAST_PULL_KEY = "last_pull_timestamp";
 
-interface DeltaResponse {
-  readonly serverTimestamp: number;
-  readonly decks: Array<{ id: string; name: string; category: string; content: unknown }>;
-  readonly srsUpdates: Array<{ id: string; easeFactor: number; repetitions: number; nextReview: string }>;
-}
+interface DeltaResponse {\n  readonly serverTimestamp: number;\n  readonly decks: Array<{\n    readonly id: string;\n    readonly name: string;\n    readonly category: string;\n    readonly content: unknown;\n  }>;\n  readonly srsUpdates: Array<{\n    readonly id: string;\n    readonly front: string;\n    readonly back: string;\n    readonly easeFactor: number;\n    readonly repetitions: number;\n    readonly intervalDays: number;\n    readonly nextReview: string;\n    readonly audioUrl?: string | null;\n  }>;\n}
 
 const getStoredPullTimestamp = (): Promise<number> => {
   return get<number>(LAST_PULL_KEY, syncMetadataStore).then((ts) => ts || 0);
