@@ -92,9 +92,9 @@ const loginView = (): ViewResult => {
 
     runClientUnscoped(
       login(email, password).pipe(
-        Effect.catchAll((err: any) => {
+                Effect.catchAll((err: unknown) => {
           const msg = err instanceof Error ? err.message : String(err);
-          return clientLog("error", `[LoginView] Login operation failed: ${msg}`);
+          return clientLog("error", `[LoginView] Login operation failed: ${msg}`, { email, err });
         })
       )
     );
