@@ -33,11 +33,12 @@ export const aiRoutes = new Elysia({ prefix: "/api/ai" })
 
       const result = await runEffect(Effect.either(generateEffect));
 
-      if (result._tag === "Left") {
+            if (result._tag === "Left") {
         const error = result.left;
         const errorMessage = error instanceof Error ? error.message : "Unknown error";
+        const cause = error && typeof error === "object" && "cause" in error ? (error as { cause?: unknown }).cause : undefined;
         
-        await runEffect(Effect.logError(`[AiRoutes] Generation failed: ${errorMessage}`));
+        await runEffect(Effect.logError(`[AiRoutes] Generation failed: ${errorMessage}`, { cause }));
 
         if (error instanceof InvalidCredentialsError) {
           set.status = 401;
@@ -45,7 +46,7 @@ export const aiRoutes = new Elysia({ prefix: "/api/ai" })
         }
 
         set.status = 500;
-        return { error: "Internal Server Error", message: errorMessage };
+        return { error: "Internal Server Error", message: errorMessage, cause: cause ? String(cause) : undefined };
       }
 
       return result.right;

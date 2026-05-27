@@ -18,14 +18,16 @@ export const generateJapaneseSentence = (prompt: string) =>
       return yield* Effect.fail(new AiServiceError({ message: "Mastra Agent 'sentenceGeneratorAgent' not registered." }));
     }
 
-    const response = yield* Effect.tryPromise({
+        const response = yield* Effect.tryPromise({
       try: () =>
         agent.generate(prompt, {
-          structuredOutput: SentenceGenerationSchema,
+          structuredOutput: {
+            schema: SentenceGenerationSchema,
+          },
         }),
       catch: (error) => {
         return new AiServiceError({
-          message: "Failed to generate structured sentence via Mastra AI.",
+          message: `Failed to generate structured sentence via Mastra AI. Error: ${error instanceof Error ? error.message : String(error)}`,
           cause: error,
         });
       },
