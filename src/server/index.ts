@@ -8,11 +8,27 @@ if (!existsSync("./dist/assets")) {
 import { cors } from "@elysiajs/cors";
 import { staticPlugin } from "@elysiajs/static";
 import { effectPlugin } from "./middleware/effect-plugin";
+import { authRoutes } from "./routes/auth";
 
 export const app = new Elysia()
   .onError(({ code, error, request }) => {
     console.error(`[Global Error] ${request.method} ${request.url} - ${code}`, error);
   })
+  .onRequest(({ request }) => {
+    console.info(`📡 [HTTP] ${request.method} ${request.url}`);
+  })
+  .post("/api/log", ({ body }) => {
+    const { level, message, data, url } = body as {
+      level: string;
+      message: string;
+      data: any;
+      url: string;
+    };
+    const formattedData = data && Object.keys(data).length ? JSON.stringify(data, null, 2) : "";
+    console.info(`📱 [Client ${level.toUpperCase()}] ${message} ${formattedData} (URL: ${url})`);
+    return { success: true };
+  })
+  .use(authRoutes)
   .use(cors({
     origin: [
       /localhost.*/,
