@@ -94,12 +94,13 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
         };
       });
 
-                                                const result = await runEffect(Effect.either(pullEffect));
+                                                                                                const result = await runEffect(Effect.either(pullEffect));
       if (result._tag === "Left") {
         const error = result.left;
+        const errorMessage = error instanceof Error ? error.message : (typeof error === "string" ? error : (JSON.stringify(error) ?? "Unknown error"));
         await runEffect(
           Effect.logError(
-            `[Sync:Pull] Pull request failed: ${error instanceof Error ? error.message : JSON.stringify(error)}`
+            `[Sync:Pull] Pull request failed: ${errorMessage}`
           )
         );
         if (error instanceof InvalidCredentialsError) {
@@ -107,7 +108,6 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
           return { error: "Unauthorized" };
         }
         set.status = 500;
-        const errorMessage = error instanceof Error ? error.message : JSON.stringify(error);
         return { error: "Internal Server Error", message: errorMessage };
       }
       return result.right;
@@ -181,12 +181,13 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
         return { success: true };
       });
 
-                                                const result = await runEffect(Effect.either(pushEffect));
+                                                                                                const result = await runEffect(Effect.either(pushEffect));
       if (result._tag === "Left") {
         const error = result.left;
+        const errorMessage = error instanceof Error ? error.message : (typeof error === "string" ? error : (JSON.stringify(error) ?? "Unknown error"));
         await runEffect(
           Effect.logError(
-            `[Sync:Push] Push request failed: ${error instanceof Error ? error.message : JSON.stringify(error)}`
+            `[Sync:Push] Push request failed: ${errorMessage}`
           )
         );
         if (error instanceof InvalidCredentialsError) {
@@ -194,15 +195,14 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
           return { error: "Unauthorized" };
         }
         set.status = 500;
-        const errorMessage = error instanceof Error ? error.message : JSON.stringify(error);
         return { error: "Internal Server Error", message: errorMessage };
       }
       return result.right;
     },
-    {
+        {
       body: t.Object({
         id: t.String(),
-        type: t.Union([t.Literal("record_review"), t.Literal("toggle_skin"), t.Literal("unlock_deck")]),
+        type: t.String(),
         payload: t.Any(),
         timestamp: t.Number()
       })

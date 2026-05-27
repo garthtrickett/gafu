@@ -128,11 +128,18 @@ export const signup = (email: string, password: string) =>
       return yield* Effect.fail(new Error(errorResponse.error));
     }
 
-    yield* clientLog("info", "[AuthStore] Account created successfully. Dynamically importing router for redirection...");
+        yield* clientLog("info", "[AuthStore] Account created successfully. Dynamically importing router for redirection...");
+    const data = yield* Effect.tryPromise({
+      try: () => response.json() as Promise<{ id: string; email: string }>,
+      catch: (e) => new Error(`Failed to parse signup response: ${String(e)}`),
+    });
+
     const { navigate } = yield* Effect.promise(() => import("../router.ts"));
     yield* clientLog("debug", "[AuthStore:signup] Router imported. Triggering navigation to '/login'...");
     yield* navigate("/login");
     yield* clientLog("debug", "[AuthStore:signup] Navigation to '/login' effect triggered successfully.");
+
+    return data;
   });
 
 export const logout = () => {

@@ -32,11 +32,11 @@ export const calculateSrsUpdate = (
     easeFactor = Math.max(1.3, easeFactor - 0.2);
   }
 
-  const nextReview = new Date();
+    const nextReview = new Date();
   nextReview.setDate(nextReview.getDate() + intervalDays);
 
   return {
-    easeFactor,
+    easeFactor: Math.round(easeFactor * 100) / 100,
     repetitions,
     intervalDays,
     nextReview: nextReview.toISOString(),
@@ -128,8 +128,9 @@ export class StudySession extends LitElement {
 
     super.connectedCallback();
 
-    if (dueCards.length > 0 && dueCards[0]?.audioUrl) {
-      this.controller.propose({ type: "PLAY_AUDIO", audioUrl: dueCards[0].audioUrl });
+        const firstCard = dueCards[0];
+    if (firstCard && typeof firstCard.audioUrl === "string") {
+      this.controller.propose({ type: "PLAY_AUDIO", audioUrl: firstCard.audioUrl });
     }
   }
 
@@ -191,8 +192,8 @@ export class StudySession extends LitElement {
           nextReview: metrics.nextReview,
         });
 
-                const nextCard = _model.queue[_model.currentIndex];
-        if (nextCard?.audioUrl) {
+                                const nextCard = _model.queue[_model.currentIndex];
+        if (nextCard && typeof nextCard.audioUrl === "string") {
           _propose({ type: "PLAY_AUDIO", audioUrl: nextCard.audioUrl });
         }
       }
