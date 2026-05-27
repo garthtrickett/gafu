@@ -72,11 +72,14 @@ export const login = (email: string, password: string) =>
       catch: (e) => new Error(`Auth request connection failed: ${String(e)}`),
     });
 
+    yield* clientLog("debug", `[AuthStore:login] Login HTTP response status: ${response.status}`);
+
     if (!response.ok) {
       const errorResponse = yield* Effect.tryPromise({
         try: () => response.json() as Promise<{ error: string }>,
         catch: () => ({ error: "Unknown network error" }),
       });
+      yield* clientLog("error", `[AuthStore:login] Login rejected by server: ${errorResponse.error}`);
       return yield* Effect.fail(new Error(errorResponse.error));
     }
 
@@ -85,14 +88,19 @@ export const login = (email: string, password: string) =>
       catch: (e) => e,
     }));
 
+    yield* clientLog("debug", `[AuthStore:login] Parsed response data. Token present: ${!!data.token}, User present: ${!!data.user}`);
+
     tokenState.value = data.token;
     userState.value = data.user;
     localStorage.setItem("jwt", data.token);
 
-    yield* clientLog("info", `[AuthStore] Session authenticated: ${data.user.email}`);
+    yield* clientLog("info", `[AuthStore] Session authenticated successfully for user: ${data.user?.email}`);
 
-    const { navigate } = yield* import("../router.ts");
+    yield* clientLog("debug", "[AuthStore:login] Dynamically importing router...");
+    const { navigate } = yield* Effect.promise(() => import("../router.ts"));
+    yield* clientLog("debug", "[AuthStore:login] Router imported. Triggering navigation to '/'...");
     yield* navigate("/");
+    yield* clientLog("debug", "[AuthStore:login] Navigation effect triggered successfully.");
   });
 
 export const signup = (email: string, password: string) =>
@@ -109,17 +117,22 @@ export const signup = (email: string, password: string) =>
       catch: (e) => new Error(`Signup connection failed: ${String(e)}`),
     });
 
+    yield* clientLog("debug", `[AuthStore:signup] Signup HTTP response status: ${response.status}`);
+
     if (!response.ok) {
       const errorResponse = yield* Effect.tryPromise({
         try: () => response.json() as Promise<{ error: string }>,
         catch: () => ({ error: "Signup process failed" }),
       });
+      yield* clientLog("error", `[AuthStore:signup] Signup rejected by server: ${errorResponse.error}`);
       return yield* Effect.fail(new Error(errorResponse.error));
     }
 
-    yield* clientLog("info", "[AuthStore] Account created. Redirecting to sign in...");
-    const { navigate } = yield* import("../router.ts");
+    yield* clientLog("info", "[AuthStore] Account created successfully. Dynamically importing router for redirection...");
+    const { navigate } = yield* Effect.promise(() => import("../router.ts"));
+    yield* clientLog("debug", "[AuthStore:signup] Router imported. Triggering navigation to '/login'...");
     yield* navigate("/login");
+    yield* clientLog("debug", "[AuthStore:signup] Navigation to '/login' effect triggered successfully.");
   });
 
 export const logout = () => {
