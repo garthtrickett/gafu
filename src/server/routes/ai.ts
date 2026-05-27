@@ -37,12 +37,16 @@ export const aiRoutes = new Elysia({ prefix: "/api/ai" })
         const error = result.left;
                 const errorMessage = error instanceof Error ? error.message : "Unknown error";
         const cause = error && typeof error === "object" && "cause" in error ? (error as { cause?: unknown }).cause : undefined;
-        const causeString = cause
+                const causeString = cause
           ? (cause instanceof Error
               ? cause.message
               : typeof cause === "object"
                 ? JSON.stringify(cause)
-                : String(cause))
+                : typeof cause === "symbol"
+                  ? cause.toString()
+                  : typeof cause === "function"
+                    ? (cause.name || "function")
+                    : String(cause as string | number | boolean | bigint))
           : undefined;
         
         await runEffect(Effect.logError(`[AiRoutes] Generation failed: ${errorMessage}`, { cause }));
