@@ -30,6 +30,12 @@ export const executeDeltaPull = () =>
       return;
     }
 
+        const token = localStorage.getItem("jwt");
+    if (!token) {
+      yield* clientLog("debug", "[DeltaPull] No active session found. Skipping pull cycle.");
+      return;
+    }
+
     const lastPull = yield* Effect.tryPromise({
       try: () => getStoredPullTimestamp(),
       catch: (e) => e,
@@ -37,9 +43,8 @@ export const executeDeltaPull = () =>
 
     yield* clientLog("info", `[DeltaPull] Executing pull request (Since: ${lastPull})...`);
 
-    const token = localStorage.getItem("jwt");
     const headers: Record<string, string> = {
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      Authorization: `Bearer ${token}`,
     };
 
     const response = yield* Effect.tryPromise({

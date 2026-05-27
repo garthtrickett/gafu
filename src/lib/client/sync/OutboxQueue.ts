@@ -68,12 +68,17 @@ const flushTransaction = (txId: string) =>
 
     if (!transaction) return;
 
+    const token = localStorage.getItem("jwt");
+    if (!token) {
+      yield* clientLog("debug", `[Outbox] No active session. Skipping flush for transaction ${txId}.`);
+      return;
+    }
+
     yield* clientLog("info", `[Outbox] Flushing transaction ${txId} (${transaction.type})...`);
 
-    const token = localStorage.getItem("jwt");
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      Authorization: `Bearer ${token}`,
     };
 
     const response = yield* Effect.tryPromise({

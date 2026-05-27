@@ -56,7 +56,7 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
           try: () => db.selectFrom("srs_card")
             .selectAll()
             .where("user_id", "=", user.id as UserId)
-            .where("updated_at", ">". sinceDate)
+            .where("updated_at", ">", sinceDate)
             .execute(),
           catch: (cause) => new AuthDatabaseError({ cause })
         });
@@ -88,7 +88,7 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
       });
 
       const result = await runEffect(Effect.either(pullEffect));
-      if (Effect.isLeft(result)) {
+      if (result._tag === "Left") {
         const error = result.left;
         if (error instanceof InvalidCredentialsError) {
           set.status = 401;
@@ -165,7 +165,7 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
       });
 
       const result = await runEffect(Effect.either(pushEffect));
-      if (Effect.isLeft(result)) {
+      if (result._tag === "Left") {
         const error = result.left;
         if (error instanceof InvalidCredentialsError) {
           set.status = 401;

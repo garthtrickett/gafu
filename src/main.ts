@@ -14,12 +14,16 @@ import "./components/layouts/app-shell.ts";
 const bootstrapApp = Effect.gen(function* () {
   yield* clientLog("info", "[Main] Initiating application bootstrap sequence...");
 
-  // Hydrate local data storage collections from IndexedDB
+    // Hydrate local data storage collections from IndexedDB
   yield* clientLog("info", "[Main] Hydrating local deck storage from IndexedDB...");
   yield* deckStore.load();
 
   yield* clientLog("info", "[Main] Hydrating SRS card metadata storage from IndexedDB...");
   yield* srsStore.load();
+
+  // Attempt session restoration
+  const { initAuth } = yield* Effect.promise(() => import("./lib/client/stores/authStore.ts"));
+  yield* initAuth();
 
   // Initialize PWA installation events
   yield* Effect.sync(() => {
