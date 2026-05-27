@@ -40,8 +40,8 @@ export const generateToken = (user: PublicUser, options?: { expiresIn?: TimeSpan
     });
   });
 
-export const validateToken = (token: string)
-  => Effect.gen(function* () {
+export const validateToken = (token: string) =>
+  Effect.gen(function* () {
     yield* Effect.logInfo(`[JwtService] Validating token: "${token?.substring(0, 15)}..."`);
     const jwt = yield* Effect.tryPromise({ 
       try: () => validateJWT("HS256", secretKey, token),
