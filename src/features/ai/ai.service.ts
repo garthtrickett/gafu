@@ -1,6 +1,5 @@
 import { Effect, Data } from "effect";
 import { mastra } from "../../../mastra.config";
-import type { SentenceGeneration } from "../../lib/server/ai/schema";
 import { SentenceGenerationSchema } from "../../lib/server/ai/schema";
 
 export class AiServiceError extends Data.TaggedError("AiServiceError")<{
@@ -35,7 +34,7 @@ export const generateJapaneseSentence = (prompt: string) =>
 
     yield* Effect.logInfo("[AiService] Successfully received structured output from Mastra.");
     
-    const result = response.object as SentenceGeneration;
+    const result = response.object;
     yield* Effect.logInfo(`[AiService] Parsed result details - Front: "${result.front}", Back: "${result.back}"`);
 
     return result;

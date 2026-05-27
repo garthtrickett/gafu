@@ -35,8 +35,15 @@ export const aiRoutes = new Elysia({ prefix: "/api/ai" })
 
             if (result._tag === "Left") {
         const error = result.left;
-        const errorMessage = error instanceof Error ? error.message : "Unknown error";
+                const errorMessage = error instanceof Error ? error.message : "Unknown error";
         const cause = error && typeof error === "object" && "cause" in error ? (error as { cause?: unknown }).cause : undefined;
+        const causeString = cause
+          ? (cause instanceof Error
+              ? cause.message
+              : typeof cause === "object"
+                ? JSON.stringify(cause)
+                : String(cause))
+          : undefined;
         
         await runEffect(Effect.logError(`[AiRoutes] Generation failed: ${errorMessage}`, { cause }));
 
@@ -46,7 +53,7 @@ export const aiRoutes = new Elysia({ prefix: "/api/ai" })
         }
 
         set.status = 500;
-        return { error: "Internal Server Error", message: errorMessage, cause: cause ? String(cause) : undefined };
+        return { error: "Internal Server Error", message: errorMessage, cause: causeString };
       }
 
       return result.right;

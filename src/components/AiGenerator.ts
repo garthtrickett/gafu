@@ -6,7 +6,7 @@ import { deckStore } from "../lib/client/stores/deckStore";
 import { srsStore } from "../lib/client/stores/srsStore";
 import { enqueueTransaction } from "../lib/client/sync/OutboxQueue";
 import { clientLog } from "../lib/client/clientLog";
-import { runClientUnscoped, runClientPromise } from "../lib/client/runtime";
+import { runClientUnscoped, runClientPromise, type BaseClientContext } from "../lib/client/runtime";
 import { navigate } from "../lib/client/router";
 import { Effect } from "effect";
 import type { SentenceGeneration } from "../lib/server/ai/schema";
@@ -57,7 +57,7 @@ const update = (model: AiGeneratorModel, action: AiGeneratorAction): AiGenerator
 
 @customElement("ai-generator")
 export class AiGenerator extends LitElement {
-  private controller!: ReactiveSamController<this, AiGeneratorModel, AiGeneratorAction, never, any>;
+  private controller!: ReactiveSamController<this, AiGeneratorModel, AiGeneratorAction, never, BaseClientContext>;
 
   protected override createRenderRoot() {
     return this;
@@ -73,11 +73,11 @@ export class AiGenerator extends LitElement {
     super.connectedCallback();
   }
 
-  private handleAction(
+    private handleAction(
     action: AiGeneratorAction,
     model: AiGeneratorModel,
     propose: (action: AiGeneratorAction) => void
-  ): Effect.Effect<void, never, any> {
+  ): Effect.Effect<void, never, BaseClientContext> {
     return Effect.gen(function* () {
       yield* clientLog("info", `[AiGenerator] SAM action hook: ${action.type}`);
 
@@ -153,7 +153,7 @@ export class AiGenerator extends LitElement {
     await runClientPromise(
       Effect.gen(function* () {
         yield* clientLog("info", `[AiGenerator] Storing generated card in offline store, ID: ${cardId}`);
-        yield* srsStore.put(srsCardData as any);
+        yield* srsStore.put(srsCardData);
 
         yield* clientLog("info", "[AiGenerator] Enqueuing record_review outbox transaction for background sync...");
         yield* enqueueTransaction("record_review", {
@@ -260,8 +260,8 @@ export class AiGenerator extends LitElement {
                   </div>
                 </div>
 
-                <button
-                  @click=${this.handleSaveCard}
+                                <button
+                  @click=${() => this.handleSaveCard()}
                   class="w-full py-3 bg-green-650 hover:bg-green-600 text-white font-bold rounded-lg transition-colors text-sm cursor-pointer"
                 >
                   Add to Study Desk

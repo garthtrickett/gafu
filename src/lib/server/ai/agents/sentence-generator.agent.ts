@@ -1,5 +1,4 @@
 import { Agent } from "@mastra/core/agent";
-import { SentenceGenerationSchema } from "../schema";
 
 export const sentenceGeneratorAgent = new Agent({
   id: "japanese-sentence-generator",
