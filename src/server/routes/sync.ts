@@ -94,10 +94,10 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
         };
       });
 
-            const result = await runEffect(Effect.either(pullEffect));
+                        const result = await runEffect(Effect.either(pullEffect));
       if (result._tag === "Left") {
         const error = result.left;
-        yield* Effect.logError(`[Sync:Pull] Pull request failed`, { error });
+        await runEffect(Effect.logError(`[Sync:Pull] Pull request failed: ${String(error)}`));
         if (error instanceof InvalidCredentialsError) {
           set.status = 401;
           return { error: "Unauthorized" };
@@ -177,10 +177,10 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
         return { success: true };
       });
 
-            const result = await runEffect(Effect.either(pushEffect));
+                        const result = await runEffect(Effect.either(pushEffect));
       if (result._tag === "Left") {
         const error = result.left;
-        yield* Effect.logError(`[Sync:Push] Push request failed`, { error });
+        await runEffect(Effect.logError(`[Sync:Push] Push request failed: ${String(error)}`));
         if (error instanceof InvalidCredentialsError) {
           set.status = 401;
           return { error: "Unauthorized" };
