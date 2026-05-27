@@ -40,9 +40,10 @@ export const generateToken = (user: PublicUser, options?: { expiresIn?: TimeSpan
     });
   });
 
-export const validateToken = (token: string) =>
-  Effect.gen(function* () {
-    const jwt = yield* Effect.tryPromise({
+export const validateToken = (token: string)
+  => Effect.gen(function* () {
+    yield* Effect.logInfo(`[JwtService] Validating token: "${token?.substring(0, 15)}..."`);
+    const jwt = yield* Effect.tryPromise({ 
       try: () => validateJWT("HS256", secretKey, token),
       catch: (cause) => new JwtValidationError({ cause }),
     });
@@ -55,9 +56,10 @@ export const validateToken = (token: string) =>
       );
     }
 
-    const user = yield* Schema.decodeUnknown(PublicUserSchema)(jwt.payload);
+                const user = yield* Schema.decodeUnknown(PublicUserSchema)(jwt.payload);
+            yield* Effect.logInfo(`[JwtService] Token successfully validated for user: ${user.email}`);
 
-    return user;
+            return user;
   }).pipe(
     Effect.catchTags({
       JwtValidationError: (error) =>

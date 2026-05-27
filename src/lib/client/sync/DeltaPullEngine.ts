@@ -23,16 +23,20 @@ const savePullTimestamp = (ts: number): Promise<void> => {
   return set(LAST_PULL_KEY, ts, syncMetadataStore);
 };
 
-export const executeDeltaPull = () =>
-  Effect.gen(function* () {
+export const executeDeltaPull = ()
+  => Effect.gen(function* () {
+    yield* clientLog("debug", "[DeltaPull] executeDeltaPull loop checkpoint triggered.");
+
     if (!isOnlineState.value) {
       yield* clientLog("debug", "[DeltaPull] Device offline. Skipping pull cycle.");
       return;
     }
 
-        const token = localStorage.getItem("jwt");
-    if (!token) {
-      yield* clientLog("debug", "[DeltaPull] No active session found. Skipping pull cycle.");
+    const token = localStorage.getItem("jwt");
+    yield* clientLog("debug", `[DeltaPull] Retrieved token from localStorage: "${token}"`);
+
+    if (!token || token === "null" || token === "undefined" || token.trim() === "") {
+      yield* clientLog("debug", "[DeltaPull] No valid active session found (token is falsy/empty/null/undefined). Skipping pull cycle.");
       return;
     }
 
@@ -55,6 +59,8 @@ export const executeDeltaPull = () =>
         }),
       catch: (e) => new Error(`Network failure during pull request: ${String(e)}`),
     });
+
+    yield* clientLog("debug", `[DeltaPull] Pull request response status: ${response.status}`);
 
     if (!response.ok) {
       return yield* Effect.fail(new Error(`Server returned HTTP ${response.status}`));

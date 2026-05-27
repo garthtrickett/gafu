@@ -11,18 +11,27 @@ export interface UserProfile {
   readonly permissions: string[];
 }
 
-export const tokenState = signal<string | null>(
-  typeof localStorage !== "undefined" ? localStorage.getItem("jwt") : null
-);
+const getSanitizedToken = (): string | null => {
+  if (typeof localStorage === "undefined") return null;
+  const t = localStorage.getItem("jwt");
+  if (!t || t === "null" || t === "undefined" || t.trim() === "") return null;
+  return t;
+};
+
+export const tokenState = signal<string | null>(getSanitizedToken());
 
 export const userState = signal<UserProfile | null>(null);
 
 export const isAuthenticated = computed(() => tokenState.value !== null);
 
-export const initAuth = () =>
-  Effect.gen(function* () {
+export const initAuth = ()
+  => Effect.gen(function* () {
     const token = tokenState.value;
-    if (!token) return;
+    yield* clientLog("debug", `[AuthStore:initAuth] Initializing authentication. Raw token state: "${token}"`);
+    if (!token) {
+      yield* clientLog("info", "[AuthStore:initAuth] No valid token found during session initialization.");
+      return;
+    }
 
     yield* clientLog("info", "[AuthStore] Restoring session from storage...");
 
@@ -36,7 +45,7 @@ export const initAuth = () =>
       catch: (e) => new Error(`Authorization check failed: ${String(e)}`),
     });
 
-    if (response.ok) {
+        if (response.ok) {
       const data = (yield* Effect.tryPromise({
         try: () => response.json() as Promise<{ user: UserProfile }>,
         catch: (e) => e,
@@ -44,7 +53,7 @@ export const initAuth = () =>
       userState.value = data.user;
       yield* clientLog("info", `[AuthStore] Session recovered successfully: ${data.user.email}`);
     } else {
-      yield* clientLog("warn", "[AuthStore] Restored token is expired. Purging cache.");
+      yield* clientLog("warn", `[AuthStore] Restored token is expired or invalid (HTTP ${response.status}). Purging cache.`);
       logout();
     }
   });

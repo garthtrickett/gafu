@@ -68,9 +68,10 @@ const flushTransaction = (txId: string) =>
 
     if (!transaction) return;
 
-    const token = localStorage.getItem("jwt");
-    if (!token) {
-      yield* clientLog("debug", `[Outbox] No active session. Skipping flush for transaction ${txId}.`);
+        const token = localStorage.getItem("jwt");
+    yield* clientLog("debug", `[Outbox] Retrieved token from localStorage for flush: "${token}"`);
+    if (!token || token === "null" || token === "undefined" || token.trim() === "") {
+      yield* clientLog("debug", `[Outbox] No valid active session. Skipping flush for transaction ${txId}.`);
       return;
     }
 

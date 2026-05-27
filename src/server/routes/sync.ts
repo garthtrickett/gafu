@@ -27,10 +27,14 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
         const since = query.since ? Number(query.since) : 0;
         yield* Effect.logInfo(`[Sync:Pull] Executing pull requests. sinceTimestamp=${since}`);
 
-        const authHeader = headers["authorization"];
+                const authHeader = headers["authorization"];
+        yield* Effect.logInfo(`[Sync:Pull] Received Authorization header: "${authHeader}"`);
+
         const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
-        if (!token) {
-          yield* Effect.logError("[Sync:Pull] Unauthorized access: Missing authorization token");
+        yield* Effect.logInfo(`[Sync:Pull] Parsed token value: "${token}"`);
+
+        if (!token || token === "null" || token === "undefined" || token.trim() === "") {
+          yield* Effect.logError(`[Sync:Pull] Unauthorized access: Missing, null, or empty authorization token "${token}"`);
           return yield* Effect.fail(new InvalidCredentialsError());
         }
 
@@ -111,10 +115,14 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
       const pushEffect = Effect.gen(function* () {
         yield* Effect.logInfo(`[Sync:Push] Processing transaction. txId=${body.id}, type=${body.type}`);
 
-        const authHeader = headers["authorization"];
+                const authHeader = headers["authorization"];
+        yield* Effect.logInfo(`[Sync:Push] Received Authorization header: "${authHeader}"`);
+
         const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
-        if (!token) {
-          yield* Effect.logError("[Sync:Push] Unauthorized access: Missing authorization token");
+        yield* Effect.logInfo(`[Sync:Push] Parsed token value: "${token}"`);
+
+        if (!token || token === "null" || token === "undefined" || token.trim() === "") {
+          yield* Effect.logError(`[Sync:Push] Unauthorized access: Missing, null, or empty authorization token "${token}"`);
           return yield* Effect.fail(new InvalidCredentialsError());
         }
 
