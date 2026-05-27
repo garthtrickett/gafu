@@ -4,6 +4,7 @@ import { clientLog } from "./clientLog.ts";
 import { LocationService } from "./LocationService.ts";
 import { runClientUnscoped } from "./runtime.ts";
 import { login, signup, logout } from "./stores/authStore.ts";
+import "../../components/StudySession.ts";
 
 const NotFoundView = (): ViewResult => ({
   template: html`
@@ -51,11 +52,14 @@ const homeView = (): ViewResult => {
           <div class="p-6 bg-zinc-950 border border-zinc-800 rounded-lg shadow-sm space-y-4">
             <h2 class="text-lg font-semibold text-zinc-200">Conversational Japanese N5</h2>
             <p class="text-sm text-zinc-400">Essential survival phrases and foundational grammar structures.</p>
-            <div class="flex justify-between items-center text-xs text-zinc-500">
-              <span>Card Count: 1</span>
-              <span class="text-green-500 font-medium">Ready for review</span>
+                        <div class="flex justify-between items-center text-xs text-zinc-500">
+              <span>Active Reviews Ready</span>
+              <span class="text-green-500 font-medium">Review active</span>
             </div>
-            <button class="w-full py-2 bg-zinc-100 hover:bg-white text-zinc-900 font-medium rounded text-sm transition-colors">
+            <button 
+              @click=${() => runClientUnscoped(navigate("/study"))}
+              class="w-full py-2 bg-zinc-100 hover:bg-white text-zinc-900 font-medium rounded text-sm transition-colors"
+            >
               Start Study Session
             </button>
           </div>
@@ -211,10 +215,21 @@ const signupView = (): ViewResult => {
   };
 };
 
+const studyView = (): ViewResult => {
+  return {
+    template: html`<study-session></study-session>`
+  };
+};
+
 const routes: Route[] = [
   {
     pattern: /^\/$/,
     view: homeView,
+    meta: { requiresAuth: true },
+  },
+  {
+    pattern: /^\/study$/,
+    view: studyView,
     meta: { requiresAuth: true },
   },
   {

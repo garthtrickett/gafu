@@ -1,11 +1,16 @@
 import { createLocalStore } from "../storage/LocalStoreFactory";
 
-interface CardMetadata {
+export interface SrsCardClient {
   readonly id: string;
-  readonly audioUrl?: string;
+  readonly front: string;
+  readonly back: string;
+  readonly audioUrl?: string | null;
+  readonly easeFactor: number;
+  readonly repetitions: number;
+  readonly intervalDays: number;
   readonly nextReview: string;
 }
 
-export const srsStore = createLocalStore<CardMetadata>("srs", (a, b) => 
+export const srsStore = createLocalStore<SrsCardClient>("srs", (a, b) => 
   new Date(a.nextReview).getTime() - new Date(b.nextReview).getTime()
 );
