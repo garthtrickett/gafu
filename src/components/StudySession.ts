@@ -110,9 +110,7 @@ export class StudySession extends LitElement {
     return this;
   }
 
-  override connectedCallback() {
-    super.connectedCallback();
-
+    override connectedCallback() {
     const now = Date.now();
     const allCards = srsStore.state.value;
     let dueCards = allCards.filter(c => new Date(c.nextReview).getTime() <= now);
@@ -127,6 +125,8 @@ export class StudySession extends LitElement {
       update,
       (action, model, propose) => this.handleAction(action, model, propose)
     );
+
+    super.connectedCallback();
 
     if (dueCards.length > 0 && dueCards[0]?.audioUrl) {
       this.controller.propose({ type: "PLAY_AUDIO", audioUrl: dueCards[0].audioUrl });
