@@ -38,3 +38,45 @@ export const generateJapaneseSentence = (prompt: string) =>
 
     return result;
   });
+import { Effect, Data } from "effect";
+import { sentenceGeneratorAgent } from "../../lib/server/ai/agents/sentence-generator.agent";
+import { SentenceGenerationSchema, type SentenceGeneration } from "../../lib/server/ai/schema";
+
+export class AiServiceError extends Data.TaggedError("AiServiceError")<{
+  readonly message: string;
+  readonly cause?: unknown;
+}> {}
+
+export const generateJapaneseSentence = (prompt: string) =>
+  Effect.gen(function* () {
+    yield* Effect.logInfo(`[AiService] Initiating structured Japanese sentence generation for prompt: "${prompt}"`);
+
+    if (!prompt || prompt.trim() === "") {
+      yield* Effect.logError("[AiService] Aborting generation: Provided prompt is empty or invalid.");
+      return yield* Effect.fail(new AiServiceError({ message: "Prompt cannot be empty." }));
+    }
+
+    const response = yield* Effect.tryPromise({
+      try: () =>
+        sentenceGeneratorAgent.generate(prompt, {
+          output: SentenceGenerationSchema,
+        }),
+      catch: (error) => {
+        return new AiServiceError({
+          message: "Failed to generate structured conversational Japanese sentence via Mastra AI.",
+          cause: error,
+        });
+      },
+    });
+
+    if (!response.object) {
+      yield* Effect.logError("[AiService] Mastra AI did not return a valid structured object in the response.");
+      return yield* Effect.fail(new AiServiceError({ message: "Mastra AI generated an empty or malformed structured object." }));
+    }
+
+    const result = response.object as SentenceGeneration;
+    yield* Effect.logInfo(`[AiService] Structured output successfully retrieved - Context: "${result.front}", Japanese: "${result.back}"`);
+
+    return result;
+  });
+
