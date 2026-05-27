@@ -68,17 +68,24 @@ export const runPrewarmCycle = () =>
 
     yield* clientLog("info", `[MediaPrewarm] Prefetching ${missingUrls.length} missing audio assets...`);
 
-    yield* Effect.forEach(
+        yield* Effect.forEach(
       missingUrls,
       (url) =>
         Effect.tryPromise({
-          try: () => fetch(url, { mode: "cors", priority: "low" }).then((res) => {
-            if (res.ok) {
-              return cache.put(url, res);
-            }
-          }),
-          catch: () => Promise.resolve(),
-        }),
+          try: () =>
+            fetch(url, { mode: "cors", priority: "low" }).then(async (res) => {
+              if (res.ok) {
+                await cache.put(url, res);
+              } else {
+                throw new Error(`Server returned HTTP status ${res.status}`);
+              }
+            }),
+          catch: (e) => new Error(`Fetch failed for ${url}: ${String(e)}`),
+        }).pipe(
+          Effect.catchAll((err) =>
+            clientLog("warn", `[MediaPrewarm] Failed to prewarm asset: ${url}`, err)
+          )
+        ),
       { concurrency: 3 }
     );
 
