@@ -138,9 +138,9 @@ export class StudySession extends LitElement {
     _model: StudySessionModel,
     _propose: (action: StudySessionAction) => void
   ): Effect.Effect<void, never, BaseClientContext> {
-    // eslint-disable-next-line @typescript-eslint/no-this-alias
+        // eslint-disable-next-line @typescript-eslint/no-this-alias
     const self = this;
-    return Effect.gen(function* () {
+    const program = Effect.gen(function* () {
       yield* clientLog("info", `[StudySession] Action processed: ${action.type}`);
 
       if (action.type === "PLAY_AUDIO") {
@@ -191,12 +191,18 @@ export class StudySession extends LitElement {
           nextReview: metrics.nextReview,
         });
 
-        const nextCard = _model.queue[_model.currentIndex];
+                const nextCard = _model.queue[_model.currentIndex];
         if (nextCard?.audioUrl) {
           _propose({ type: "PLAY_AUDIO", audioUrl: nextCard.audioUrl });
         }
       }
     });
+
+    return program.pipe(
+      Effect.catchAll((err) =>
+        clientLog("error", `[StudySession] Action execution failed for action: ${action.type}`, err)
+      )
+    );
   }
 
   override render() {
