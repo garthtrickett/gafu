@@ -12,10 +12,10 @@ export const generateJapaneseSentence = (prompt: string) =>
   Effect.gen(function* () {
     yield* Effect.logInfo(`[AiService] Requesting structured sentence generation from Mastra for prompt: "${prompt}"`);
 
-    const agent = yield* Effect.sync(() => mastra.getAgentById("sentenceGeneratorAgent"));
+    const agent = yield* Effect.sync(() => mastra.getAgentById("japanese-sentence-generator"));
     if (!agent) {
-      yield* Effect.logError("[AiService] Mastra failed to retrieve 'sentenceGeneratorAgent'. Verify registration in mastra.config.ts.");
-      return yield* Effect.fail(new AiServiceError({ message: "Mastra Agent 'sentenceGeneratorAgent' not registered." }));
+      yield* Effect.logError("[AiService] Mastra failed to retrieve 'japanese-sentence-generator'. Verify registration in mastra.config.ts.");
+      return yield* Effect.fail(new AiServiceError({ message: "Mastra Agent 'japanese-sentence-generator' not registered." }));
     }
 
         const response = yield* Effect.tryPromise({

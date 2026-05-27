@@ -30,7 +30,7 @@ describe("AI Sentence Generation Service", () => {
       ]
     };
 
-    const mockAgent = mastra.getAgentById("sentenceGeneratorAgent");
+    const mockAgent = mastra.getAgentById("japanese-sentence-generator");
     vi.mocked(mockAgent!.generate).mockResolvedValue({
       object: mockOutput,
       text: "",
@@ -51,7 +51,7 @@ describe("AI Sentence Generation Service", () => {
   });
 
   it("should fail with AiServiceError when agent generation fails", async () => {
-    const mockAgent = mastra.getAgentById("sentenceGeneratorAgent");
+    const mockAgent = mastra.getAgentById("japanese-sentence-generator");
     vi.mocked(mockAgent!.generate).mockRejectedValue(new Error("LLM Timeout"));
 
     const program = generateJapaneseSentence("Order water");
@@ -65,7 +65,7 @@ describe("AI Sentence Generation Service", () => {
   });
 
   it("should fail with AiServiceError when the agent is not found", async () => {
-    vi.mocked(mastra.getAgentById).mockReturnValue(undefined);
+    vi.mocked(mastra.getAgentById).mockReturnValue(undefined as any);
 
     const program = generateJapaneseSentence("Order water");
     const result = await Effect.runPromise(Effect.either(program));
@@ -77,76 +77,3 @@ describe("AI Sentence Generation Service", () => {
     }
   });
 });
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { Effect } from "effect";
-import { generateJapaneseSentence, AiServiceError } from "./ai.service";
-import { sentenceGeneratorAgent } from "../../lib/server/ai/agents/sentence-generator.agent";
-
-vi.mock("../../lib/server/ai/agents/sentence-generator.agent", () => {
-  return {
-    sentenceGeneratorAgent: {
-      generate: vi.fn()
-    }
-  };
-});
-
-describe("AI Sentence Generation Service", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
-  it("should generate a structured Japanese sentence successfully", async () => {
-    const mockOutput = {
-      front: "At a restaurant, ordering water.",
-      back: "お水、お願いします。",
-      furigana: [
-        { kanji: "お" },
-        { kanji: "水", kana: "みず" },
-        { kanji: "、お願いします。" }
-      ]
-    };
-
-    vi.mocked(sentenceGeneratorAgent.generate).mockResolvedValue({
-      object: mockOutput,
-      text: "",
-      toolCalls: [],
-      steps: []
-    } as any);
-
-    const program = generateJapaneseSentence("Order water at a restaurant");
-    const result = await Effect.runPromise(program);
-
-    expect(result).toEqual(mockOutput);
-    expect(sentenceGeneratorAgent.generate).toHaveBeenCalledWith(
-      "Order water at a restaurant",
-      expect.objectContaining({
-        output: expect.any(Object)
-      })
-    );
-  });
-
-  it("should fail with AiServiceError when agent generation fails", async () => {
-    vi.mocked(sentenceGeneratorAgent.generate).mockRejectedValue(new Error("LLM Timeout"));
-
-    const program = generateJapaneseSentence("Order water");
-    const result = await Effect.runPromise(Effect.either(program));
-
-    expect(result._tag).toBe("Left");
-    if (result._tag === "Left") {
-      expect(result.left).toBeInstanceOf(AiServiceError);
-      expect(result.left.message).toContain("Failed to generate structured conversational Japanese sentence via Mastra AI");
-    }
-  });
-
-  it("should fail with AiServiceError when the prompt is empty", async () => {
-    const program = generateJapaneseSentence("   ");
-    const result = await Effect.runPromise(Effect.either(program));
-
-    expect(result._tag).toBe("Left");
-    if (result._tag === "Left") {
-      expect(result.left).toBeInstanceOf(AiServiceError);
-      expect(result.left.message).toContain("Prompt cannot be empty.");
-    }
-  });
-});
-
