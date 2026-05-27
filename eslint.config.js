@@ -8,11 +8,12 @@ import globals from "globals";
 export default tseslint.config(
   // 1. Global ignores [cite: 381]
   {
-    ignores: [
+        ignores: [
       ".vite/",
       "node_modules/",
       "coverage/",
       "dist/",
+      "dev-dist/",
       "g.txt",
             "src/types/generated/*",
       "src/lib/client/wasm/*",

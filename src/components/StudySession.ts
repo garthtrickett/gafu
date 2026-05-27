@@ -4,7 +4,7 @@ import { ReactiveSamController } from "../lib/client/reactive-sam-controller";
 import { srsStore, SrsCardClient } from "../lib/client/stores/srsStore";
 import { enqueueTransaction } from "../lib/client/sync/OutboxQueue";
 import { clientLog } from "../lib/client/clientLog";
-import { runClientUnscoped } from "../lib/client/runtime";
+import { runClientUnscoped, type BaseClientContext } from "../lib/client/runtime";
 import { navigate } from "../lib/client/router";
 import { Effect } from "effect";
 
@@ -103,14 +103,14 @@ const update = (model: StudySessionModel, action: StudySessionAction): StudySess
 
 @customElement("study-session")
 export class StudySession extends LitElement {
-  private controller!: ReactiveSamController<this, StudySessionModel, StudySessionAction, any, any>;
+    private controller!: ReactiveSamController<this, StudySessionModel, StudySessionAction, never, BaseClientContext>;
   private audioInstance: HTMLAudioElement | null = null;
 
   protected override createRenderRoot() {
     return this;
   }
 
-    override connectedCallback() {
+  override connectedCallback() {
     const now = Date.now();
     const allCards = srsStore.state.value;
     let dueCards = allCards.filter(c => new Date(c.nextReview).getTime() <= now);
@@ -123,25 +123,33 @@ export class StudySession extends LitElement {
       this,
       { ...initialModel, queue: dueCards, isFinished: dueCards.length === 0 },
       update,
-      (action, model, propose) => this.  private handleAction(\n    action: StudySessionAction,\n    _model: StudySessionModel,\n    _propose: (action: StudySessionAction) => void\n  ): Effect.Effect<void, any, any> {\n    const self = this;\n    return Effect.gen(function* () {\n      yield* clientLog("info", `[StudySession] Action processed: ${action.type}`);\n\n      if (action.type === "PLAY_AUDIO") {\n        yield* Effect.sync(() => {\n          if (self.audioInstance) {\n            self.audioInstance.pause();\n          }\n          self.audioInstance = new Audio(action.audioUrl);\n          self.audioInstance.play().catch((e: unknown) => {\n            console.warn("[StudySession] Failed to play pronunciation audio:", e);\n          });\n        });\n      }\n\n      if (action.type === "SUBMIT_GRADE") {\n        const { cardId, isCorrect } = action;\n        const currentCard = srsStore.state.peek().find(c => c.id === cardId);\n        if (!currentCard) {\n          yield* clientLog("error", `[StudySession] Graded card not found in store: ${cardId}`);\n          return;\n        }\n\n        const metrics = calculateSrsUpdate(\n          {\n            easeFactor: currentCard.easeFactor,\n            repetitions: currentCard.repetitions,\n            intervalDays: currentCard.intervalDays,\n          },\n          isCorrect\n        );\n\n        yield* clientLog("info", "[StudySession] New SM-2 metrics calculated:", metrics);\n\n        const updatedCard: SrsCardClient = {\n          ...currentCard,\n          easeFactor: metrics.easeFactor,\n          repetitions: metrics.repetitions,\n          intervalDays: metrics.intervalDays,\n          nextReview: metrics.nextReview,\n        };\n        yield* srsStore.put(updatedCard);\n\n        yield* enqueueTransaction("record_review", {\n          cardId,\n          easeFactor: metrics.easeFactor,\n          repetitions: metrics.repetitions,\n          intervalDays: metrics.intervalDays,\n          nextReview: metrics.nextReview,\n        });\n\n        const nextCard = _model.queue[_model.currentIndex];\n        if (nextCard?.audioUrl) {\n          _propose({ type: "PLAY_AUDIO", audioUrl: nextCard.audioUrl });\n        }\n      }\n    });\n  });
+      (action, model, propose) => this.handleAction(action, model, propose)
+    );
+
+    super.connectedCallback();
+
+    if (dueCards.length > 0 && dueCards[0]?.audioUrl) {
+      this.controller.propose({ type: "PLAY_AUDIO", audioUrl: dueCards[0].audioUrl });
     }
   }
 
-  private handleAction(
+    private handleAction(
     action: StudySessionAction,
     _model: StudySessionModel,
     _propose: (action: StudySessionAction) => void
-  ): Effect.Effect<void, never, any> {
+  ): Effect.Effect<void, never, BaseClientContext> {
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
+    const self = this;
     return Effect.gen(function* () {
       yield* clientLog("info", `[StudySession] Action processed: ${action.type}`);
 
       if (action.type === "PLAY_AUDIO") {
         yield* Effect.sync(() => {
-          if (this.audioInstance) {
-            this.audioInstance.pause();
+          if (self.audioInstance) {
+            self.audioInstance.pause();
           }
-          this.audioInstance = new Audio(action.audioUrl);
-          this.audioInstance.play().catch(e => {
+          self.audioInstance = new Audio(action.audioUrl);
+          self.audioInstance.play().catch((e: unknown) => {
             console.warn("[StudySession] Failed to play pronunciation audio:", e);
           });
         });

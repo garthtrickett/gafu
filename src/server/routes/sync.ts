@@ -4,7 +4,7 @@ import { effectPlugin } from "../middleware/effect-plugin.ts";
 import { db } from "../../db/client.ts";
 import { validateToken } from "../../lib/server/JwtService.ts";
 import { InvalidCredentialsError, AuthDatabaseError } from "../../features/auth/Errors.ts";
-import type { UserId } from "../../types/index.ts";
+import type { UserId, SrsCardId } from "../../types/index.ts";
 
 interface RecordReviewPayload {
   readonly cardId?: string;
@@ -94,15 +94,17 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
         };
       });
 
-      const result = await runEffect(Effect.either(pullEffect));
+            const result = await runEffect(Effect.either(pullEffect));
       if (result._tag === "Left") {
         const error = result.left;
+        yield* Effect.logError(`[Sync:Pull] Pull request failed`, { error });
         if (error instanceof InvalidCredentialsError) {
           set.status = 401;
           return { error: "Unauthorized" };
         }
         set.status = 500;
-        return { error: "Internal Server Error", message: String(error) };
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        return { error: "Internal Server Error", message: errorMessage };
       }
       return result.right;
     },
@@ -147,7 +149,7 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
 
           yield* Effect.logInfo(`[Sync:Push] Recording review cardId=${cardId}. easeFactor=${easeFactor}, reps=${repetitions}, nextReview=${nextReview}`);
 
-          yield* Effect.tryPromise({
+                    yield* Effect.tryPromise({
             try: () => db.updateTable("srs_card")
               .set({
                 ease_factor: easeFactor,
@@ -156,7 +158,7 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
                 next_review: new Date(nextReview),
                 updated_at: new Date()
               })
-              .where("id", "=", cardId as any)
+              .where("id", "=", cardId as SrsCardId)
               .where("user_id", "=", user.id as UserId)
               .execute(),
             catch: (cause) => new AuthDatabaseError({ cause })
@@ -168,22 +170,24 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
         } else if (body.type === "unlock_deck") {
           yield* Effect.logInfo(`[Sync:Push] Processing deck unlock. payload=${JSON.stringify(body.payload)}`);
           // Deck unlock is stubbed since learning decks are initially unlocked on seeding
-        } else {
-          yield* Effect.logWarning(`[Sync:Push] Unrecognized transaction type: ${body.type}`);
+                } else {
+          yield* Effect.logWarning(`[Sync:Push] Unrecognized transaction type: ${body.type as string}`);
         }
 
         return { success: true };
       });
 
-      const result = await runEffect(Effect.either(pushEffect));
+            const result = await runEffect(Effect.either(pushEffect));
       if (result._tag === "Left") {
         const error = result.left;
+        yield* Effect.logError(`[Sync:Push] Push request failed`, { error });
         if (error instanceof InvalidCredentialsError) {
           set.status = 401;
           return { error: "Unauthorized" };
         }
         set.status = 500;
-        return { error: "Internal Server Error", message: String(error) };
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        return { error: "Internal Server Error", message: errorMessage };
       }
       return result.right;
     },

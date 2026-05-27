@@ -92,9 +92,10 @@ const loginView = (): ViewResult => {
 
     runClientUnscoped(
       login(email, password).pipe(
-        Effect.catchAll((err) =>
-          clientLog("error", `[LoginView] Login operation failed: ${err.message}`)
-        )
+        Effect.catchAll((err: any) => {
+          const msg = err instanceof Error ? err.message : String(err);
+          return clientLog("error", `[LoginView] Login operation failed: ${msg}`);
+        })
       )
     );
   };
@@ -156,11 +157,20 @@ const signupView = (): ViewResult => {
     const email = (form.elements.namedItem("email") as HTMLInputElement).value;
     const password = (form.elements.namedItem("password") as HTMLInputElement).value;
 
-    runClientUnscoped(
+        runClientUnscoped(
       signup(email, password).pipe(
-        Effect.catchAll((err) =>
-          clientLog("error", `[SignupView] Signup operation failed: ${err.message}`)
-        )
+        Effect.catchAll((err: unknown) => {
+          let msg = "Unknown signup error";
+          if (err instanceof Error) {
+            msg = err.message;
+          } else if (err !== null && typeof err === "object" && "error" in err) {
+            const errorObj = err as { error: unknown };
+            msg = String(errorObj.error);
+          } else {
+            msg = String(err);
+          }
+          return clientLog("error", `[SignupView] Signup operation failed: ${msg}`, { email, err });
+        })
       )
     );
   };

@@ -18,13 +18,17 @@ export const app = new Elysia()
   .onRequest(({ request }) => {
     console.info(`📡 [HTTP] ${request.method} ${request.url}`);
   })
-  .post("/api/log", ({ body }) => {
-    const { level, message, data, url } = body as {
+    .post("/api/log", ({ body }) => {
+    const logPayload = body as {
       level: string;
       message: string;
-      data: any;
+      data: Record<string, unknown> | null | undefined;
       url: string;
     };
+    const level = logPayload.level;
+    const message = logPayload.message;
+    const data = logPayload.data;
+    const url = logPayload.url;
     const formattedData = data && Object.keys(data).length ? JSON.stringify(data, null, 2) : "";
     console.info(`📱 [Client ${level.toUpperCase()}] ${message} ${formattedData} (URL: ${url})`);
     return { success: true };
