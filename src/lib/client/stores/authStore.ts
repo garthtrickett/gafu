@@ -33,9 +33,9 @@ export const initAuth = () =>
       return;
     }
 
-    yield* clientLog("info", "[AuthStore] Restoring session from storage...");
+        yield* clientLog("info", "[AuthStore] Restoring session from storage...");
 
-    const response = yield* Effect.tryPromise({
+    const fetchResult = yield* Effect.tryPromise({
       try: () =>
         fetch("/api/auth/me", {
           headers: {
@@ -43,15 +43,30 @@ export const initAuth = () =>
           },
         }),
       catch: (e) => new Error(`Authorization check failed: ${String(e)}`),
-    });
+    }).pipe(Effect.either);
 
-        if (response.ok) {
-      const data = (yield* Effect.tryPromise({
+    if (fetchResult._tag === "Left") {
+      yield* clientLog(
+        "warn",
+        `[AuthStore] Network connection offline or server unreachable. Proceeding in offline mode: ${fetchResult.left.message}`
+      );
+      return;
+    }
+
+    const response = fetchResult.right;
+
+    if (response.ok) {
+      const dataResult = yield* Effect.tryPromise({
         try: () => response.json() as Promise<{ user: UserProfile }>,
-        catch: (e) => e,
-      }));
-      userState.value = data.user;
-      yield* clientLog("info", `[AuthStore] Session recovered successfully: ${data.user.email}`);
+        catch: (e) => new Error(`Failed to parse user profile: ${String(e)}`),
+      }).pipe(Effect.either);
+
+      if (dataResult._tag === "Right") {
+        userState.value = dataResult.right.user;
+        yield* clientLog("info", `[AuthStore] Session recovered successfully: ${dataResult.right.user.email}`);
+      } else {
+        yield* clientLog("error", `[AuthStore] Failed to decode user profile: ${dataResult.left.message}`);
+      }
     } else {
       yield* clientLog("warn", `[AuthStore] Restored token is expired or invalid (HTTP ${response.status}). Purging cache.`);
       logout();
