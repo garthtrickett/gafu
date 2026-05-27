@@ -73,7 +73,7 @@ describe("AI Sentence Generation Service", () => {
     expect(result._tag).toBe("Left");
     if (result._tag === "Left") {
       expect(result.left).toBeInstanceOf(AiServiceError);
-      expect(result.left.message).toContain("Mastra Agent 'sentenceGeneratorAgent' not registered.");
+      expect(result.left.message).toContain("Mastra Agent 'japanese-sentence-generator' not registered.");
     }
   });
 });
