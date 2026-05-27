@@ -65,10 +65,11 @@ export default async function globalSetup() {
       results?.forEach((r) => {
         if (r.status === "Error") console.error(` - ${r.migrationName}: ${r.status}`);
       });
-      if (error instanceof Error) {
+            if (error instanceof Error) {
         throw error;
       }
-      throw new Error(String(error));
+      const errorMsg = typeof error === "string" ? error : JSON.stringify(error);
+      throw new Error(errorMsg);
     }
     console.info("✅ [E2E GlobalSetup] E2E Database Migrated Successfully.");
   } finally {

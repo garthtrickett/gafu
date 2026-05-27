@@ -175,7 +175,7 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
           yield* Effect.logInfo(`[Sync:Push] Processing deck unlock. payload=${JSON.stringify(body.payload)}`);
           // Deck unlock is stubbed since learning decks are initially unlocked on seeding
                 } else {
-          yield* Effect.logWarning(`[Sync:Push] Unrecognized transaction type: ${body.type as string}`);
+          yield* Effect.logWarning(`[Sync:Push] Unrecognized transaction type: ${body.type}`);
         }
 
         return { success: true };
