@@ -3,7 +3,7 @@ import { ROLE_PERMISSIONS } from '../lib/shared/permissions';
 import { Argon2id } from 'oslo/password';
 import { Effect, Cause, Exit, Data } from 'effect';
 import { db, closeDb } from './client';
-import type { PlatformAdminId, UserId, DeckId, SrsCardId } from '../types';
+import type { PlatformAdminId, UserId, DeckId, SrsCardId, GrammarPointId } from '../types';
 
 class SeedingError extends Data.TaggedError("SeedingError")<{
   readonly cause: unknown;
@@ -98,7 +98,54 @@ const seedDb = () =>
       catch: (cause) => new SeedingError({ cause }),
     });
 
-    yield* Effect.logInfo('[Seed] Appending introductory review cards...');
+    yield* Effect.logInfo('[Seed] Writing abstract N5 grammar points...');
+    const grammarPoints = [
+      {
+        id: "e0eebc99-9c0b-4ef8-bb6d-6bb9bd380e55" as GrammarPointId,
+        deck_id: sampleDeckId,
+        formal_name: "だ",
+        base_meaning: "To be, Is",
+        lesson_number: 1,
+        sequence_order: 1,
+        difficulty_level: "N5"
+      },
+      {
+        id: "f0eebc99-9c0b-4ef8-bb6d-6bb9bd380f66" as GrammarPointId,
+        deck_id: sampleDeckId,
+        formal_name: "です",
+        base_meaning: "To be, Is (Polite)",
+        lesson_number: 1,
+        sequence_order: 2,
+        difficulty_level: "N5"
+      },
+      {
+        id: "00eebc99-9c0b-4ef8-bb6d-6bb9bd381a11" as GrammarPointId,
+        deck_id: sampleDeckId,
+        formal_name: "は",
+        base_meaning: "Topic marker",
+        lesson_number: 1,
+        sequence_order: 3,
+        difficulty_level: "N5"
+      }
+    ];
+
+    for (const point of grammarPoints) {
+      yield* Effect.tryPromise({
+        try: () =>
+          db
+            .insertInto('grammar_point')
+            .values({
+              ...point,
+              created_at: new Date(),
+              updated_at: new Date(),
+            })
+            .onConflict((oc) => oc.column('id').doNothing())
+            .execute(),
+        catch: (cause) => new SeedingError({ cause }),
+      });
+    }
+
+    yield* Effect.logInfo('[Seed] Appending introductory review metrics...');
     yield* Effect.tryPromise({
       try: () =>
         db
@@ -106,10 +153,7 @@ const seedDb = () =>
           .values({
             id: "d0eebc99-9c0b-4ef8-bb6d-6bb9bd380d44" as SrsCardId,
             user_id: SAMPLE_LEARNER_ID,
-            deck_id: sampleDeckId,
-                        front: "Excuse me, where is the station?",
-            back: "すみません、駅はどこですか？",
-            audio_url: "https://audio.podigee-cdn.net/1041740-m-0fcf92e897e7cd93200a43cf103a75fb.mp3",
+            grammar_point_id: "e0eebc99-9c0b-4ef8-bb6d-6bb9bd380e55" as GrammarPointId,
             ease_factor: 2.5,
             repetitions: 0,
             interval_days: 0,
