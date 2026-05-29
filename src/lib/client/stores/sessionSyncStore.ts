@@ -1,6 +1,6 @@
 import { Effect } from "effect";
 import { grammarPointStore } from "./grammarPointStore";
-import { activeSessionStore, type SessionCard } from "./activeSessionStore";
+import { activeSessionStore, type SessionCard, type FuriganaSegment } from "./activeSessionStore";
 import { clientLog } from "../clientLog";
 
 export interface ExportedGrammarProgress {
@@ -66,7 +66,7 @@ interface ImportedCard {
   readonly grammar_point_id?: string;
   readonly english_context?: string;
   readonly japanese_sentence?: string;
-  readonly furigana?: readonly unknown[];
+  readonly furigana?: readonly FuriganaSegment[];
   readonly audio_url?: string | null;
 }
 
