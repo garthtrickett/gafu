@@ -75,6 +75,7 @@
         "eslint-plugin-lit": "^2.1.1",
         "eslint-plugin-lit-a11y": "^5.1.0",
         "eslint-plugin-wc": "^3.0.1",
+        "fake-indexeddb": "^6.0.0",
         "jsdom": "^26.1.0",
         "postcss": "^8.5.6",
         "prettier-plugin-tailwindcss": "^0.6.14",
@@ -1453,6 +1454,8 @@
     "extract-pg-schema": ["extract-pg-schema@5.8.1", "", { "dependencies": { "knex": "3.1.0", "knex-pglite": "0.12.1", "pg": "8.17.2", "pg-query-emscripten": "5.1.0", "ramda": "0.31.3" }, "bin": { "extract-pg-schema": "bin/extract-pg-schema" } }, "sha512-rNotRBXxWQnvjcErsX3k9cZwY4KQbVniEp+KAd6RghfDvt29kOtnDdfO7S+Y6b/5tge6caovbJq8s9cgsUtBUA=="],
 
     "extract-zip": ["extract-zip@2.0.1", "", { "dependencies": { "debug": "4.4.3", "get-stream": "5.2.0", "yauzl": "2.10.0" }, "optionalDependencies": { "@types/yauzl": "2.10.3" }, "bin": { "extract-zip": "cli.js" } }, "sha512-GDhU9ntwuKyGXdZBUgTIe+vXnWj0fppUEtMDL0+idd5Sta8TGpHssn/eusA9mrPr9qNDym6SxAYZjNvCn/9RBg=="],
+
+    "fake-indexeddb": ["fake-indexeddb@6.2.5", "", {}, "sha512-CGnyrvbhPlWYMngksqrSSUT1BAVP49dZocrHuK0SvtR0D5TMs5wP0o3j7jexDJW01KSadjBp1M/71o/KR3nD1w=="],
 
     "fast-check": ["fast-check@3.23.2", "", { "dependencies": { "pure-rand": "6.1.0" } }, "sha512-h5+1OzzfCC3Ef7VbtKdcv7zsstUQwUDlYpUTvjeUsJAssPgLn7QzbboPtL5ro04Mq0rPOsMzl7q5hIbRs2wD1A=="],
 
