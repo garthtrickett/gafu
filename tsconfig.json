@@ -20,9 +20,10 @@
       "es2022",
       "DOM"
     ],
-    "types": [
+        "types": [
       "bun-types",
-      "vite/client"
+      "vite/client",
+      "mocha"
     ]
   },
   "include": [
