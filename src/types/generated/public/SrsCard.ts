@@ -14,8 +14,6 @@ export default interface SrsCardTable {
 
   user_id: ColumnType<UserId, UserId, UserId>;
 
-  grammar_point_id: ColumnType<GrammarPointId, GrammarPointId, GrammarPointId>;
-
   ease_factor: ColumnType<number, number | undefined, number>;
 
   repetitions: ColumnType<number, number | undefined, number>;
@@ -27,6 +25,8 @@ export default interface SrsCardTable {
   created_at: ColumnType<Date, Date | string | undefined, Date | string>;
 
   updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
+
+  grammar_point_id: ColumnType<GrammarPointId, GrammarPointId, GrammarPointId>;
 }
 
 export type SrsCard = Selectable<SrsCardTable>;

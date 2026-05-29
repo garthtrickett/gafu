@@ -31,7 +31,7 @@ export async function up(db: Kysely<any>) {
   await db.schema.alterTable("srs_card").dropColumn("audio_url").execute();
   await db.schema.alterTable("srs_card").dropColumn("deck_id").execute();
 
-  // Link srs_card to our newly created grammar_point table
+    // Link srs_card to our newly created grammar_point table
   await db.schema
     .alterTable("srs_card")
     .addColumn("grammar_point_id", "uuid", (c) => c.notNull().references("grammar_point.id").onDelete("cascade"))
@@ -43,10 +43,19 @@ export async function up(db: Kysely<any>) {
     .on("srs_card")
     .column("grammar_point_id")
     .execute();
+
+  // Create unique constraint on user_id and grammar_point_id to support native ON CONFLICT UPSERTS
+  await db.schema
+    .createIndex("srs_card_user_grammar_point_unique_idx")
+    .on("srs_card")
+    .columns(["user_id", "grammar_point_id"])
+    .unique()
+    .execute();
 }
 
 export async function down(db: Kysely<any>) {
   // Revert srs_card structural changes
+  await db.schema.dropIndex("srs_card_user_grammar_point_unique_idx").ifExists().execute();
   await db.schema.alterTable("srs_card").dropColumn("grammar_point_id").execute();
   await db.schema.alterTable("srs_card").addColumn("deck_id", "uuid", (c) => c.references("deck.id").onDelete("cascade")).execute();
   await db.schema.alterTable("srs_card").addColumn("front", "text").execute();

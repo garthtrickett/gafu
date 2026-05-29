@@ -4,11 +4,11 @@ import { effectPlugin } from "../middleware/effect-plugin.ts";
 import { db } from "../../db/client.ts";
 import { validateToken } from "../../lib/server/JwtService.ts";
 import { InvalidCredentialsError, AuthDatabaseError } from "../../features/auth/Errors.ts";
-import type { UserId, SrsCardId } from "../../types/index.ts";
+import type { UserId, SrsCardId, GrammarPointId } from "../../types/index.ts";
 
 interface RecordReviewPayload {
-  readonly cardId?: string;
-  readonly card_id?: string;
+  readonly grammarPointId?: string;
+  readonly grammar_point_id?: string;
   readonly easeFactor?: number;
   readonly ease_factor?: number;
   readonly repetitions: number;
@@ -73,15 +73,13 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
           content: d.content
         }));
 
-                const srsUpdatesResult = srsCards.map(c => ({
+        const srsUpdatesResult = srsCards.map(c => ({
           id: c.id,
-          front: c.front,
-          back: c.back,
+          grammarPointId: c.grammar_point_id,
           easeFactor: c.ease_factor,
           repetitions: c.repetitions,
           intervalDays: c.interval_days,
-          nextReview: c.next_review.toISOString(),
-          audioUrl: c.audio_url
+          nextReview: c.next_review.toISOString()
         }));
 
         const serverTimestamp = Date.now();
@@ -140,34 +138,46 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
 
         if (body.type === "record_review") {
           const payload = body.payload as RecordReviewPayload;
-          const cardId = payload.cardId ?? payload.card_id;
+          const grammarPointId = payload.grammarPointId ?? payload.grammar_point_id;
           const easeFactor = payload.easeFactor ?? payload.ease_factor;
           const repetitions = payload.repetitions;
           const intervalDays = payload.intervalDays ?? payload.interval_days;
           const nextReview = payload.nextReview ?? payload.next_review;
 
-          if (!cardId || !nextReview) {
+          if (!grammarPointId || !nextReview) {
             yield* Effect.logError("[Sync:Push] Bad request: Card review transaction payload is missing parameters");
             return yield* Effect.fail(new Error("Missing parameters in review payload"));
           }
 
-          yield* Effect.logInfo(`[Sync:Push] Recording review cardId=${cardId}. easeFactor=${easeFactor}, reps=${repetitions}, nextReview=${nextReview}`);
+          yield* Effect.logInfo(`[Sync:Push] Recording review grammarPointId=${grammarPointId}. easeFactor=${easeFactor}, reps=${repetitions}, nextReview=${nextReview}`);
 
-                    yield* Effect.tryPromise({
-            try: () => db.updateTable("srs_card")
-              .set({
+          yield* Effect.tryPromise({
+            try: () => db.insertInto("srs_card")
+              .values({
+                id: crypto.randomUUID() as any,
+                user_id: user.id as UserId,
+                grammar_point_id: grammarPointId as GrammarPointId,
                 ease_factor: easeFactor,
                 repetitions: repetitions,
                 interval_days: intervalDays,
                 next_review: new Date(nextReview),
+                created_at: new Date(),
                 updated_at: new Date()
               })
-              .where("id", "=", cardId as SrsCardId)
-              .where("user_id", "=", user.id as UserId)
+              .onConflict((oc) => oc
+                .columns(["user_id", "grammar_point_id"])
+                .doUpdateSet({
+                  ease_factor: easeFactor,
+                  repetitions: repetitions,
+                  interval_days: intervalDays,
+                  next_review: new Date(nextReview),
+                  updated_at: new Date()
+                })
+              )
               .execute(),
             catch: (cause) => new AuthDatabaseError({ cause })
           });
-          yield* Effect.logInfo(`[Sync:Push] Review recorded for cardId=${cardId}`);
+          yield* Effect.logInfo(`[Sync:Push] Review recorded for grammarPointId=${grammarPointId}`);
         } else if (body.type === "toggle_skin") {
           yield* Effect.logInfo(`[Sync:Push] Processing skin toggle. payload=${JSON.stringify(body.payload)}`);
           // Skin toggles do not persist to relational schema; stub logging is processed
