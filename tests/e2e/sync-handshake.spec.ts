@@ -54,8 +54,8 @@ test.describe("Manual Handshake Study Session Loop", () => {
     // Validate card front shows the injected situational context
     await expect(page.locator("p")).toContainText("E2E Testing Context");
 
-        // 6. Grade the card as "Correct"
-    const correctBtn = page.locator("button", { hasText: /^Correct$/ });
+            // 6. Grade the card as "Correct"
+    const correctBtn = page.getByRole("button", { name: "Correct", exact: true });
     await correctBtn.click();
 
     // 7. Confirm completed screen transition
