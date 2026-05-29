@@ -1,12 +1,19 @@
+// File: src/components/StudySession.ts
+// ------------------------------------------------------------------------------
+// Comprehension-First Study Session UI Component
+// ------------------------------------------------------------------------------
 import { LitElement, html } from "lit";
 import { customElement } from "lit/decorators.js";
+import { effect } from "@preact/signals-core";
 import { ReactiveSamController } from "../lib/client/reactive-sam-controller";
-import { srsStore, SrsCardClient } from "../lib/client/stores/srsStore";
+import { activeSessionStore } from "../lib/client/stores/activeSessionStore";
+import { grammarPointStore } from "../lib/client/stores/grammarPointStore";
 import { enqueueTransaction } from "../lib/client/sync/OutboxQueue";
 import { clientLog } from "../lib/client/clientLog";
 import { runClientUnscoped, type BaseClientContext } from "../lib/client/runtime";
 import { navigate } from "../lib/client/router";
 import { Effect } from "effect";
+import "./FuriganaSentence";
 
 export const calculateSrsUpdate = (
   current: { easeFactor: number; repetitions: number; intervalDays: number },
@@ -32,7 +39,7 @@ export const calculateSrsUpdate = (
     easeFactor = Math.max(1.3, easeFactor - 0.2);
   }
 
-    const nextReview = new Date();
+  const nextReview = new Date();
   nextReview.setDate(nextReview.getDate() + intervalDays);
 
   return {
@@ -44,56 +51,27 @@ export const calculateSrsUpdate = (
 };
 
 export interface StudySessionModel {
-  readonly queue: readonly SrsCardClient[];
-  readonly currentIndex: number;
-  readonly showAnswer: boolean;
-  readonly isFinished: boolean;
   readonly audioPlaying: boolean;
 }
 
 export type StudySessionAction =
-  | { type: "INIT_QUEUE"; cards: readonly SrsCardClient[] }
-  | { type: "REVEAL_ANSWER" }
   | { type: "PLAY_AUDIO"; audioUrl: string }
-  | { type: "SUBMIT_GRADE"; cardId: string; isCorrect: boolean };
+  | { type: "SUBMIT_GRADE"; grammarPointId: string; isCorrect: boolean };
 
 const initialModel: StudySessionModel = {
-  queue: [],
-  currentIndex: 0,
-  showAnswer: false,
-  isFinished: false,
   audioPlaying: false,
 };
 
 const update = (model: StudySessionModel, action: StudySessionAction): StudySessionModel => {
   switch (action.type) {
-    case "INIT_QUEUE":
-      return {
-        ...model,
-        queue: action.cards,
-        currentIndex: 0,
-        showAnswer: false,
-        isFinished: action.cards.length === 0,
-        audioPlaying: false,
-      };
-    case "REVEAL_ANSWER":
-      return {
-        ...model,
-        showAnswer: true,
-      };
     case "PLAY_AUDIO":
       return {
         ...model,
         audioPlaying: true,
       };
     case "SUBMIT_GRADE":
-      const nextIndex = model.currentIndex + 1;
-      const isFinished = nextIndex >= model.queue.length;
       return {
         ...model,
-        currentIndex: nextIndex,
-        showAnswer: false,
-        isFinished,
         audioPlaying: false,
       };
     default:
@@ -103,43 +81,49 @@ const update = (model: StudySessionModel, action: StudySessionAction): StudySess
 
 @customElement("study-session")
 export class StudySession extends LitElement {
-    private controller!: ReactiveSamController<this, StudySessionModel, StudySessionAction, never, BaseClientContext>;
+  private controller!: ReactiveSamController<this, StudySessionModel, StudySessionAction, never, BaseClientContext>;
   private audioInstance: HTMLAudioElement | null = null;
+  private _disposeEffect?: () => void;
 
   protected override createRenderRoot() {
     return this;
   }
 
   override connectedCallback() {
-    const now = Date.now();
-    const allCards = srsStore.state.value;
-    let dueCards = allCards.filter(c => new Date(c.nextReview).getTime() <= now);
-
-    if (dueCards.length === 0) {
-      dueCards = allCards;
-    }
+    // Setup automatic reactive updates when the activeSessionStore signals change state
+    this._disposeEffect = effect(() => {
+      void activeSessionStore.state.value;
+      void activeSessionStore.currentIndex.value;
+      this.requestUpdate();
+    });
 
     this.controller = new ReactiveSamController(
       this,
-      { ...initialModel, queue: dueCards, isFinished: dueCards.length === 0 },
+      initialModel,
       update,
       (action, model, propose) => this.handleAction(action, model, propose)
     );
 
     super.connectedCallback();
 
-        const firstCard = dueCards[0];
+    // Play native audio for the first card immediately if present
+    const firstCard = activeSessionStore.currentCard.value;
     if (firstCard && typeof firstCard.audioUrl === "string") {
       this.controller.propose({ type: "PLAY_AUDIO", audioUrl: firstCard.audioUrl });
     }
   }
 
-    private handleAction(
+  override disconnectedCallback() {
+    super.disconnectedCallback();
+    this._disposeEffect?.();
+  }
+
+  private handleAction(
     action: StudySessionAction,
     _model: StudySessionModel,
     _propose: (action: StudySessionAction) => void
   ): Effect.Effect<void, never, BaseClientContext> {
-        // eslint-disable-next-line @typescript-eslint/no-this-alias
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
     const self = this;
     const program = Effect.gen(function* () {
       yield* clientLog("info", `[StudySession] Action processed: ${action.type}`);
@@ -157,45 +141,54 @@ export class StudySession extends LitElement {
       }
 
       if (action.type === "SUBMIT_GRADE") {
-        const { cardId, isCorrect } = action;
-        const currentCard = srsStore.state.peek().find(c => c.id === cardId);
-        if (!currentCard) {
-          yield* clientLog("error", `[StudySession] Graded card not found in store: ${cardId}`);
-          return;
-        }
+        const { grammarPointId, isCorrect } = action;
+        
+        // Retrieve existing progress metadata for this grammar rule from IndexedDB, or fallback to standard N5 defaults
+        const currentProgress = grammarPointStore.state.peek().find(p => p.id === grammarPointId) || {
+          id: grammarPointId,
+          easeFactor: 2.5,
+          repetitions: 0,
+          intervalDays: 0,
+          nextReview: new Date().toISOString()
+        };
 
         const metrics = calculateSrsUpdate(
           {
-            easeFactor: currentCard.easeFactor,
-            repetitions: currentCard.repetitions,
-            intervalDays: currentCard.intervalDays,
+            easeFactor: currentProgress.easeFactor,
+            repetitions: currentProgress.repetitions,
+            intervalDays: currentProgress.intervalDays,
           },
           isCorrect
         );
 
-        yield* clientLog("info", "[StudySession] New SM-2 metrics calculated:", metrics);
+        yield* clientLog("info", `[StudySession] Recalculated SM-2 metrics for grammarPointId=${grammarPointId}:`, metrics);
 
-        const updatedCard: SrsCardClient = {
-          ...currentCard,
-          easeFactor: metrics.easeFactor,
-          repetitions: metrics.repetitions,
-          intervalDays: metrics.intervalDays,
-          nextReview: metrics.nextReview,
-        };
-        yield* srsStore.put(updatedCard);
-
-        yield* enqueueTransaction("record_review", {
-          cardId,
+        // Persist progress to local store
+        yield* grammarPointStore.put({
+          id: grammarPointId,
           easeFactor: metrics.easeFactor,
           repetitions: metrics.repetitions,
           intervalDays: metrics.intervalDays,
           nextReview: metrics.nextReview,
         });
 
-                                const nextCard = _model.queue[_model.currentIndex];
-        if (nextCard && typeof nextCard.audioUrl === "string") {
-          _propose({ type: "PLAY_AUDIO", audioUrl: nextCard.audioUrl });
-        }
+        // Enqueue queue transaction
+        yield* enqueueTransaction("record_review", {
+          grammarPointId,
+          easeFactor: metrics.easeFactor,
+          repetitions: metrics.repetitions,
+          intervalDays: metrics.intervalDays,
+          nextReview: metrics.nextReview,
+        });
+
+        // Advance progress store indicator sequentially
+        yield* Effect.sync(() => {
+          activeSessionStore.next();
+          const nextCard = activeSessionStore.currentCard.value;
+          if (nextCard && typeof nextCard.audioUrl === "string") {
+            _propose({ type: "PLAY_AUDIO", audioUrl: nextCard.audioUrl });
+          }
+        });
       }
     });
 
@@ -207,7 +200,10 @@ export class StudySession extends LitElement {
   }
 
   override render() {
-    const { queue, currentIndex, showAnswer, isFinished } = this.controller.model;
+    const cards = activeSessionStore.state.value;
+    const currentIndex = activeSessionStore.currentIndex.value;
+    const isFinished = activeSessionStore.isFinished.value;
+    const currentCard = activeSessionStore.currentCard.value;
 
     if (isFinished) {
       return html`
@@ -221,7 +217,7 @@ export class StudySession extends LitElement {
           </p>
           <button
             @click=${() => runClientUnscoped(navigate("/"))}
-            class="px-6 py-2 bg-zinc-100 hover:bg-white text-zinc-900 font-medium rounded text-sm transition-colors"
+            class="px-6 py-2 bg-zinc-100 hover:bg-white text-zinc-900 font-medium rounded text-sm transition-colors cursor-pointer"
           >
             Back to Study Desk
           </button>
@@ -229,7 +225,6 @@ export class StudySession extends LitElement {
       `;
     }
 
-    const currentCard = queue[currentIndex];
     if (!currentCard) {
       return html`
         <div class="max-w-xl mx-auto py-12 text-center text-zinc-400">
@@ -241,68 +236,57 @@ export class StudySession extends LitElement {
     return html`
       <div class="max-w-xl mx-auto space-y-6">
         <div class="flex items-center justify-between text-xs text-zinc-500">
-          <span>Card ${currentIndex + 1} of ${queue.length}</span>
-          <span>Progress: ${Math.round((currentIndex / queue.length) * 100)}%</span>
+          <span>Card ${currentIndex + 1} of ${cards.length}</span>
+          <span>Progress: ${Math.round((currentIndex / cards.length) * 100)}%</span>
         </div>
         <div class="w-full bg-zinc-800 h-1.5 rounded-full overflow-hidden">
-          <div class="bg-green-500 h-full transition-all duration-300" style="width: ${(currentIndex / queue.length) * 100}%"></div>
+          <div class="bg-green-500 h-full transition-all duration-300" style="width: ${(currentIndex / cards.length) * 100}%"></div>
         </div>
 
-        <div class="bg-zinc-950 border border-zinc-800 rounded-xl shadow-lg overflow-hidden min-h-[300px] flex flex-col justify-between p-8 space-y-6">
+        <div class="bg-zinc-950 border border-zinc-800 rounded-xl shadow-lg overflow-hidden min-h-[340px] flex flex-col justify-between p-8 space-y-6">
+          <!-- The unified comprehension face of the card (displays context AND raw target immediately on the front) -->
           <div class="flex-1 flex flex-col justify-center items-center text-center space-y-6">
             <div class="space-y-2">
-              <span class="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Prompt / Front</span>
-              <p class="text-2xl font-bold tracking-tight text-white">${currentCard.front}</p>
+              <span class="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Context</span>
+              <p class="text-lg text-zinc-300">${currentCard.englishContext}</p>
+            </div>
+
+            <div class="space-y-3 w-full border-t border-zinc-900/60 pt-6">
+              <span class="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Sentence (Furigana Rendering)</span>
+              <div class="p-4 bg-zinc-900/40 border border-zinc-800/40 rounded-lg flex items-center justify-center">
+                <furigana-sentence .segments=${currentCard.furigana}></furigana-sentence>
+              </div>
             </div>
 
             ${currentCard.audioUrl
               ? html`
                   <button
                     @click=${() => this.controller.propose({ type: "PLAY_AUDIO", audioUrl: currentCard.audioUrl! })}
-                    class="p-3 bg-zinc-900 hover:bg-zinc-850 text-zinc-300 hover:text-white rounded-full transition-colors border border-zinc-800"
+                    class="p-2.5 bg-zinc-900 hover:bg-zinc-850 text-zinc-300 hover:text-white rounded-full transition-colors border border-zinc-800 cursor-pointer flex items-center gap-1.5 text-xs font-medium"
                     title="Play pronunciation audio"
                   >
                     🔊 Listen
                   </button>
                 `
               : ""}
-
-            ${showAnswer
-              ? html`
-                  <div class="w-full border-t border-zinc-800/60 pt-6 space-y-2">
-                    <span class="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Translation / Back</span>
-                    <p class="text-xl font-bold text-green-400">${currentCard.back}</p>
-                  </div>
-                `
-              : ""}
           </div>
 
+          <!-- Single-click verification buttons -->
           <div class="pt-4 border-t border-zinc-900 flex justify-center">
-            ${!showAnswer
-              ? html`
-                  <button
-                    @click=${() => this.controller.propose({ type: "REVEAL_ANSWER" })}
-                    class="w-full py-3 bg-zinc-100 hover:bg-white text-zinc-900 font-bold rounded-lg transition-colors text-sm"
-                  >
-                    Reveal Answer
-                  </button>
-                `
-              : html`
-                  <div class="grid grid-cols-2 gap-4 w-full">
-                    <button
-                      @click=${() => this.controller.propose({ type: "SUBMIT_GRADE", cardId: currentCard.id, isCorrect: false })}
-                      class="py-3 bg-red-650 hover:bg-red-600 text-white font-bold rounded-lg transition-colors text-sm"
-                    >
-                      Incorrect
-                    </button>
-                    <button
-                      @click=${() => this.controller.propose({ type: "SUBMIT_GRADE", cardId: currentCard.id, isCorrect: true })}
-                      class="py-3 bg-green-650 hover:bg-green-600 text-white font-bold rounded-lg transition-colors text-sm"
-                    >
-                      Correct
-                    </button>
-                  </div>
-                `}
+            <div class="grid grid-cols-2 gap-4 w-full">
+              <button
+                @click=${() => this.controller.propose({ type: "SUBMIT_GRADE", grammarPointId: currentCard.grammarPointId, isCorrect: false })}
+                class="py-3 bg-red-650 hover:bg-red-600 text-white font-bold rounded-lg transition-colors text-sm cursor-pointer"
+              >
+                Incorrect
+              </button>
+              <button
+                @click=${() => this.controller.propose({ type: "SUBMIT_GRADE", grammarPointId: currentCard.grammarPointId, isCorrect: true })}
+                class="py-3 bg-green-650 hover:bg-green-600 text-white font-bold rounded-lg transition-colors text-sm cursor-pointer"
+              >
+                Correct
+              </button>
+            </div>
           </div>
         </div>
       </div>

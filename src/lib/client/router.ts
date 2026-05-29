@@ -4,6 +4,8 @@ import { clientLog } from "./clientLog.ts";
 import { LocationService } from "./LocationService.ts";
 import { runClientUnscoped } from "./runtime.ts";
 import { login, signup, logout } from "./stores/authStore.ts";
+import { generateExportPayload, importSessionPayload } from "./stores/sessionSyncStore.ts";
+import { activeSessionStore } from "./stores/activeSessionStore.ts";
 import "../../components/StudySession.ts";
 import "../../components/AiGenerator.ts";
 
@@ -33,6 +35,56 @@ export interface Route {
 type MatchedRoute = Route & { params: string[] };
 
 const homeView = (): ViewResult => {
+  let selectedTheme = "daily";
+  let pasteValue = "";
+  let importError: string | null = null;
+
+  const triggerExport = (e: Event) => {
+    const btn = e.target as HTMLButtonElement;
+    const originalText = btn.textContent || "";
+    btn.textContent = "⏱️ Compiling...";
+    btn.disabled = true;
+
+    runClientUnscoped(
+      generateExportPayload(selectedTheme).pipe(
+        Effect.andThen(() => Effect.sync(() => {
+          btn.textContent = "✅ Copied to Clipboard!";
+          setTimeout(() => {
+            btn.textContent = originalText;
+            btn.disabled = false;
+          }, 2000);
+        })),
+        Effect.catchAll((err) => {
+          btn.textContent = "❌ Failed to Copy";
+          btn.disabled = false;
+          return clientLog("error", "Export failed", err);
+        })
+      )
+    );
+  };
+
+  const handleImport = (e: Event) => {
+    e.preventDefault();
+    importError = null;
+
+    if (!pasteValue.trim()) {
+      importError = "Please paste a valid session JSON payload.";
+      window.dispatchEvent(new CustomEvent("location-changed"));
+      return;
+    }
+
+    runClientUnscoped(
+      importSessionPayload(pasteValue).pipe(
+        Effect.andThen(() => navigate("/study")),
+        Effect.catchAll((err) => {
+          importError = err instanceof Error ? err.message : String(err);
+          window.dispatchEvent(new CustomEvent("location-changed"));
+          return clientLog("error", "Import failed", err);
+        })
+      )
+    );
+  };
+
   return {
     template: html`
       <div class="max-w-4xl mx-auto space-y-6">
@@ -43,47 +95,82 @@ const homeView = (): ViewResult => {
           </div>
           <button 
             @click=${logout}
-            class="px-4 py-2 bg-zinc-850 hover:bg-zinc-800 text-zinc-200 hover:text-white rounded text-sm font-medium border border-zinc-800 transition-colors"
+            class="px-4 py-2 bg-zinc-850 hover:bg-zinc-800 text-zinc-200 hover:text-white rounded text-sm font-medium border border-zinc-800 transition-colors cursor-pointer"
           >
             Logout
           </button>
         </div>
 
         <div class="grid gap-6 md:grid-cols-2">
-                    <div class="p-6 bg-zinc-950 border border-zinc-800 rounded-lg shadow-sm space-y-4">
-            <h2 class="text-lg font-semibold text-zinc-200">Conversational Japanese N5</h2>
-            <p class="text-sm text-zinc-400">Essential survival phrases and foundational grammar structures.</p>
-                        <div class="flex justify-between items-center text-xs text-zinc-500">
-              <span>Active Reviews Ready</span>
-              <span class="text-green-500 font-medium">Review active</span>
+          <!-- Setup Wizard Deck Card (Manual Handshake Compiler) -->
+          <div class="p-6 bg-zinc-950 border border-zinc-800 rounded-lg shadow-sm space-y-5">
+            <div>
+              <h2 class="text-lg font-semibold text-zinc-200">Conversational Japanese N5</h2>
+              <p class="text-sm text-zinc-400 mt-1">Essential survival phrases and foundational grammar.</p>
             </div>
-            <div class="grid grid-cols-2 gap-3">
-              <button 
-                @click=${() => runClientUnscoped(navigate("/study"))}
-                class="py-2 bg-zinc-100 hover:bg-white text-zinc-900 font-medium rounded text-sm transition-colors cursor-pointer"
-              >
-                Study Session
-              </button>
-              <button 
-                @click=${() => runClientUnscoped(navigate("/generate"))}
-                class="py-2 bg-green-650 hover:bg-green-600 text-white font-medium rounded text-sm transition-colors cursor-pointer border border-green-700"
-              >
-                AI Generator
-              </button>
+
+            <div class="space-y-4 pt-2 border-t border-zinc-900">
+              <div class="space-y-1.5">
+                <label class="text-xs font-semibold text-zinc-400 uppercase tracking-wider block">Vocabulary Theme</label>
+                <select 
+                  @change=${(e: Event) => { selectedTheme = (e.target as HTMLSelectElement).value; }}
+                  class="w-full px-3 py-2 bg-zinc-900 border border-zinc-800 rounded text-zinc-300 text-sm focus:outline-none focus:border-zinc-700"
+                >
+                  <option value="daily">Daily Life Theme</option>
+                  <option value="anime">Anime Theme</option>
+                  <option value="business">Business Theme</option>
+                  <option value="travel">Travel Theme</option>
+                </select>
+              </div>
+
+              <div class="space-y-2">
+                <span class="text-xs font-semibold text-zinc-400 uppercase tracking-wider block">1. Export Progress</span>
+                <button 
+                  @click=${triggerExport}
+                  class="w-full py-2.5 bg-zinc-900 hover:bg-zinc-850 text-zinc-100 hover:text-white font-medium rounded text-sm transition-colors cursor-pointer border border-zinc-800 flex items-center justify-center gap-2"
+                >
+                  📋 Copy Progress Payload
+                </button>
+                <p class="text-2xs text-zinc-500">Copies your due N5 progress rules so the AI can compile matching cards.</p>
+              </div>
+
+              <form @submit=${handleImport} class="space-y-2 pt-2 border-t border-zinc-900">
+                <span class="text-xs font-semibold text-zinc-400 uppercase tracking-wider block">2. Import Session</span>
+                <textarea
+                  @input=${(e: Event) => { pasteValue = (e.target as HTMLTextAreaElement).value; }}
+                  placeholder="Paste the compiled JSON session payload here..."
+                  class="w-full h-24 px-3 py-2 bg-zinc-900 border border-zinc-800 rounded text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-zinc-700 text-xs font-mono"
+                ></textarea>
+                
+                ${importError ? html`<p class="text-xs text-red-400 font-medium">${importError}</p>` : ""}
+
+                <button 
+                  type="submit"
+                  class="w-full py-2.5 bg-green-650 hover:bg-green-600 text-white font-bold rounded text-sm transition-colors cursor-pointer"
+                >
+                  🚀 Import & Start Study
+                </button>
+              </form>
             </div>
           </div>
 
-          <div class="p-6 bg-zinc-950 border border-zinc-800 rounded-lg shadow-sm space-y-4">
-            <h2 class="text-lg font-semibold text-zinc-200">Study Progress</h2>
-            <div class="space-y-2 text-sm text-zinc-400">
-              <div class="flex justify-between">
-                <span>Completed Reviews</span>
-                <span class="text-zinc-200">0</span>
+          <!-- Study Progress / Stats Card -->
+          <div class="p-6 bg-zinc-950 border border-zinc-800 rounded-lg shadow-sm space-y-4 flex flex-col justify-between">
+            <div>
+              <h2 class="text-lg font-semibold text-zinc-200">Study Progress</h2>
+              <div class="space-y-3 text-sm text-zinc-400 mt-4">
+                <div class="flex justify-between border-b border-zinc-900 pb-2">
+                  <span>Total Studied Rules</span>
+                  <span class="text-zinc-200 font-semibold">N5 Catalog Active</span>
+                </div>
+                <div class="flex justify-between border-b border-zinc-900 pb-2">
+                  <span>Sync Outbox Queue</span>
+                  <span class="text-zinc-200">Local-first enabled</span>
+                </div>
               </div>
-              <div class="flex justify-between">
-                <span>Learning Interval Accuracy</span>
-                <span class="text-zinc-200">100%</span>
-              </div>
+            </div>
+            <div class="p-4 bg-zinc-900/40 border border-zinc-900 rounded-lg text-xs text-zinc-400 leading-relaxed">
+              💡 <strong>Handshake Flow</strong>: Click "Copy Progress", paste it to your language tutor bot to generate your daily review cards, then paste the returned JSON back here to review with zero latency.
             </div>
           </div>
         </div>
