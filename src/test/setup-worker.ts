@@ -1,3 +1,4 @@
+import "fake-indexeddb/auto";
 import { beforeAll, afterAll } from "vitest";
 import { setupWorkerDb, teardownWorkerDb } from "./worker-db-setup";
 import { closeCentralDb } from "../db/client";
