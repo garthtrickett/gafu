@@ -151,10 +151,10 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
 
           yield* Effect.logInfo(`[Sync:Push] Recording review grammarPointId=${grammarPointId}. easeFactor=${easeFactor}, reps=${repetitions}, nextReview=${nextReview}`);
 
-          yield* Effect.tryPromise({
+                    yield* Effect.tryPromise({
             try: () => db.insertInto("srs_card")
               .values({
-                id: crypto.randomUUID() as any,
+                id: crypto.randomUUID() as SrsCardId,
                 user_id: user.id as UserId,
                 grammar_point_id: grammarPointId as GrammarPointId,
                 ease_factor: easeFactor,

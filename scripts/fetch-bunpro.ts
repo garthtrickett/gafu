@@ -59,20 +59,39 @@ const fetchFromBunpro = <T>(endpointPath: string) =>
 /**
  * Orchestrates fetching multiple endpoints and logging formatted results.
  */
+interface BunproUserEnvelope {
+  readonly user?: {
+    readonly data?: {
+      readonly attributes?: {
+        readonly id?: string | number;
+        readonly username?: string;
+        readonly level?: number;
+        readonly xp?: number;
+        readonly next_level_xp?: number;
+        readonly is_lifetime?: boolean;
+        readonly has_active_subscription?: boolean;
+      };
+    };
+  };
+}
+
+/**
+ * Orchestrates fetching multiple endpoints and logging formatted results.
+ */
 const runQueryPipeline = Effect.gen(function* () {
   yield* Effect.logInfo("[BunproAPI] Initializing Bunpro Frontend API query pipeline...");
 
   // Fetch using the exact paths defined in the OpenAPI spec
-  const userEnvelope = yield* fetchFromBunpro<any>("/user");
+  const userEnvelope = yield* fetchFromBunpro<BunproUserEnvelope>("/user");
   yield* Effect.logInfo("[BunproAPI] User profile envelope retrieved successfully.");
 
-  const queueResult = yield* fetchFromBunpro<any>("/user/queue");
+  const queueResult = yield* fetchFromBunpro<unknown>("/user/queue");
   yield* Effect.logInfo("[BunproAPI] Review queue stats retrieved successfully.");
 
-  const dueResult = yield* fetchFromBunpro<any>("/user/due");
+  const dueResult = yield* fetchFromBunpro<unknown>("/user/due");
   yield* Effect.logInfo("[BunproAPI] Due counts retrieved successfully.");
 
-  const baseStatsResult = yield* fetchFromBunpro<any>("/user_stats/base_stats").pipe(
+  const baseStatsResult = yield* fetchFromBunpro<unknown>("/user_stats/base_stats").pipe(
     Effect.catchAll(() => Effect.succeed(null))
   );
 

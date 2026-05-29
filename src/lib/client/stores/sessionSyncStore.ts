@@ -62,6 +62,18 @@ export const generateExportPayload = (theme = "daily") =>
     return jsonString;
   });
 
+interface ImportedCard {
+  readonly grammar_point_id?: string;
+  readonly english_context?: string;
+  readonly japanese_sentence?: string;
+  readonly furigana?: readonly unknown[];
+  readonly audio_url?: string | null;
+}
+
+interface ImportedPayload {
+  readonly cards?: readonly ImportedCard[];
+}
+
 /**
  * Validates the imported dynamic study payload and hydrates activeSessionStore
  */
@@ -70,7 +82,7 @@ export const importSessionPayload = (jsonString: string) =>
     yield* clientLog("info", "[SessionSync] Parsing imported study session payload...");
     
     const parsed = yield* Effect.tryPromise({
-      try: () => Promise.resolve(JSON.parse(jsonString)),
+      try: () => Promise.resolve(JSON.parse(jsonString) as ImportedPayload),
       catch: (e) => new Error(`Invalid JSON syntax in imported study session. Error: ${String(e)}`),
     });
 
@@ -80,7 +92,7 @@ export const importSessionPayload = (jsonString: string) =>
     }
 
     const sessionCards: SessionCard[] = [];
-    for (const card of cards) {
+    for (const card of cards as readonly ImportedCard[]) {
       if (!card.grammar_point_id || !card.english_context || !card.japanese_sentence) {
         return yield* Effect.fail(new Error("Invalid card schema: each card requires 'grammar_point_id', 'english_context', and 'japanese_sentence'."));
       }

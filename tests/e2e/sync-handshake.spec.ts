@@ -2,7 +2,7 @@ import { test, expect } from "./utils/base-test";
 import { createVerifiedSubscriber } from "./utils/seed";
 
 test.describe("Manual Handshake Study Session Loop", () => {
-  let testUser: any;
+  let testUser: { email: string; password: string; userId: string };
 
   test.beforeAll(async () => {
     testUser = await createVerifiedSubscriber();

@@ -1,10 +1,15 @@
 import { signal, computed } from "@preact/signals-core";
 
+export interface FuriganaSegment {
+  readonly kanji: string;
+  readonly kana?: string;
+}
+
 export interface SessionCard {
   readonly grammarPointId: string;
   readonly englishContext: string;
   readonly japaneseSentence: string;
-  readonly furigana: readonly any[];
+  readonly furigana: readonly FuriganaSegment[];
   readonly audioUrl?: string | null;
 }
 

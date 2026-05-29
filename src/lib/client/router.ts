@@ -5,7 +5,6 @@ import { LocationService } from "./LocationService.ts";
 import { runClientUnscoped } from "./runtime.ts";
 import { login, signup, logout } from "./stores/authStore.ts";
 import { generateExportPayload, importSessionPayload } from "./stores/sessionSyncStore.ts";
-import { activeSessionStore } from "./stores/activeSessionStore.ts";
 import "../../components/StudySession.ts";
 import "../../components/AiGenerator.ts";
 

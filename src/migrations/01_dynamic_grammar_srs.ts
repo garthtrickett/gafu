@@ -1,7 +1,7 @@
 import { Kysely, sql } from "kysely";
 import type { Database } from "../types";
 
-export async function up(db: Kysely<any>) {
+export async function up(db: Kysely<Database>) {
   // 1. Create global grammar_point table representing abstract grammar concepts
   await db.schema
     .createTable("grammar_point")
@@ -53,7 +53,7 @@ export async function up(db: Kysely<any>) {
     .execute();
 }
 
-export async function down(db: Kysely<any>) {
+export async function down(db: Kysely<Database>) {
   // Revert srs_card structural changes
   await db.schema.dropIndex("srs_card_user_grammar_point_unique_idx").ifExists().execute();
   await db.schema.alterTable("srs_card").dropColumn("grammar_point_id").execute();
