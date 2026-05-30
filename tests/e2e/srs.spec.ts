@@ -15,12 +15,11 @@ const db = new Kysely<Database>({
 test.describe("SRS Pacing, Daily Cap, and Mastery Gating E2E Flow", () => {
   let testUser: { email: string; password: string; userId: UserId } | undefined;
 
-  test.beforeAll(async () => {
-    const connStr = process.env.DATABASE_URL_TEST || process.env.DATABASE_URL_LOCAL || process.env.DATABASE_URL;
+    test.beforeAll(async () => {
+    const connStr = process.env.DATABASE_URL_TEST || process.env.DATABASE_URL;
     console.warn(`[E2E srs.spec.ts] E2E Resolved Database Connection String: ${connStr ? connStr.replace(/:([^@]+)@/, ":****@") : "undefined"}`);
     if (connStr) {
       process.env.DATABASE_URL = connStr;
-      process.env.USE_LOCAL_NEON_PROXY = "false";
     }
 
     const { seedDb } = await import("../../src/db/seed");

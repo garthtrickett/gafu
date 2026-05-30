@@ -9,7 +9,7 @@ config({ path: ".env" });
 export const TEMPLATE_DB_NAME = "bedrock_lang_test_template";
 
 function getConnectionString(dbName: string) {
-  const base = process.env.DATABASE_URL_TEST || process.env.DATABASE_URL_LOCAL || process.env.DATABASE_URL;
+  const base = process.env.DATABASE_URL_TEST || process.env.DATABASE_URL;
   if (!base) {
     throw new Error("DATABASE_URL_TEST (or LOCAL/default) must be set in .env to run tests.");
   }

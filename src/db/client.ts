@@ -8,14 +8,11 @@ let _pool: Pool | undefined;
 let _db: Kysely<Database> | undefined;
 
 const getConnectionString = (): string => {
-  const useLocalProxy = process.env.USE_LOCAL_NEON_PROXY === "true";
-  const connectionString = useLocalProxy
-    ? process.env.DATABASE_URL_LOCAL
-    : process.env.DATABASE_URL;
+  const connectionString = process.env.DATABASE_URL;
 
   if (!connectionString) {
     throw new Error(
-      "FATAL: DATABASE_URL or DATABASE_URL_LOCAL must be set in environment variables."
+      "FATAL: DATABASE_URL must be set in environment variables."
     );
   }
   return connectionString;

@@ -13,8 +13,6 @@ const getEnvOptional = (key: string): string | undefined => {
 export const config = {
   db: {
     url: getEnv("DATABASE_URL"),
-    localUrl: getEnvOptional("DATABASE_URL_LOCAL"),
-    useLocalProxy: process.env.USE_LOCAL_NEON_PROXY === "true",
   },
   s3: {
     bucketName: getEnv("BUCKET_NAME"),

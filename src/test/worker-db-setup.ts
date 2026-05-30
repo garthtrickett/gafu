@@ -2,7 +2,7 @@ import { Pool } from "pg";
 import { TEMPLATE_DB_NAME } from "./global-setup";
 
 function getConnectionString(dbName: string = "postgres") {
-  const base = process.env.DATABASE_URL_TEST || process.env.DATABASE_URL_LOCAL || process.env.DATABASE_URL;
+  const base = process.env.DATABASE_URL_TEST || process.env.DATABASE_URL;
   if (!base) {
     throw new Error("DATABASE_URL_TEST (or LOCAL/default) must be set in .env to run tests.");
   }

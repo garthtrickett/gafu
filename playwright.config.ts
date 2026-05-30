@@ -8,9 +8,7 @@ const __dirname = path.dirname(__filename);
 
 dotenv.config({ path: path.resolve(__dirname, ".env") });
 
-const TEST_DB_URL = process.env.DATABASE_URL_TEST || 
-                    process.env.DATABASE_URL_LOCAL || 
-                    process.env.DATABASE_URL;
+const TEST_DB_URL = process.env.DATABASE_URL_TEST || process.env.DATABASE_URL;
 
 if (!TEST_DB_URL) {
   throw new Error("No database URL found for testing.");
@@ -55,9 +53,8 @@ export default defineConfig({
     stderr: "pipe",
     timeout: 120 * 1000,
     ignoreHTTPSErrors: true,
-    env: {
+        env: {
       DATABASE_URL: TEST_DB_URL,
-      USE_LOCAL_NEON_PROXY: "false", 
       PORT: "3001",
       BACKEND_PORT: "42070"
     }
