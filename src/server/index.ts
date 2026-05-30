@@ -11,6 +11,10 @@ import { effectPlugin } from "./middleware/effect-plugin";
 import { authRoutes } from "./routes/auth";
 import { syncRoutes } from "./routes/sync.ts";
 import { aiRoutes } from "./routes/ai";
+import { db } from "../db/client";
+import { seedDb } from "../db/seed";
+import { serverRuntime } from "../lib/server/server-runtime";
+import { Effect } from "effect";
 
 export const app = new Elysia()
   .onError(({ code, error, request }) => {
@@ -75,8 +79,26 @@ export const app = new Elysia()
 
 if (process.env.NODE_ENV !== "test") {
   const port = process.env.BACKEND_PORT ? parseInt(process.env.BACKEND_PORT) : 42069;
-  app.listen(port);
-  console.info(`🦊 Elysia is running at ${app.server?.hostname}:${app.server?.port}`);
+
+  const startupEffect = Effect.gen(function* () {
+    const gpCountResult = yield* Effect.tryPromise({
+      try: () => db.selectFrom("grammar_point").select(db.fn.count("id").as("count")).executeTakeFirst(),
+      catch: () => ({ count: "0" })
+    });
+    const count = parseInt(String(gpCountResult?.count || "0"), 10);
+    if (count === 0) {
+      yield* Effect.logWarning("⚠️ [Self-Healing] No grammar points detected. Seeding database...");
+      yield* seedDb();
+      yield* Effect.logInfo("✅ [Self-Healing] Database seeded successfully.");
+    }
+  }).pipe(
+    Effect.catchAll((err) => Effect.logError("Failed to run self-healing seeder", err))
+  );
+
+  void serverRuntime.runPromise(startupEffect).then(() => {
+    app.listen(port);
+    console.info(`🦊 Elysia is running at ${app.server?.hostname}:${app.server?.port}`);
+  });
 }
 
 export type App = typeof app;
