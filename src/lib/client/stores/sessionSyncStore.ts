@@ -126,11 +126,15 @@ CRITICAL CONSTRAINTS:
 
     const jsonString = JSON.stringify(payload, null, 2);
     
-    // Write the compiled payload string directly to the user's system clipboard
-    yield* Effect.tryPromise({
-      try: () => navigator.clipboard.writeText(jsonString),
-      catch: (e) => new Error(`Failed to write text to system clipboard: ${String(e)}`),
-    });
+        // Write the compiled payload string directly to the user's system clipboard if API is available
+    if (typeof navigator !== "undefined" && navigator.clipboard) {
+      yield* Effect.tryPromise({
+        try: () => navigator.clipboard.writeText(jsonString),
+        catch: (e) => new Error(`Failed to write text to system clipboard: ${String(e)}`),
+      });
+    } else {
+      yield* clientLog("warn", "[SessionSync] Clipboard API not available in this environment.");
+    }
 
     yield* clientLog("info", "[SessionSync] Study progress successfully copied to clipboard.", { wordPoolSize: kaishiPool.length, queueSize: queueLength });
     return jsonString;

@@ -2823,19 +2823,21 @@ export const seedDb = () =>
     yield* Effect.logInfo('[Seed] All seeding tasks finished.');
   });
 
-const seedProgram = Effect.gen(function* () {
-  yield* seedDb();
-});
-
-void Effect.runPromiseExit(seedProgram).then((exit) => {
-  void closeDb().then(() => {
-    if (Exit.isSuccess(exit)) {
-      console.info("🌱 Database initialized with default records.");
-      process.exit(0);
-    } else {
-      console.error('\n❌ Seeding script failed:\n');
-      console.error(Cause.pretty(exit.cause));
-      process.exit(1);
-    }
+if (import.meta.main) {
+  const seedProgram = Effect.gen(function* () {
+    yield* seedDb();
   });
-});
+
+  void Effect.runPromiseExit(seedProgram).then((exit) => {
+    void closeDb().then(() => {
+      if (Exit.isSuccess(exit)) {
+        console.info("🌱 Database initialized with default records.");
+        process.exit(0);
+      } else {
+        console.error('\n❌ Seeding script failed:\n');
+        console.error(Cause.pretty(exit.cause));
+        process.exit(1);
+      }
+    });
+  });
+}

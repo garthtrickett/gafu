@@ -1,5 +1,6 @@
-import { describe, it, expect } from "vitest";
-import { calculateSrsUpdate } from "./StudySession";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import "./StudySession";
+import { StudySession, calculateSrsUpdate } from "./StudySession";
 
 describe("StudySession SRS calculations", () => {
   it("should calculate correct updates on correct reviews", () => {
@@ -22,9 +23,6 @@ describe("StudySession SRS calculations", () => {
     expect(result.easeFactor).toBe(2.6); 
   });
 });
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import "./StudySession";
-import { StudySession } from "./StudySession";
 
 describe("StudySession Component State Logic", () => {
   let element: StudySession;
