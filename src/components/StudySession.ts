@@ -206,7 +206,36 @@ export class StudySession extends LitElement {
     const isFinished = activeSessionStore.isFinished.value;
     const currentCard = activeSessionStore.currentCard.value;
 
-    if (isFinished) {
+        if (isFinished) {
+      const hasMore = activeSessionStore.hasMoreBatches.value;
+      if (hasMore) {
+        return html`
+          <div class="max-w-xl mx-auto py-12 px-6 bg-zinc-950 border border-zinc-800 rounded-lg text-center space-y-6 animate-fade-in">
+            <div class="inline-flex p-4 bg-green-500/10 text-green-500 rounded-full">
+              <span class="text-3xl">💪</span>
+            </div>
+            <h2 class="text-2xl font-bold">Batch Cleared!</h2>
+            <p class="text-zinc-400 text-sm">
+              Excellent work! You cleared this chunk of 15 reviews. Take a quick break, or continue studying the remaining cards.
+            </p>
+            <div class="flex items-center justify-center gap-4">
+              <button
+                @click=${() => runClientUnscoped(navigate("/"))}
+                class="px-6 py-2 bg-zinc-850 hover:bg-zinc-800 text-zinc-300 border border-zinc-800 font-medium rounded text-sm transition-colors cursor-pointer"
+              >
+                Take a Break
+              </button>
+              <button
+                @click=${() => { activeSessionStore.startNextBatch(); }}
+                class="px-6 py-2 bg-zinc-100 hover:bg-white text-zinc-900 font-bold rounded text-sm transition-colors cursor-pointer"
+              >
+                Study Next Chunk
+              </button>
+            </div>
+          </div>
+        `;
+      }
+
       return html`
         <div class="max-w-xl mx-auto py-12 px-6 bg-zinc-950 border border-zinc-800 rounded-lg text-center space-y-6">
           <div class="inline-flex p-4 bg-green-500/10 text-green-500 rounded-full">
