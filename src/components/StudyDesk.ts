@@ -222,8 +222,8 @@ export class StudyDesk extends LitElement {
 
               ${this.showQueue ? html`
                 <div class="mt-4 p-3 bg-zinc-900/60 border border-zinc-900 rounded-lg space-y-4 animate-fade-in">
-                  <div class="space-y-2">
-                    <span class="text-xs font-bold text-green-400 uppercase tracking-wider block">Due Today - Daily Target (${finalDailyTarget.length} rules)</span>
+                                    <div class="space-y-2">
+                    <span class="text-xs font-bold text-green-400 uppercase tracking-wider block">${`Due Today - Daily Target (${finalDailyTarget.length} rules)`}</span>
                     <div class="divide-y divide-zinc-900/80 max-h-32 overflow-y-auto pr-1">
                       ${finalDailyTarget.map(item => html`
                         <div class="py-2 flex items-center justify-between text-xs">
@@ -238,8 +238,8 @@ export class StudyDesk extends LitElement {
                   </div>
 
                   ${finalBacklog.length > 0 ? html`
-                    <div class="space-y-2 border-t border-zinc-900/60 pt-2">
-                      <span class="text-xs font-semibold text-zinc-500 uppercase tracking-wider block">Snoozed Backlog (${finalBacklog.length} rules)</span>
+                                        <div class="space-y-2 border-t border-zinc-900/60 pt-2">
+                      <span class="text-xs font-semibold text-zinc-500 uppercase tracking-wider block">${`Snoozed Backlog (${finalBacklog.length} rules)`}</span>
                       <div class="divide-y divide-zinc-900/80 max-h-24 overflow-y-auto pr-1 opacity-60">
                         ${finalBacklog.map(item => html`
                           <div class="py-2 flex items-center justify-between text-xs">
