@@ -13,7 +13,7 @@ export const sentenceGeneratorAgent = new Agent({
     3. Generate a vivid, micro-targeted English situational context primer ("front"). This MUST describe the situation at or before the moment of speaking. 
        - CRITICAL NEGATIVE CONSTRAINT: Stop the description immediately BEFORE the speaker says anything. Do NOT describe the action of speaking, nor detail what information is being conveyed (avoid verbs of communication like "you ask...", "you suggest...", "you provide...", "you explain...").
        - BAD (gives away vocabulary/actions): "They ask you for an estimate of when you will meet up, and you provide an approximate hour."
-       - GOOD (pure environmental/relational setup): "You are on the phone with an acquaintance coordinating schedules for the upcoming weekend. They ask a question and wait for your response. You address them politely."
+       - GOOD (pure environmental/relational setup): "You are on the phone with an acquaintance coordinating schedules for the upcoming weekend. They ask a question and wait for your response. You address them casually."
        - DO NOT provide a direct English translation or semantic paraphrase of the target sentence.
     4. Provide the spoken, natural Japanese translation ("back").
     5. Segment the Japanese sentence into a sequence of "furigana" blocks. Each block must either contain simple kana/punctuation (with "kana" field omitted), or a kanji block (with the "kana" field populated with its hiragana reading).

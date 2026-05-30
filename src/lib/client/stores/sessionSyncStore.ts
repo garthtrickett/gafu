@@ -140,7 +140,7 @@ CRITICAL CONSTRAINTS:
    - The social relationship and politeness level.
    CRITICAL NEGATIVE CONSTRAINT: Stop the description immediately BEFORE the speaker says anything. Do NOT describe the action of speaking, nor detail what information is being conveyed (avoid verbs of communication like "you ask...", "you suggest...", "you provide...", "you explain...").
    - BAD (gives away vocabulary/actions): "They ask you for an estimate of when you will meet up, and you provide an approximate hour."
-   - GOOD (pure environmental/relational setup): "You are on the phone with an acquaintance coordinating schedules for the upcoming weekend. They ask a question and wait for your response. You address them politely."
+   - GOOD (pure environmental/relational setup): "You are on the phone with an acquaintance coordinating schedules for the upcoming weekend. They ask a question and wait for your response. You address them casually"
 4. Completely omit formal pronouns like '私は' (watashi wa) or 'あなたは' (anata wa) unless they are absolutely essential to avoid ambiguity.
 5. Output the result in a clean, valid JSON format matching the schema:
 {
