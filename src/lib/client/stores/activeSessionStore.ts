@@ -40,29 +40,62 @@ export const weaveSessionCards = (cards: readonly SessionCard[]): readonly Sessi
     bins[card.grammarPointId]!.push(card);
   }
 
-  const keys = Object.keys(bins);
-  runClientUnscoped(clientLog("info", `[activeSessionStore] Grouped cards into ${keys.length} unique grammar bins.`));
+  runClientUnscoped(clientLog("info", `[activeSessionStore] Grouped cards into ${Object.keys(bins).length} unique grammar bins.`));
 
-  // Randomize initial bin order and shuffle cards inside each bin
-  const shuffledKeys = [...keys].sort(() => Math.random() - 0.5);
-  const shuffledBins = shuffledKeys.map((key) => {
-    const binCards = [...bins[key]!].sort(() => Math.random() - 0.5);
-    return binCards;
+  // Shuffle cards within each bin initially
+  for (const gpId of Object.keys(bins)) {
+    bins[gpId] = bins[gpId]!.sort(() => Math.random() - 0.5);
+  }
+
+  interface Bin {
+    gpId: string;
+    cards: SessionCard[];
+  }
+
+  const activeBins: Bin[] = Object.entries(bins).map(([gpId, binCards]) => ({
+    gpId,
+    cards: binCards,
+  }));
+
+  activeBins.forEach(b => {
+    runClientUnscoped(clientLog("info", `[activeSessionStore] Bin gpId=${b.gpId} has ${b.cards.length} cards.`));
   });
 
   const result: SessionCard[] = [];
-  let hasMore = true;
+  let lastGpId: string | null = null;
+  let step = 1;
 
-  while (hasMore) {
-    hasMore = false;
-    for (const bin of shuffledBins) {
-      if (bin.length > 0) {
-        result.push(bin.shift()!);
-        if (bin.length > 0) {
-          hasMore = true;
-        }
-      }
-    } 
+  while (true) {
+    const binsWithCards = activeBins.filter(b => b.cards.length > 0);
+    if (binsWithCards.length === 0) {
+      runClientUnscoped(clientLog("info", `[activeSessionStore] Step ${step}: No more cards left in any bins. Ending weave loop.`));
+      break;
+    }
+
+    const allowedBins = binsWithCards.filter(b => b.gpId !== lastGpId);
+    runClientUnscoped(clientLog("info", `[activeSessionStore] Step ${step}: lastGpId=${lastGpId}. Bins with cards: ${binsWithCards.map(b => `${b.gpId}(${b.cards.length})`).join(", ")}`));
+
+    let chosenBin: Bin | undefined;
+
+    if (allowedBins.length > 0) {
+      const maxCount = Math.max(...allowedBins.map(b => b.cards.length));
+      const candidates = allowedBins.filter(b => b.cards.length === maxCount);
+      chosenBin = candidates[Math.floor(Math.random() * candidates.length)]!;
+      runClientUnscoped(clientLog("info", `[activeSessionStore] Step ${step}: Selected ${chosenBin.gpId} from allowed candidates: ${candidates.map(b => b.gpId).join(", ")}`));
+    } else {
+      chosenBin = binsWithCards[0]!;
+      runClientUnscoped(clientLog("warn", `[activeSessionStore] Step ${step}: Forced to select adjacent duplicate of lastGpId=${lastGpId} from bin ${chosenBin.gpId}`));
+    }
+
+    if (chosenBin && chosenBin.cards.length > 0) {
+      const card = chosenBin.cards.shift()!;
+      result.push(card);
+      lastGpId = chosenBin.gpId;
+    } else {
+      runClientUnscoped(clientLog("error", `[activeSessionStore] Step ${step}: chosenBin is invalid or has no cards. Breaking.`));
+      break;
+    }
+    step++;
   }
 
   runClientUnscoped(clientLog("info", `[activeSessionStore] Weave shuffle completed. Final sequence of ${result.length} cards generated.`));
