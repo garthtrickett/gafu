@@ -181,21 +181,59 @@ export const importSessionPayload = (jsonString: string) =>
       return yield* Effect.fail(new Error("Invalid session payload: 'cards' array is missing or empty."));
     }
 
-    const sessionCards: SessionCard[] = [];
-    for (const card of cards as readonly ImportedCard[]) {
-      if (!card.grammar_point_id || !card.english_context || !card.japanese_sentence) {
-        yield* clientLog("error", "[SessionSync] Skipping malformed card:", card);
-        return yield* Effect.fail(new Error("Invalid card schema: each card requires 'grammar_point_id', 'english_context', and 'japanese_sentence'."));
-      }
-      
-      sessionCards.push({
-        grammarPointId: card.grammar_point_id,
-        englishContext: card.english_context,
-        japaneseSentence: card.japanese_sentence,
-        furigana: card.furigana || [],
-        audioUrl: card.audio_url || null,
-      });
-    }
+            // Load the local progress store state to identify unrecognized incoming grammar points
+        yield* grammarPointStore.load();
+        const localProgress = grammarPointStore.state.peek();
+        const activeIds = new Set(localProgress.map((p) => p.id));
+        const now = new Date();
+
+        const sessionCards: SessionCard[] = [];
+        for (const card of cards as readonly ImportedCard[]) {
+          if (!card.grammar_point_id || !card.english_context || !card.japanese_sentence) {
+            yield* clientLog("error", "[SessionSync] Skipping malformed card:", card);
+            return yield* Effect.fail(new Error("Invalid card schema: each card requires 'grammar_point_id', 'english_context', and 'japanese_sentence'."));
+          }
+          
+          const gpId = card.grammar_point_id;
+
+          // GATING & ACTIVATION: If an imported card belongs to a previously locked grammar point,
+          // initialize its local progress and notify the sync system of activation.
+          if (!activeIds.has(gpId)) {
+            yield* clientLog("info", `[SessionSync] Activating newly introduced grammar point ID: ${gpId}`);
+            
+            const initialProgress = {
+              id: gpId,
+              easeFactor: 2.5,
+              repetitions: 0,
+              intervalDays: 0,
+              nextReview: now.toISOString(),
+            };
+            
+            // Persist locally
+            yield* grammarPointStore.put(initialProgress);
+
+            // Notify backend through outbox sync transaction
+            const { enqueueTransaction } = yield* Effect.promise(() => import("../sync/OutboxQueue"));
+            yield* enqueueTransaction("record_review", {
+              grammarPointId: gpId,
+              easeFactor: 2.5,
+              repetitions: 0,
+              intervalDays: 0,
+              nextReview: initialProgress.nextReview,
+            });
+
+            // Prevent multiple initializations if multiple cards reference the same ID in this payload
+            activeIds.add(gpId);
+          }
+
+          sessionCards.push({
+            grammarPointId: gpId,
+            englishContext: card.english_context,
+            japaneseSentence: card.japanese_sentence,
+            furigana: card.furigana || [],
+            audioUrl: card.audio_url || null,
+          });
+        }
 
     activeSessionStore.loadSession(sessionCards);
     yield* clientLog("info", `[SessionSync] Successfully imported ${sessionCards.length} dynamic cards into active session.`);
