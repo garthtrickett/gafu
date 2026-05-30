@@ -46,6 +46,8 @@ describe("activeSessionStore Capping & Batching", () => {
 });
 import { describe, it, expect, beforeEach } from "vitest";
 import { activeSessionStore, weaveSessionCards, type SessionCard } from "./activeSessionStore.ts";
+import { importSessionPayload } from "./sessionSyncStore.ts";
+import { runClientPromise } from "../runtime.ts";
 
 const createMockCard = (grammarPointId: string, index: number): SessionCard => ({
   grammarPointId,
@@ -151,8 +153,47 @@ describe("activeSessionStore & weaveSessionCards unit tests", () => {
     expect(activeSessionStore.state.value).toHaveLength(5);
     expect(activeSessionStore.currentIndex.value).toBe(0);
 
-    activeSessionStore.clear();
+        activeSessionStore.clear();
     expect(activeSessionStore.masterList.value).toEqual([]);
     expect(activeSessionStore.state.value).toEqual([]);
+  });
+
+  it("should successfully integrate with importSessionPayload to parse, activate, and weave cards", async () => {
+    // Mock JSON session payload with duplicate cards
+    const mockPayload = {
+      cards: [
+        {
+          grammar_point_id: "GP-1",
+          english_context: "Some context 1",
+          japanese_sentence: "Sentence 1",
+          explanation: "Explanation 1"
+        },
+        {
+          grammar_point_id: "GP-1",
+          english_context: "Some context 2",
+          japanese_sentence: "Sentence 2",
+          explanation: "Explanation 2"
+        },
+        {
+          grammar_point_id: "GP-2",
+          english_context: "Some context 3",
+          japanese_sentence: "Sentence 3",
+          explanation: "Explanation 3"
+        }
+      ]
+    };
+
+    const jsonString = JSON.stringify(mockPayload);
+
+    // Run importSessionPayload through the client effect runtime
+    await runClientPromise(importSessionPayload(jsonString));
+
+    // After import, the masterList should have the cards weaved
+    const masterList = activeSessionStore.masterList.value;
+    expect(masterList).toHaveLength(3);
+
+    // Verify GP-1 cards are not consecutive since GP-2 is interleaved between them
+    expect(masterList[0]?.grammarPointId).not.toBe(masterList[1]?.grammarPointId);
+    expect(masterList[1]?.grammarPointId).not.toBe(masterList[2]?.grammarPointId);
   });
 });
