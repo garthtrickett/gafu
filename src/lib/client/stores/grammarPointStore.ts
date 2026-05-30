@@ -26,7 +26,43 @@ const baseGrammarPointStore = createLocalStore<GrammarPointProgress>(
   (a, b) => new Date(a.nextReview).getTime() - new Date(b.nextReview).getTime()
 );
 
-export const grammarPointStore = {
+/**
+ * Determines whether the user has achieved enough mastery over active learning rules
+ * to qualify for unlocking more rules. Requires >= 80% of active rules to meet the mastery thresholds.
+ */
+export const canUnlockMoreRules = (progressList: GrammarPointProgress[]): boolean => {
+  const learningRules = progressList.filter(p => p.intervalDays < 21);
+  if (learningRules.length === 0) {
+    return true;
+  }
+
+  const masteredCount = learningRules.filter(
+    p => p.repetitions >= 3 || p.intervalDays >= 7
+  ).length;
+
+  return (masteredCount / learningRules.length) >= 0.8;
+};
+
+/**
+ * Calculates how many slots are remaining today (rolling 24h window) for introducing new rules.
+ */
+export const getDailyUnlockAllowance = (
+  progressList: GrammarPointProgress[],
+  dailyCap: number = 3
+): number => {
+  const now = Date.now();
+  const limit = now - 24 * 60 * 60 * 1000;
+
+  const unlockedCount = progressList.filter(p => {
+    if (!p.unlockedAt) return false;
+    const time = new Date(p.unlockedAt).getTime();
+    return time >= limit && time <= now;
+  }).length;
+
+  return Math.max(0, dailyCap - unlockedCount);
+};
+
+export const grammarPointStore = { 
   ...baseGrammarPointStore,
 
   /**
@@ -60,12 +96,6 @@ export const grammarPointStore = {
    */
   readonly unlockedLast24HoursCount: computed(() => {
     const progress = baseGrammarPointStore.state.value;
-    const now = Date.now();
-    const limit = now - 24 * 60 * 60 * 1000;
-    return progress.filter(p => {
-      if (!p.unlockedAt) return false;
-      const time = new Date(p.unlockedAt).getTime();
-      return time >= limit && time <= now;
-    }).length;
+    return getDailyUnlockAllowance(progress, 3);
   }),
 };

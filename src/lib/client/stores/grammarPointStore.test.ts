@@ -67,7 +67,13 @@ describe("ActiveSessionStore - Signals & State", () => {
 });
 import { describe, it, expect, beforeEach } from "vitest";
 import { runClientPromise } from "../runtime.ts";
-import { grammarPointStore, grammarPointCatalogStore } from "./grammarPointStore.ts";
+import {
+  grammarPointStore,
+  grammarPointCatalogStore,
+  canUnlockMoreRules,
+  getDailyUnlockAllowance,
+  GrammarPointProgress
+} from "./grammarPointStore.ts";
 
 describe("grammarPointStore state management and pacing helpers", () => {
   beforeEach(async () => {
@@ -170,7 +176,84 @@ describe("grammarPointStore state management and pacing helpers", () => {
       ])
     );
 
-    // Verify 24-hour rate limit check
-    expect(grammarPointStore.unlockedLast24HoursCount.value).toBe(2);
+    // Verify 24-hour rate limit check (it returns 3 - count, so since 2 are unlocked, remaining is 1)
+    expect(grammarPointStore.unlockedLast24HoursCount.value).toBe(1);
+  });
+
+  describe("canUnlockMoreRules gating logic", () => {
+    it("should return true for empty active learning queues to allow initial seeding", () => {
+      const emptyProgress: GrammarPointProgress[] = [];
+      expect(canUnlockMoreRules(emptyProgress)).toBe(true);
+    });
+
+    it("should return true if exactly 80% of active learning rules are mastered", () => {
+      const progress: GrammarPointProgress[] = [
+        { id: "1", easeFactor: 2.5, repetitions: 3, intervalDays: 1, nextReview: "" }, // mastered (reps >= 3)
+        { id: "2", easeFactor: 2.5, repetitions: 0, intervalDays: 8, nextReview: "" }, // mastered (intervalDays >= 7)
+        { id: "3", easeFactor: 2.5, repetitions: 3, intervalDays: 7, nextReview: "" }, // mastered (both)
+        { id: "4", easeFactor: 2.5, repetitions: 4, intervalDays: 12, nextReview: "" }, // mastered
+        { id: "5", easeFactor: 2.5, repetitions: 1, intervalDays: 2, nextReview: "" }, // NOT mastered
+      ];
+
+      // 4/5 = 80%
+      expect(canUnlockMoreRules(progress)).toBe(true);
+    });
+
+    it("should return false if less than 80% of active learning rules are mastered", () => {
+      const progress: GrammarPointProgress[] = [
+        { id: "1", easeFactor: 2.5, repetitions: 3, intervalDays: 1, nextReview: "" }, // mastered
+        { id: "2", easeFactor: 2.5, repetitions: 0, intervalDays: 8, nextReview: "" }, // mastered
+        { id: "3", easeFactor: 2.5, repetitions: 1, intervalDays: 2, nextReview: "" }, // NOT mastered
+        { id: "4", easeFactor: 2.5, repetitions: 0, intervalDays: 0, nextReview: "" }, // NOT mastered
+        { id: "5", easeFactor: 2.5, repetitions: 2, intervalDays: 3, nextReview: "" }, // NOT mastered
+      ];
+
+      // 2/5 = 40% < 80%
+      expect(canUnlockMoreRules(progress)).toBe(false);
+    });
+
+    it("should ignore graduated rules when evaluating mastery of active learning rules", () => {
+      const progress: GrammarPointProgress[] = [
+        { id: "1", easeFactor: 2.5, repetitions: 3, intervalDays: 1, nextReview: "" }, // mastered active
+        { id: "2", easeFactor: 2.5, repetitions: 0, intervalDays: 8, nextReview: "" }, // mastered active
+        { id: "3", easeFactor: 2.5, repetitions: 3, intervalDays: 7, nextReview: "" }, // mastered active
+        { id: "4", easeFactor: 2.5, repetitions: 4, intervalDays: 12, nextReview: "" }, // mastered active
+        { id: "5", easeFactor: 2.5, repetitions: 1, intervalDays: 2, nextReview: "" }, // NOT mastered active
+        { id: "6", easeFactor: 2.5, repetitions: 0, intervalDays: 30, nextReview: "" }, // Graduated rule (interval >= 21) - should be ignored
+      ];
+
+      // Out of 5 active learning rules, 4 are mastered = 80%. Should return true.
+      expect(canUnlockMoreRules(progress)).toBe(true);
+    });
+  });
+
+  describe("getDailyUnlockAllowance calculations", () => {
+    it("should return the maximum allowance when no rules have been unlocked today", () => {
+      const progress: GrammarPointProgress[] = [
+        { id: "1", easeFactor: 2.5, repetitions: 1, intervalDays: 1, nextReview: "" },
+      ];
+      expect(getDailyUnlockAllowance(progress, 3)).toBe(3);
+    });
+
+    it("should discount slots for rules unlocked within the rolling 24 hour window", () => {
+      const now = Date.now();
+      const progress: GrammarPointProgress[] = [
+        { id: "1", easeFactor: 2.5, repetitions: 1, intervalDays: 1, nextReview: "", unlockedAt: new Date(now - 1 * 60 * 60 * 1000).toISOString() }, // 1h ago
+        { id: "2", easeFactor: 2.5, repetitions: 1, intervalDays: 1, nextReview: "", unlockedAt: new Date(now - 23 * 60 * 60 * 1000).toISOString() }, // 23h ago
+        { id: "3", easeFactor: 2.5, repetitions: 1, intervalDays: 1, nextReview: "", unlockedAt: new Date(now - 25 * 60 * 60 * 1000).toISOString() }, // 25h ago (ignored)
+      ];
+      expect(getDailyUnlockAllowance(progress, 3)).toBe(1);
+    });
+
+    it("should return 0 and never drop below 0 if more rules than the cap have been unlocked today", () => {
+      const now = Date.now();
+      const progress: GrammarPointProgress[] = [
+        { id: "1", easeFactor: 2.5, repetitions: 1, intervalDays: 1, nextReview: "", unlockedAt: new Date(now - 1 * 60 * 60 * 1000).toISOString() },
+        { id: "2", easeFactor: 2.5, repetitions: 1, intervalDays: 1, nextReview: "", unlockedAt: new Date(now - 2 * 60 * 60 * 1000).toISOString() },
+        { id: "3", easeFactor: 2.5, repetitions: 1, intervalDays: 1, nextReview: "", unlockedAt: new Date(now - 3 * 60 * 60 * 1000).toISOString() },
+        { id: "4", easeFactor: 2.5, repetitions: 1, intervalDays: 1, nextReview: "", unlockedAt: new Date(now - 4 * 60 * 60 * 1000).toISOString() },
+      ];
+      expect(getDailyUnlockAllowance(progress, 3)).toBe(0);
+    });
   });
 });
