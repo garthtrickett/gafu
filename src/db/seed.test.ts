@@ -11,13 +11,13 @@ describe("Database Seeder", () => {
     // Verify the total seeded grammar points
     const gpCountResult = await db
       .selectFrom("grammar_point")
-      .select(db.fn.countAll().as("count"))
+      .select(({ fn }) => fn.countAll().as("count"))
       .executeTakeFirstOrThrow();
 
     // Verify the total seeded active reviews
     const srsCountResult = await db
       .selectFrom("srs_card")
-      .select(db.fn.countAll().as("count"))
+      .select(({ fn }) => fn.countAll().as("count"))
       .executeTakeFirstOrThrow();
 
     // All 250+ grammar points should exist in the catalog
