@@ -43,9 +43,10 @@ export const activeSessionStore = {
   }),
   
       loadSession: (cards: readonly SessionCard[]) => {
-    masterList.value = cards;
+        const cappedCards = cards.slice(0, 20);
+    masterList.value = cappedCards;
     batchIndex.value = 0;
-    state.value = cards.slice(0, BATCH_SIZE);
+    state.value = cappedCards.slice(0, BATCH_SIZE);
     currentIndex.value = 0;
   },
   
