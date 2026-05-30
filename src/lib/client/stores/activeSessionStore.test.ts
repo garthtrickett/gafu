@@ -44,3 +44,115 @@ describe("activeSessionStore Capping & Batching", () => {
     expect(activeSessionStore.hasMoreBatches.value).toBe(false);
   });
 });
+import { describe, it, expect, beforeEach } from "vitest";
+import { activeSessionStore, weaveSessionCards, type SessionCard } from "./activeSessionStore.ts";
+
+const createMockCard = (grammarPointId: string, index: number): SessionCard => ({
+  grammarPointId,
+  englishContext: `Context for ${grammarPointId} #${index}`,
+  japaneseSentence: `Sentence for ${grammarPointId} #${index}`,
+  furigana: [{ kanji: `Kanji ${grammarPointId}` }],
+  audioUrl: null,
+  explanation: "Explanation",
+});
+
+describe("activeSessionStore & weaveSessionCards unit tests", () => {
+  beforeEach(() => {
+    activeSessionStore.clear();
+  });
+
+  it("should handle empty inputs gracefully by resetting state", () => {
+    activeSessionStore.loadSession([]);
+    expect(activeSessionStore.masterList.value).toEqual([]);
+    expect(activeSessionStore.state.value).toEqual([]);
+    expect(activeSessionStore.currentIndex.value).toBe(0);
+  });
+
+  it("should preserve all cards and handle unique IDs without duplicates", () => {
+    const cards = [
+      createMockCard("A", 1),
+      createMockCard("B", 1),
+      createMockCard("C", 1),
+      createMockCard("D", 1),
+    ];
+    const weaved = weaveSessionCards(cards);
+    expect(weaved).toHaveLength(4);
+
+    const originalIds = cards.map((c) => c.grammarPointId).sort();
+    const weavedIds = weaved.map((c) => c.grammarPointId).sort();
+    expect(weavedIds).toEqual(originalIds);
+  });
+
+  it("should prevent adjacent identical grammar points when duplicate counts are balanced", () => {
+    const cards = [
+      createMockCard("A", 1),
+      createMockCard("A", 2),
+      createMockCard("B", 1),
+      createMockCard("B", 2),
+      createMockCard("C", 1),
+      createMockCard("C", 2),
+    ];
+    const weaved = weaveSessionCards(cards);
+    expect(weaved).toHaveLength(6);
+
+    for (let i = 0; i < weaved.length - 1; i++) {
+      const current = weaved[i]?.grammarPointId;
+      const next = weaved[i + 1]?.grammarPointId;
+      expect(current).not.toBe(next);
+    }
+  });
+
+  it("should prevent adjacent duplicates even in unbalanced scenarios where one ID is dominant", () => {
+    const cards = [
+      createMockCard("A", 1),
+      createMockCard("A", 2),
+      createMockCard("A", 3),
+      createMockCard("B", 1),
+      createMockCard("C", 1),
+    ];
+    const weaved = weaveSessionCards(cards);
+    expect(weaved).toHaveLength(5);
+
+    for (let i = 0; i < weaved.length - 1; i++) {
+      const current = weaved[i]?.grammarPointId;
+      const next = weaved[i + 1]?.grammarPointId;
+      expect(current).not.toBe(next);
+    }
+  });
+
+  it("should enforce the daily limit of 20 cards and populate state with BATCH_SIZE of 15", () => {
+    const cards: SessionCard[] = [];
+    for (let i = 0; i < 5; i++) {
+      for (let j = 0; j < 5; j++) {
+        cards.push(createMockCard(`GP-${i}`, j));
+      }
+    }
+    expect(cards).toHaveLength(25);
+
+    activeSessionStore.loadSession(cards);
+
+    expect(activeSessionStore.masterList.value).toHaveLength(20);
+    expect(activeSessionStore.state.value).toHaveLength(15);
+    expect(activeSessionStore.currentIndex.value).toBe(0);
+    expect(activeSessionStore.batchIndex.value).toBe(0);
+    expect(activeSessionStore.hasMoreBatches.value).toBe(true);
+  });
+
+  it("should advance to next batch and clear state correctly", () => {
+    const cards: SessionCard[] = [];
+    for (let i = 0; i < 20; i++) {
+      cards.push(createMockCard(`GP-${i % 5}`, i));
+    }
+    activeSessionStore.loadSession(cards);
+    expect(activeSessionStore.state.value).toHaveLength(15);
+
+    activeSessionStore.startNextBatch();
+    expect(activeSessionStore.batchIndex.value).toBe(1);
+    expect(activeSessionStore.state.value).toHaveLength(5);
+    expect(activeSessionStore.currentIndex.value).toBe(0);
+
+    activeSessionStore.clear();
+    expect(activeSessionStore.masterList.value).toEqual([]);
+    expect(activeSessionStore.state.value).toEqual([]);
+  });
+});
