@@ -18,7 +18,7 @@ const SUPER_ADMIN_ID = "99999999-9999-9999-9999-999999999999" as PlatformAdminId
 const SAMPLE_LEARNER_ID = "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11" as UserId;
 const SAMPLE_CURATOR_ID = "b0eebc99-9c0b-4ef8-bb6d-6bb9bd380b22" as UserId;
 
-const seedDb = () =>
+export const seedDb = () =>
   Effect.gen(function* () {
     yield* Effect.logInfo('[Seed] Commencing global database seeding...');
 

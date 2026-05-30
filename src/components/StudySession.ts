@@ -89,11 +89,12 @@ export class StudySession extends LitElement {
     return this;
   }
 
-  override connectedCallback() {
+    override connectedCallback() {
     // Setup automatic reactive updates when the activeSessionStore signals change state
     this._disposeEffect = effect(() => {
       void activeSessionStore.state.value;
       void activeSessionStore.currentIndex.value;
+      void activeSessionStore.batchIndex.value;
       this.requestUpdate();
     });
 
