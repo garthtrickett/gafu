@@ -179,7 +179,7 @@ export class StudyDesk extends LitElement {
               <div class="space-y-3 text-sm text-zinc-400 mt-4">
                 <div class="flex justify-between border-b border-zinc-900 pb-2">
                   <span>Total Studied Rules</span>
-                  <span class="text-zinc-200 font-semibold">N5 Catalog Active</span>
+                  <span class="text-zinc-200 font-semibold">Conversational Catalogue</span>
                 </div>
                 <div class="flex justify-between border-b border-zinc-900 pb-2">
                   <span>Sync Outbox Queue</span>

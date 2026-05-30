@@ -1,4 +1,5 @@
-import { createLocalStore } from "../storage/LocalStoreFactory";
+import { createLocalStore } from "../storage/LocalStoreFactory.ts";
+import { computed } from "@preact/signals-core";
 
 export interface GrammarPointProgress {
   readonly id: string; // Represents grammar_point_id
@@ -6,12 +7,8 @@ export interface GrammarPointProgress {
   readonly repetitions: number;
   readonly intervalDays: number;
   readonly nextReview: string;
+  readonly unlockedAt?: string; // ISO string representing when the rule was unlocked
 }
-
-export const grammarPointStore = createLocalStore<GrammarPointProgress>(
-  "grammar_points",
-  (a, b) => new Date(a.nextReview).getTime() - new Date(b.nextReview).getTime()
-);
 
 export interface GrammarPointCatalogItem {
   readonly id: string;
@@ -23,3 +20,52 @@ export interface GrammarPointCatalogItem {
 export const grammarPointCatalogStore = createLocalStore<GrammarPointCatalogItem>(
   "grammar_point_catalog"
 );
+
+const baseGrammarPointStore = createLocalStore<GrammarPointProgress>(
+  "grammar_points",
+  (a, b) => new Date(a.nextReview).getTime() - new Date(b.nextReview).getTime()
+);
+
+export const grammarPointStore = {
+  ...baseGrammarPointStore,
+
+  /**
+   * Computed list of active learning progress items (not yet graduated)
+   */
+  readonly activeLearningRules: computed(() => {
+    const progress = baseGrammarPointStore.state.value;
+    return progress.filter(p => p.intervalDays < 21);
+  }),
+
+  /**
+   * Computed list of graduated progress items (intervalDays >= 21)
+   */
+  readonly graduatedRules: computed(() => {
+    const progress = baseGrammarPointStore.state.value;
+    return progress.filter(p => p.intervalDays >= 21);
+  }),
+
+  /**
+   * Computed list of locked catalog items (not yet in progress)
+   */
+  readonly lockedCatalogItems: computed(() => {
+    const catalog = grammarPointCatalogStore.state.value;
+    const progress = baseGrammarPointStore.state.value;
+    const progressIds = new Set(progress.map(p => p.id));
+    return catalog.filter(c => !progressIds.has(c.id));
+  }),
+
+  /**
+   * Computed count of rules unlocked within the last 24 hours
+   */
+  readonly unlockedLast24HoursCount: computed(() => {
+    const progress = baseGrammarPointStore.state.value;
+    const now = Date.now();
+    const limit = now - 24 * 60 * 60 * 1000;
+    return progress.filter(p => {
+      if (!p.unlockedAt) return false;
+      const time = new Date(p.unlockedAt).getTime();
+      return time >= limit && time <= now;
+    }).length;
+  }),
+};
