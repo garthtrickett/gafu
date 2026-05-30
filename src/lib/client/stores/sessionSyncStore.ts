@@ -2,6 +2,7 @@ import { Effect } from "effect";
 import { grammarPointStore } from "./grammarPointStore";
 import { activeSessionStore, type SessionCard, type FuriganaSegment } from "./activeSessionStore";
 import { clientLog } from "../clientLog";
+import kaishiPool from "./kaishiPool.json";
 
 export interface ExportedGrammarProgress {
   readonly grammar_point_id: string;
@@ -11,8 +12,10 @@ export interface ExportedGrammarProgress {
 }
 
 export interface ExportPayload {
+  readonly instructions: string;
   readonly theme_preference: string;
   readonly queue: readonly ExportedGrammarProgress[];
+  readonly vocabulary_pool: readonly string[];
 }
 
 /**
@@ -45,16 +48,41 @@ export const generateExportPayload = (theme = "daily") =>
       );
     }
 
+    const promptInstructions = `You are an expert native Japanese language tutor and structural linguist. Your task is to act as a Sentence Generator.
+Use the N5 grammar queue and the 'vocabulary_pool' below to generate exactly 1 unique review card for each grammar point in the queue.
+
+CRITICAL CONSTRAINTS:
+1. You must ONLY use Japanese nouns, verbs, adjectives, and adverbs listed in the 'vocabulary_pool'. Do NOT use any outside vocabulary under any circumstances.
+2. You can use standard grammatical particles (は, が, を, に, へ, で, と, も, etc.), conjugations, and copula (だ/です/だった/でした) freely as required by the grammar rules.
+3. Completely omit formal pronouns like '私は' (watashi wa) or 'あなたは' (anata wa) unless they are absolutely essential to avoid ambiguity.
+4. Output the result in a clean, valid JSON format matching the schema:
+{
+  "cards": [
+    {
+      "grammar_point_id": "...",
+      "english_context": "A micro-targeted, clear English situational context primer to prepare the learner's brain. (e.g., 'At a bar, casually asking the bartender for another beer.')",
+      "japanese_sentence": "The natural, conversational, colloquial Japanese translation of the context.",
+      "furigana": [
+        { "kanji": "私", "kana": "わたし" },
+        { "kanji": "の" },
+        { "kanji": "本", "kana": "ほん" }
+      ],
+      "audio_url": null
+    }
+  ]
+}`;
+
     const payload: ExportPayload = {
+      instructions: promptInstructions,
       theme_preference: theme,
       queue,
+      vocabulary_pool: kaishiPool,
     };
 
     const jsonString = JSON.stringify(payload, null, 2);
     
     // Write the compiled payload string directly to the user's system clipboard
-    yield* Effect.tryPromise({
-      try: () => navigator.clipboard.writeText(jsonString),
+    yield* Effect.tryPromise({      try: () => navigator.clipboard.writeText(jsonString),
       catch: (e) => new Error(`Failed to write text to system clipboard: ${String(e)}`),
     });
 
