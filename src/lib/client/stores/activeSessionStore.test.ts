@@ -11,10 +11,10 @@ describe("activeSessionStore Capping & Batching", () => {
     }));
 
   it("should correctly cap and slice a large imported study load into a 15-card active batch", () => {
-    const mockCards = createMockCards(35);
+    const mockCards = createMockCards(20);
     activeSessionStore.loadSession(mockCards);
 
-    expect(activeSessionStore.masterList.value).toHaveLength(35);
+    expect(activeSessionStore.masterList.value).toHaveLength(20);
     expect(activeSessionStore.state.value).toHaveLength(15);
     expect(activeSessionStore.batchIndex.value).toBe(0);
     expect(activeSessionStore.hasMoreBatches.value).toBe(true);

@@ -15,6 +15,21 @@ const db = new Kysely<Database>({
 test.describe("SRS Pacing, Daily Cap, and Mastery Gating E2E Flow", () => {
   let testUser: { email: string; password: string; userId: UserId } | undefined;
 
+  test.beforeAll(async () => {
+    const connStr = process.env.DATABASE_URL_TEST || process.env.DATABASE_URL_LOCAL || process.env.DATABASE_URL;
+    console.log(`[E2E srs.spec.ts] E2E Resolved Database Connection String: ${connStr ? connStr.replace(/:([^@]+)@/, ":****@") : "undefined"}`);
+    if (connStr) {
+      process.env.DATABASE_URL = connStr;
+    }
+
+    const { seedDb } = await import("../../src/db/seed");
+    const { serverRuntime } = await import("../../src/lib/server/server-runtime");
+
+    console.log("[E2E srs.spec.ts] Seeding test database with baseline catalog/metrics...");
+    await serverRuntime.runPromise(seedDb());
+    console.log("[E2E srs.spec.ts] Test database seeding complete.");
+  });
+
   test.beforeEach(async () => {
     testUser = await createVerifiedSubscriber();
   });
@@ -27,7 +42,11 @@ test.describe("SRS Pacing, Daily Cap, and Mastery Gating E2E Flow", () => {
     }
   });
 
-  test.afterAll(async () => {
+    test.afterAll(async () => {
+    const { closeDb } = await import("../../src/db/client");
+    console.log("[E2E srs.spec.ts] Closing server database client connection pool...");
+    await closeDb();
+    console.log("[E2E srs.spec.ts] Closing spec-file database client connection pool...");
     await pool.end();
   });
 
