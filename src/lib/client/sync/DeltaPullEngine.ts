@@ -68,11 +68,12 @@ export const executeDeltaPull = () =>
     const { srsStore } = yield* Effect.promise(() => import("../stores/srsStore"));
     const { grammarPointStore, grammarPointCatalogStore } = yield* Effect.promise(() => import("../stores/grammarPointStore"));
 
-    // Self-healing: If our local stores are completely empty but we have a non-zero lastPull timestamp,
+        // Self-healing: If our local stores are completely empty but we have a non-zero lastPull timestamp,
     // it's highly likely the server database was wiped/reset. Let's force a full sync (since=0).
-    const deckCount = deckStore.state.peek().length;
-    const gpCount = grammarPointStore.state.peek().length;
-    const catalogCount = grammarPointCatalogStore.state.peek().length;
+    const deckCount = deckStore?.state?.peek()?.length ?? 0;
+    const gpCount = grammarPointStore?.state?.peek()?.length ?? 0;
+    const catalogCount = grammarPointCatalogStore?.state?.peek()?.length ?? 0;
+    
     yield* clientLog("info", `[DeltaPull] Local state inspection - deckCount: ${deckCount}, gpCount: ${gpCount}, catalogCount: ${catalogCount}, lastPull: ${lastPull}`);
     
     if (lastPull > 0 && deckCount === 0 && gpCount === 0 && catalogCount === 0) {
@@ -108,15 +109,19 @@ export const executeDeltaPull = () =>
 
     yield* clientLog("info", `[DeltaPull] Received pull payload - Decks: ${delta.decks.length}, SRS updates: ${delta.srsUpdates.length}, Grammar Points: ${delta.grammarPoints?.length || 0}, serverTimestamp: ${delta.serverTimestamp}`);
 
+        const decksLen = delta?.decks?.length ?? 0;
+    const srsUpdatesLen = delta?.srsUpdates?.length ?? 0;
+    const gpLen = delta?.grammarPoints?.length ?? 0;
+
     // Process and dispatch updates to local stores if payload contains updates
-    if (delta.decks.length > 0 || delta.srsUpdates.length > 0 || (delta.grammarPoints && delta.grammarPoints.length > 0)) {
-      yield* clientLog("info", `[DeltaPull] Applying updates: ${delta.decks.length} decks, ${delta.srsUpdates.length} SRS metrics, ${delta.grammarPoints?.length || 0} catalog items.`);
+    if (decksLen > 0 || srsUpdatesLen > 0 || gpLen > 0) {
+      yield* clientLog("info", `[DeltaPull] Applying updates: ${decksLen} decks, ${srsUpdatesLen} SRS metrics, ${gpLen} catalog items.`);
       
-      if (delta.decks.length > 0) {
+      if (decksLen > 0 && deckStore) {
         yield* deckStore.putAll(delta.decks);
       }
       
-      if (delta.grammarPoints && delta.grammarPoints.length > 0) {
+      if (gpLen > 0 && grammarPointCatalogStore && delta.grammarPoints) {
         yield* grammarPointCatalogStore.putAll(delta.grammarPoints.map(gp => ({
           id: gp.id,
           formal_name: gp.formal_name,
@@ -125,7 +130,7 @@ export const executeDeltaPull = () =>
         })));
       }
 
-      if (delta.srsUpdates.length > 0) {
+      if (srsUpdatesLen > 0 && srsStore && grammarPointStore) {
         // Hydrate srsStore
         yield* srsStore.putAll(delta.srsUpdates.map(u => ({
           id: u.id,
