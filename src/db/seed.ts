@@ -2792,8 +2792,8 @@ const seedDb = () =>
       });
     }
 
-        yield* Effect.logInfo('[Seed] Appending introductory review metrics...');
-    const srsCardsToSeed = grammarPoints.map((gp, index) => {
+            yield* Effect.logInfo('[Seed] Appending introductory review metrics...');
+    const srsCardsToSeed = grammarPoints.slice(0, 10).map((gp, index) => {
       const hexIndex = index.toString(16).padStart(4, '0');
       return {
         id: `d0eebc99-9c0b-4ef8-bb6d-6bb9bd38${hexIndex}` as SrsCardId,
