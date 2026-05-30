@@ -1,9 +1,9 @@
 import { LitElement, html } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import { effect } from "@preact/signals-core";
-import { grammarPointStore } from "../lib/client/stores/grammarPointStore";
+import { grammarPointStore, grammarPointCatalogStore } from "../lib/client/stores/grammarPointStore";
 import { logout } from "../lib/client/stores/authStore";
-import { generateExportPayload, importSessionPayload, GRAMMAR_POINT_NAMES } from "../lib/client/stores/sessionSyncStore";
+import { generateExportPayload, importSessionPayload } from "../lib/client/stores/sessionSyncStore";
 import { clientLog } from "../lib/client/clientLog";
 import { runClientUnscoped } from "../lib/client/runtime";
 import { navigate } from "../lib/client/router";
@@ -26,13 +26,15 @@ export class StudyDesk extends LitElement {
     return this;
   }
 
-    override connectedCallback() {
+  override connectedCallback() {
     super.connectedCallback();
     runClientUnscoped(grammarPointStore.load());
+    runClientUnscoped(grammarPointCatalogStore.load());
     
     this._disposeEffect = effect(() => {
       const count = grammarPointStore.state.value.length;
-      runClientUnscoped(clientLog("info", `[StudyDesk] grammarPointStore state updated, count: ${count}`));
+      const catalogCount = grammarPointCatalogStore.state.value.length;
+      runClientUnscoped(clientLog("info", `[StudyDesk] Store updated - progress count: ${count}, catalog count: ${catalogCount}`));
       this.requestUpdate();
     });
   }
@@ -91,12 +93,16 @@ export class StudyDesk extends LitElement {
   }
 
   override render() {
+    const catalog = grammarPointCatalogStore.state.value;
     const displayQueue = grammarPointStore.state.value.length > 0
-      ? grammarPointStore.state.value.map(p => ({
-          name: GRAMMAR_POINT_NAMES[p.id] || "は",
-          repetitions: p.repetitions,
-          nextReview: p.nextReview
-        }))
+      ? grammarPointStore.state.value.map(p => {
+          const catalogItem = catalog.find(c => c.id === p.id);
+          return {
+            name: catalogItem ? catalogItem.formal_name : "は",
+            repetitions: p.repetitions,
+            nextReview: p.nextReview
+          };
+        })
       : [
           { name: "だ", repetitions: 0, nextReview: new Date().toISOString() },
           { name: "です", repetitions: 0, nextReview: new Date().toISOString() },

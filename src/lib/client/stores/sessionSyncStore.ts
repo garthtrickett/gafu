@@ -1,33 +1,8 @@
 import { Effect } from "effect";
-import { grammarPointStore } from "./grammarPointStore";
+import { grammarPointStore, grammarPointCatalogStore } from "./grammarPointStore";
 import { activeSessionStore, type SessionCard, type FuriganaSegment } from "./activeSessionStore";
 import { clientLog } from "../clientLog";
 import kaishiPool from "./kaishiPool.json";
-
-export const GRAMMAR_POINT_NAMES: Record<string, string> = {
-  "e0eebc99-9c0b-4ef8-bb6d-6bb9bd380e55": "だ",
-  "f0eebc99-9c0b-4ef8-bb6d-6bb9bd380f66": "です",
-  "00eebc99-9c0b-4ef8-bb6d-6bb9bd381a11": "は",
-  "11eebc99-9c0b-4ef8-bb6d-6bb9bd381b22": "も",
-  "22eebc99-9c0b-4ef8-bb6d-6bb9bd381c33": "に",
-  "33eebc99-9c0b-4ef8-bb6d-6bb9bd381d44": "で",
-  "44eebc99-9c0b-4ef8-bb6d-6bb9bd381e55": "を",
-  "55eebc99-9c0b-4ef8-bb6d-6bb9bd381f66": "が",
-  "66eebc99-9c0b-4ef8-bb6d-6bb9bd382a11": "から",
-  "77eebc99-9c0b-4ef8-bb6d-6bb9bd382b22": "まで",
-  "88eebc99-9c0b-4ef8-bb6d-6bb9bd382c33": "と",
-  "99eebc99-9c0b-4ef8-bb6d-6bb9bd382d44": "よ",
-  "aaeebc99-9c0b-4ef8-bb6d-6bb9bd382e55": "ね",
-  "bbeebc99-9c0b-4ef8-bb6d-6bb9bd382f66": "～んです",
-  "cceebc99-9c0b-4ef8-bb6d-6bb9bd383a11": "の",
-  "ddeebc99-9c0b-4ef8-bb6d-6bb9bd383b22": "けど",
-  "eeeebc99-9c0b-4ef8-bb6d-6bb9bd383c33": "って",
-  "01eebc99-9c0b-4ef8-bb6d-6bb9bd383d44": "とか",
-  "02eebc99-9c0b-4ef8-bb6d-6bb9bd383e55": "ちゃう",
-  "03eebc99-9c0b-4ef8-bb6d-6bb9bd383f66": "とく",
-  "04eebc99-9c0b-4ef8-bb6d-6bb9bd384a11": "なきゃ",
-  "05eebc99-9c0b-4ef8-bb6d-6bb9bd384b22": "みたい"
-};
 
 export interface ExportedGrammarProgress {
   readonly grammar_point_id: string;
@@ -49,18 +24,23 @@ export const generateExportPayload = () =>
   Effect.gen(function* () {
     yield* clientLog("info", "[SessionSync] Compiling study progress payload...");
     
-    // Ensure the grammar point database progresses are hydrated
+    // Ensure both stores are loaded and updated
     yield* grammarPointStore.load();
+    yield* grammarPointCatalogStore.load();
     
     const localProgress = grammarPointStore.state.peek();
+    const catalog = grammarPointCatalogStore.state.peek();
     
-    // Map progress indicators
-    const queue: ExportedGrammarProgress[] = localProgress.map((p) => ({
-      grammar_point_id: p.id,
-      formal_name: GRAMMAR_POINT_NAMES[p.id] || "は",
-      repetitions: p.repetitions,
-      ease_factor: p.easeFactor,
-    }));
+    // Map progress indicators dynamically matching against the local catalog store
+    const queue: ExportedGrammarProgress[] = localProgress.map((p) => {
+      const match = catalog.find((c) => c.id === p.id);
+      return {
+        grammar_point_id: p.id,
+        formal_name: match ? match.formal_name : "は",
+        repetitions: p.repetitions,
+        ease_factor: p.easeFactor,
+      };
+    });
     
     // Fallback if the local database has not been initialized with reviews yet
     if (queue.length === 0) {

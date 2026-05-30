@@ -25,6 +25,12 @@ interface DeltaResponse {
     readonly intervalDays: number;
     readonly nextReview: string;
   }>;
+  readonly grammarPoints: Array<{
+    readonly id: string;
+    readonly formal_name: string;
+    readonly base_meaning: string;
+    readonly difficulty_level: string;
+  }>;
 }
 
 const getStoredPullTimestamp = (): Promise<number> => {
@@ -60,15 +66,16 @@ export const executeDeltaPull = () =>
     // Dynamic store imports to prevent circular dependencies
     const { deckStore } = yield* Effect.promise(() => import("../stores/deckStore"));
     const { srsStore } = yield* Effect.promise(() => import("../stores/srsStore"));
-    const { grammarPointStore } = yield* Effect.promise(() => import("../stores/grammarPointStore"));
+    const { grammarPointStore, grammarPointCatalogStore } = yield* Effect.promise(() => import("../stores/grammarPointStore"));
 
     // Self-healing: If our local stores are completely empty but we have a non-zero lastPull timestamp,
     // it's highly likely the server database was wiped/reset. Let's force a full sync (since=0).
     const deckCount = deckStore.state.peek().length;
     const gpCount = grammarPointStore.state.peek().length;
-    yield* clientLog("info", `[DeltaPull] Local state inspection - deckCount: ${deckCount}, gpCount: ${gpCount}, lastPull: ${lastPull}`);
+    const catalogCount = grammarPointCatalogStore.state.peek().length;
+    yield* clientLog("info", `[DeltaPull] Local state inspection - deckCount: ${deckCount}, gpCount: ${gpCount}, catalogCount: ${catalogCount}, lastPull: ${lastPull}`);
     
-    if (lastPull > 0 && deckCount === 0 && gpCount === 0) {
+    if (lastPull > 0 && deckCount === 0 && gpCount === 0 && catalogCount === 0) {
       yield* clientLog("warn", "[DeltaPull] Local stores are empty but lastPull is non-zero. Forcing full sync (since=0) to heal from server reset.");
       lastPull = 0;
     }
@@ -99,15 +106,25 @@ export const executeDeltaPull = () =>
       catch: (e) => new Error(`Invalid JSON received from pull: ${String(e)}`),
     }));
 
-    yield* clientLog("info", `[DeltaPull] Received pull payload - Decks: ${delta.decks.length}, SRS updates: ${delta.srsUpdates.length}, serverTimestamp: ${delta.serverTimestamp}`);
+    yield* clientLog("info", `[DeltaPull] Received pull payload - Decks: ${delta.decks.length}, SRS updates: ${delta.srsUpdates.length}, Grammar Points: ${delta.grammarPoints?.length || 0}, serverTimestamp: ${delta.serverTimestamp}`);
 
     // Process and dispatch updates to local stores if payload contains updates
-    if (delta.decks.length > 0 || delta.srsUpdates.length > 0) {
-      yield* clientLog("info", `[DeltaPull] Applying updates: ${delta.decks.length} decks, ${delta.srsUpdates.length} SRS metrics.`);
+    if (delta.decks.length > 0 || delta.srsUpdates.length > 0 || (delta.grammarPoints && delta.grammarPoints.length > 0)) {
+      yield* clientLog("info", `[DeltaPull] Applying updates: ${delta.decks.length} decks, ${delta.srsUpdates.length} SRS metrics, ${delta.grammarPoints?.length || 0} catalog items.`);
       
       if (delta.decks.length > 0) {
         yield* deckStore.putAll(delta.decks);
       }
+      
+      if (delta.grammarPoints && delta.grammarPoints.length > 0) {
+        yield* grammarPointCatalogStore.putAll(delta.grammarPoints.map(gp => ({
+          id: gp.id,
+          formal_name: gp.formal_name,
+          base_meaning: gp.base_meaning,
+          difficulty_level: gp.difficulty_level
+        })));
+      }
+
       if (delta.srsUpdates.length > 0) {
         // Hydrate srsStore
         yield* srsStore.putAll(delta.srsUpdates.map(u => ({

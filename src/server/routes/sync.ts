@@ -27,7 +27,7 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
         const since = query.since ? Number(query.since) : 0;
         yield* Effect.logInfo(`[Sync:Pull] Executing pull requests. sinceTimestamp=${since}`);
 
-                const authHeader = headers["authorization"];
+        const authHeader = headers["authorization"];
         yield* Effect.logInfo(`[Sync:Pull] Received Authorization header: "${authHeader}"`);
 
         const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
@@ -66,6 +66,17 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
         });
         yield* Effect.logInfo(`[Sync:Pull] Retrieved ${srsCards.length} matching SRS reviews from database`);
 
+        // Retrieve global grammar points catalog updated since last pull
+        yield* Effect.logInfo(`[Sync:Pull] Fetching global grammar points updated after ${sinceDate.toISOString()}`);
+        const grammarPoints = yield* Effect.tryPromise({
+          try: () => db.selectFrom("grammar_point")
+            .selectAll()
+            .where("updated_at", ">", sinceDate)
+            .execute(),
+          catch: (cause) => new AuthDatabaseError({ cause })
+        });
+        yield* Effect.logInfo(`[Sync:Pull] Retrieved ${grammarPoints.length} matching grammar points from database`);
+
         const decksResult = decks.map(d => ({
           id: d.id,
           name: d.name,
@@ -82,17 +93,25 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
           nextReview: c.next_review.toISOString()
         }));
 
+        const grammarPointsResult = grammarPoints.map(gp => ({
+          id: gp.id,
+          formal_name: gp.formal_name,
+          base_meaning: gp.base_meaning,
+          difficulty_level: gp.difficulty_level
+        }));
+
         const serverTimestamp = Date.now();
         yield* Effect.logInfo(`[Sync:Pull] Complete. generatedServerTimestamp=${serverTimestamp}`);
 
         return {
           serverTimestamp,
           decks: decksResult,
-          srsUpdates: srsUpdatesResult
+          srsUpdates: srsUpdatesResult,
+          grammarPoints: grammarPointsResult
         };
       });
 
-                                                                                                const result = await runEffect(Effect.either(pullEffect));
+      const result = await runEffect(Effect.either(pullEffect));
       if (result._tag === "Left") {
         const error = result.left;
         const errorMessage = error instanceof Error ? error.message : (typeof error === "string" ? error : (JSON.stringify(error) ?? "Unknown error"));
@@ -122,7 +141,7 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
       const pushEffect = Effect.gen(function* () {
         yield* Effect.logInfo(`[Sync:Push] Processing transaction. txId=${body.id}, type=${body.type}`);
 
-                const authHeader = headers["authorization"];
+        const authHeader = headers["authorization"];
         yield* Effect.logInfo(`[Sync:Push] Received Authorization header: "${authHeader}"`);
 
         const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
@@ -151,7 +170,7 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
 
           yield* Effect.logInfo(`[Sync:Push] Recording review grammarPointId=${grammarPointId}. easeFactor=${easeFactor}, reps=${repetitions}, nextReview=${nextReview}`);
 
-                    yield* Effect.tryPromise({
+          yield* Effect.tryPromise({
             try: () => db.insertInto("srs_card")
               .values({
                 id: crypto.randomUUID() as SrsCardId,
@@ -180,18 +199,16 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
           yield* Effect.logInfo(`[Sync:Push] Review recorded for grammarPointId=${grammarPointId}`);
         } else if (body.type === "toggle_skin") {
           yield* Effect.logInfo(`[Sync:Push] Processing skin toggle. payload=${JSON.stringify(body.payload)}`);
-          // Skin toggles do not persist to relational schema; stub logging is processed
         } else if (body.type === "unlock_deck") {
           yield* Effect.logInfo(`[Sync:Push] Processing deck unlock. payload=${JSON.stringify(body.payload)}`);
-          // Deck unlock is stubbed since learning decks are initially unlocked on seeding
-                } else {
+        } else {
           yield* Effect.logWarning(`[Sync:Push] Unrecognized transaction type: ${body.type}`);
         }
 
         return { success: true };
       });
 
-                                                                                                const result = await runEffect(Effect.either(pushEffect));
+      const result = await runEffect(Effect.either(pushEffect));
       if (result._tag === "Left") {
         const error = result.left;
         const errorMessage = error instanceof Error ? error.message : (typeof error === "string" ? error : (JSON.stringify(error) ?? "Unknown error"));
@@ -209,7 +226,7 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
       }
       return result.right;
     },
-        {
+    {
       body: t.Object({
         id: t.String(),
         type: t.String(),
