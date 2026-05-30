@@ -26,8 +26,8 @@ export default defineConfig({
   reporter: "list",
   timeout: 60000, 
   
-  use: {
-    baseURL: "http://127.0.0.1:3000",
+    use: {
+    baseURL: "http://127.0.0.1:3001",
     trace: "on-first-retry",
     screenshot: "only-on-failure",
     video: process.env.CI ? "retain-on-failure" : "off",
@@ -49,7 +49,7 @@ export default defineConfig({
 
   webServer: {
     command: "npm run dev",
-        url: "http://127.0.0.1:3000",
+    url: "http://127.0.0.1:3001",
     reuseExistingServer: false,
     stdout: "pipe",
     stderr: "pipe",
@@ -58,6 +58,8 @@ export default defineConfig({
     env: {
       DATABASE_URL: TEST_DB_URL,
       USE_LOCAL_NEON_PROXY: "false", 
+      PORT: "3001",
+      BACKEND_PORT: "42070"
     }
   },
 });

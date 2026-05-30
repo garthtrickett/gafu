@@ -74,7 +74,8 @@ export const app = new Elysia()
   });
 
 if (process.env.NODE_ENV !== "test") {
-  app.listen(42069);
+  const port = process.env.BACKEND_PORT ? parseInt(process.env.BACKEND_PORT) : 42069;
+  app.listen(port);
   console.info(`🦊 Elysia is running at ${app.server?.hostname}:${app.server?.port}`);
 }
 
