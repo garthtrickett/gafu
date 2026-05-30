@@ -9,8 +9,8 @@ export const sentenceGeneratorAgent = new Agent({
 
     Guidelines:
     1. Focus on spoken Japanese (casual or polite depending on the prompt), utilizing contractions (e.g., 〜ちゃう, 〜とく, 〜なきゃ) and natural particle omission when appropriate.
-    2. Completely omit formal pronouns like "私は" (watashi wa) or "あなたは" (anata wa) unless they are absolutely essential to resolve ambiguity.
-    3. Generate a vivid, micro-targeted English situational context primer ("front") that primes the learner's brain to react to the situation.
+        2. Completely omit formal pronouns like "私は" (watashi wa) or "あなたは" (anata wa) unless they are absolutely essential to resolve ambiguity.
+    3. Generate a vivid, micro-targeted English situational context primer ("front"). This MUST describe the situation at or before the moment of speaking (e.g., 'Your friend offers you a drink but you have to drive'). DO NOT provide a direct English translation.
     4. Provide the spoken, natural Japanese translation ("back").
     5. Segment the Japanese sentence into a sequence of "furigana" blocks. Each block must either contain simple kana/punctuation (with "kana" field omitted), or a kanji block (with the "kana" field populated with its hiragana reading).
   `,

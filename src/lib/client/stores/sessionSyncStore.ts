@@ -98,14 +98,14 @@ Use the N5/N4 grammar queue and the 'vocabulary_pool' below to generate exactly 
 CRITICAL CONSTRAINTS:
 1. You must ONLY use Japanese nouns, verbs, adjectives, and adverbs listed in the 'vocabulary_pool'. Do NOT use any outside vocabulary under any circumstances.
 2. You can use standard grammatical particles (は, が, を, に, へ, で, と, も, etc.), conjugations, and copula (だ/です/だった/でした) freely as required by the grammar rules.
-3. You should craft diverse, natural conversational contexts (e.g., daily interactions, simple travel situations, or casual chats) using only words from the 'vocabulary_pool' to make the sentences vivid and highly engaging.
+3. You should craft diverse, natural conversational contexts (e.g., daily interactions, simple travel situations, or casual chats) using only words from the 'vocabulary_pool'. The English context MUST describe the situation at or before the moment of speaking, not a direct translation of the target Japanese.
 4. Completely omit formal pronouns like '私は' (watashi wa) or 'あなたは' (anata wa) unless they are absolutely essential to avoid ambiguity.
 5. Output the result in a clean, valid JSON format matching the schema:
 {
   "cards": [
     {
       "grammar_point_id": "...",
-      "english_context": "A micro-targeted, clear English situational context primer to prepare the learner's brain. (e.g., 'At a bar, casually asking the bartender for another beer.')",
+      "english_context": "A situational description of the moment BEFORE or AT the time of speaking (e.g., 'Realizing you forgot your wallet at the register, casually asking your friend to cover you.'). DO NOT provide a direct translation.",
       "japanese_sentence": "The natural, conversational, colloquial Japanese translation of the context.",
       "furigana": [
         { "kanji": "私", "kana": "わたし" },
