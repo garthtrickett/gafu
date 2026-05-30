@@ -113,6 +113,7 @@ CRITICAL CONSTRAINTS:
         { "kanji": "本", "kana": "ほん" }
       ],
       "audio_url": null
+      "explanation": "A concise, high-yield linguistic explanation detailing exactly how the grammar point is being applied and translated in this specific sentence context."            
     }
   ]
 }`;

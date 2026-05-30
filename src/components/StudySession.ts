@@ -52,14 +52,17 @@ export const calculateSrsUpdate = (
 
 export interface StudySessionModel {
   readonly audioPlaying: boolean;
+  readonly explanationVisible: boolean;
 }
 
 export type StudySessionAction =
   | { type: "PLAY_AUDIO"; audioUrl: string }
-  | { type: "SUBMIT_GRADE"; grammarPointId: string; isCorrect: boolean };
+  | { type: "SUBMIT_GRADE"; grammarPointId: string; isCorrect: boolean }
+  | { type: "TOGGLE_EXPLANATION" };
 
 const initialModel: StudySessionModel = {
   audioPlaying: false,
+  explanationVisible: false,
 };
 
 const update = (model: StudySessionModel, action: StudySessionAction): StudySessionModel => {
@@ -73,6 +76,12 @@ const update = (model: StudySessionModel, action: StudySessionAction): StudySess
       return {
         ...model,
         audioPlaying: false,
+        explanationVisible: false,
+      };
+    case "TOGGLE_EXPLANATION":
+      return {
+        ...model,
+        explanationVisible: !model.explanationVisible,
       };
     default:
       return model;
