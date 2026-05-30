@@ -5,8 +5,11 @@ import { LocationService } from "./LocationService.ts";
 import { runClientUnscoped } from "./runtime.ts";
 import { login, signup, logout } from "./stores/authStore.ts";
 import { generateExportPayload, importSessionPayload } from "./stores/sessionSyncStore.ts";
+import { grammarPointStore } from "./stores/grammarPointStore.ts";
 import "../../components/StudySession.ts";
 import "../../components/AiGenerator.ts";
+
+let showQueue = false;
 
 const NotFoundView = (): ViewResult => ({
   template: html`
@@ -34,9 +37,28 @@ export interface Route {
 type MatchedRoute = Route & { params: string[] };
 
 const homeView = (): ViewResult => {
-  let selectedTheme = "daily";
   let pasteValue = "";
   let importError: string | null = null;
+
+  runClientUnscoped(grammarPointStore.load());
+
+  const toggleQueue = () => {
+    showQueue = !showQueue;
+    window.dispatchEvent(new CustomEvent("location-changed"));
+  };
+
+  const displayQueue = grammarPointStore.state.value.length > 0
+    ? grammarPointStore.state.value.map(p => ({
+        name: p.id === "e0eebc99-9c0b-4ef8-bb6d-6bb9bd380e55" ? "だ" :
+              p.id === "f0eebc99-9c0b-4ef8-bb6d-6bb9bd380f66" ? "です" : "は",
+        repetitions: p.repetitions,
+        nextReview: p.nextReview
+      }))
+    : [
+        { name: "だ", repetitions: 0, nextReview: new Date().toISOString() },
+        { name: "です", repetitions: 0, nextReview: new Date().toISOString() },
+        { name: "は", repetitions: 0, nextReview: new Date().toISOString() }
+      ];
 
   const triggerExport = (e: Event) => {
     const btn = e.target as HTMLButtonElement;
@@ -45,7 +67,7 @@ const homeView = (): ViewResult => {
     btn.disabled = true;
 
     runClientUnscoped(
-      generateExportPayload(selectedTheme).pipe(
+      generateExportPayload().pipe(
         Effect.andThen(() => Effect.sync(() => {
           btn.textContent = "✅ Copied to Clipboard!";
           setTimeout(() => {
@@ -109,19 +131,6 @@ const homeView = (): ViewResult => {
             </div>
 
             <div class="space-y-4 pt-2 border-t border-zinc-900">
-              <div class="space-y-1.5">
-                <label class="text-xs font-semibold text-zinc-400 uppercase tracking-wider block">Vocabulary Theme</label>
-                <select 
-                  @change=${(e: Event) => { selectedTheme = (e.target as HTMLSelectElement).value; }}
-                  class="w-full px-3 py-2 bg-zinc-900 border border-zinc-800 rounded text-zinc-300 text-sm focus:outline-none focus:border-zinc-700"
-                >
-                  <option value="daily">Daily Life Theme</option>
-                  <option value="anime">Anime Theme</option>
-                  <option value="business">Business Theme</option>
-                  <option value="travel">Travel Theme</option>
-                </select>
-              </div>
-
               <div class="space-y-2">
                 <span class="text-xs font-semibold text-zinc-400 uppercase tracking-wider block">1. Export Progress</span>
                 <button 
@@ -153,7 +162,7 @@ const homeView = (): ViewResult => {
             </div>
           </div>
 
-          <!-- Study Progress / Stats Card -->
+                    <!-- Study Progress / Stats Card -->
           <div class="p-6 bg-zinc-950 border border-zinc-800 rounded-lg shadow-sm space-y-4 flex flex-col justify-between">
             <div>
               <h2 class="text-lg font-semibold text-zinc-200">Study Progress</h2>
@@ -167,6 +176,30 @@ const homeView = (): ViewResult => {
                   <span class="text-zinc-200">Local-first enabled</span>
                 </div>
               </div>
+
+              <button 
+                @click=${toggleQueue}
+                class="w-full mt-4 py-2 bg-zinc-900 hover:bg-zinc-850 text-zinc-300 hover:text-white rounded text-xs font-medium border border-zinc-800 transition-colors cursor-pointer flex items-center justify-center gap-2"
+              >
+                ${showQueue ? "🙈 Hide Active Queue" : "👁️ View Active Queue"}
+              </button>
+
+              ${showQueue ? html`
+                <div class="mt-4 p-3 bg-zinc-900/60 border border-zinc-900 rounded-lg space-y-2 animate-fade-in">
+                  <span class="text-xs font-semibold text-zinc-400 uppercase tracking-wider block">Due Queue (${displayQueue.length} rules)</span>
+                  <div class="divide-y divide-zinc-900/80 max-h-40 overflow-y-auto pr-1">
+                    ${displayQueue.map(item => html`
+                      <div class="py-2 flex items-center justify-between text-xs">
+                        <div class="flex items-center gap-2">
+                          <span class="px-1.5 py-0.5 bg-zinc-850 text-green-400 font-bold rounded border border-zinc-800">${item.name}</span>
+                          <span class="text-zinc-500">Reps: ${item.repetitions}</span>
+                        </div>
+                        <span class="text-zinc-500">Next: ${new Date(item.nextReview).toLocaleDateString()}</span>
+                      </div>
+                    `)}
+                  </div>
+                </div>
+              ` : ""}
             </div>
             <div class="p-4 bg-zinc-900/40 border border-zinc-900 rounded-lg text-xs text-zinc-400 leading-relaxed">
               💡 <strong>Handshake Flow</strong>: Click "Copy Progress", paste it to your language tutor bot to generate your daily review cards, then paste the returned JSON back here to review with zero latency.
@@ -182,12 +215,12 @@ const loginView = (): ViewResult => {
   const handleSubmit = (e: Event) => {
     e.preventDefault();
     const form = e.target as HTMLFormElement;
-    const email = (form.elements.namedItem("email") as HTMLInputElement).value;
-    const password = (form.elements.namedItem("password") as HTMLInputElement).value;
+    const email = (form.elements.namedItem('email') as HTMLInputElement).value;
+    const password = (form.elements.namedItem('password') as HTMLInputElement).value;
 
     runClientUnscoped(
       login(email, password).pipe(
-                Effect.catchAll((err: unknown) => {
+        Effect.catchAll((err: unknown) => {
           const msg = err instanceof Error ? err.message : String(err);
           return clientLog("error", `[LoginView] Login operation failed: ${msg}`, { email, err });
         })
@@ -249,10 +282,10 @@ const signupView = (): ViewResult => {
   const handleSubmit = (e: Event) => {
     e.preventDefault();
     const form = e.target as HTMLFormElement;
-    const email = (form.elements.namedItem("email") as HTMLInputElement).value;
-    const password = (form.elements.namedItem("password") as HTMLInputElement).value;
+    const email = (form.elements.namedItem('email') as HTMLInputElement).value;
+    const password = (form.elements.namedItem('password') as HTMLInputElement).value;
 
-        runClientUnscoped(
+    runClientUnscoped(
       signup(email, password).pipe(
         Effect.catchAll((err: unknown) => {
           let msg = "Unknown signup error";
@@ -338,7 +371,7 @@ const routes: Route[] = [
     view: homeView,
     meta: { requiresAuth: true },
   },
-    {
+  {
     pattern: /^\/study$/,
     view: studyView,
     meta: { requiresAuth: true },

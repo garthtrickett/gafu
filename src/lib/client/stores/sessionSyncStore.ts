@@ -47,8 +47,10 @@ export const generateExportPayload = () =>
       );
     }
 
-        const promptInstructions = `You are a professional, native Japanese language tutor and structural linguist. Your task is to act as an offline-first Sentence Generator.
-Use the N5 grammar queue and the 'vocabulary_pool' below to generate exactly 1 unique review card for each grammar point in the queue.
+    const queueLength = queue.length;
+
+    const promptInstructions = `You are a professional, native Japanese language tutor and structural linguist. Your task is to act as an offline-first Sentence Generator.
+Use the N5 grammar queue and the 'vocabulary_pool' below to generate exactly ${queueLength} unique review cards (exactly 1 unique card for each of the ${queueLength} grammar points in the queue).
 
 CRITICAL CONSTRAINTS:
 1. You must ONLY use Japanese nouns, verbs, adjectives, and adverbs listed in the 'vocabulary_pool'. Do NOT use any outside vocabulary under any circumstances.
@@ -86,7 +88,7 @@ CRITICAL CONSTRAINTS:
       catch: (e) => new Error(`Failed to write text to system clipboard: ${String(e)}`),
     });
 
-    yield* clientLog("info", "[SessionSync] Study progress successfully copied to clipboard.", { wordPoolSize: kaishiPool.length });
+    yield* clientLog("info", "[SessionSync] Study progress successfully copied to clipboard.", { wordPoolSize: kaishiPool.length, queueSize: queueLength });
     return jsonString;
   });
 
