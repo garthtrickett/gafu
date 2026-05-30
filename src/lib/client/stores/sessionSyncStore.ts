@@ -90,9 +90,18 @@ export const generateExportPayload = () =>
       );
     }
 
-    const queueLength = queue.length;
+        // Limit the queue to a maximum of 40 elements to prevent context/token overload in the LLM
+    let finalQueue = queue;
+    if (queue.length > 40) {
+      yield* clientLog("info", `[SessionSync] Active queue size (${queue.length}) exceeds maximum limit of 40. Slicing queue to first 40 entries to prevent token exhaustion and timeouts.`);
+      finalQueue = queue.slice(0, 40);
+    } else {
+      yield* clientLog("info", `[SessionSync] Active queue size (${queue.length}) is within limits. Proceeding without slicing.`);
+    }
 
-    const promptInstructions = `You are a professional, native Japanese language tutor and structural linguist. Your task is to act as an offline-first Sentence Generator.
+    const queueLength = finalQueue.length;
+
+    const promptInstructions = `You are a professional, native Japanese language tutor and structural linguist. Your task is to act as an offline-first Sentence Generator.`
 Use the N5/N4 grammar queue and the 'vocabulary_pool' below to generate exactly ${queueLength} unique review cards (exactly 1 unique card for each of the ${queueLength} grammar points in the queue).
 
 CRITICAL CONSTRAINTS:
@@ -112,15 +121,15 @@ CRITICAL CONSTRAINTS:
         { "kanji": "の" },
         { "kanji": "本", "kana": "ほん" }
       ],
-      "audio_url": null
+            "audio_url": null,
       "explanation": "A concise, high-yield linguistic explanation detailing exactly how the grammar point is being applied and translated in this specific sentence context."            
     }
   ]
 }`;
 
-    const payload: ExportPayload = {
+        const payload: ExportPayload = {
       instructions: promptInstructions,
-      queue,
+      queue: finalQueue,
       vocabulary_pool: kaishiPool,
     };
 
