@@ -1,12 +1,12 @@
 import { LitElement, html } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import { effect } from "@preact/signals-core";
-import { grammarPointStore, grammarPointCatalogStore } from "../lib/client/stores/grammarPointStore";
-import { logout } from "../lib/client/stores/authStore";
-import { generateExportPayload, importSessionPayload } from "../lib/client/stores/sessionSyncStore";
-import { clientLog } from "../lib/client/clientLog";
-import { runClientUnscoped } from "../lib/client/runtime";
-import { navigate } from "../lib/client/router";
+import { grammarPointStore, grammarPointCatalogStore } from "../lib/client/stores/grammarPointStore.ts";
+import { logout } from "../lib/client/stores/authStore.ts";
+import { generateExportPayload, importSessionPayload } from "../lib/client/stores/sessionSyncStore.ts";
+import { clientLog } from "../lib/client/clientLog.ts";
+import { runClientUnscoped } from "../lib/client/runtime.ts";
+import { navigate } from "../lib/client/router.ts";
 import { Effect } from "effect";
 
 @customElement("study-desk")
@@ -44,7 +44,7 @@ export class StudyDesk extends LitElement {
     this._disposeEffect?.();
   }
 
-    private triggerExport = (e: Event) => {
+  private triggerExport = (e: Event) => {
     const btn = e.target as HTMLButtonElement;
     const originalText = btn.textContent || "";
     btn.textContent = "⏱️ Compiling...";
@@ -92,7 +92,7 @@ export class StudyDesk extends LitElement {
     this.showQueue = !this.showQueue;
   };
 
-    override render() {
+  override render() {
     const now = new Date();
     const catalog = grammarPointCatalogStore.state.value;
     
@@ -221,19 +221,38 @@ export class StudyDesk extends LitElement {
               </button>
 
               ${this.showQueue ? html`
-                <div class="mt-4 p-3 bg-zinc-900/60 border border-zinc-900 rounded-lg space-y-2 animate-fade-in">
-                  <span class="text-xs font-semibold text-zinc-400 uppercase tracking-wider block">Due Queue (${displayQueue.length} rules)</span>
-                  <div class="divide-y divide-zinc-900/80 max-h-40 overflow-y-auto pr-1">
-                    ${displayQueue.map(item => html`
-                      <div class="py-2 flex items-center justify-between text-xs">
-                        <div class="flex items-center gap-2">
-                          <span class="px-1.5 py-0.5 bg-zinc-850 text-green-400 font-bold rounded border border-zinc-800">${item.name}</span>
-                          <span class="text-zinc-500">Reps: ${item.repetitions}</span>
+                <div class="mt-4 p-3 bg-zinc-900/60 border border-zinc-900 rounded-lg space-y-4 animate-fade-in">
+                  <div class="space-y-2">
+                    <span class="text-xs font-bold text-green-400 uppercase tracking-wider block">Due Today - Daily Target (${finalDailyTarget.length} rules)</span>
+                    <div class="divide-y divide-zinc-900/80 max-h-32 overflow-y-auto pr-1">
+                      ${finalDailyTarget.map(item => html`
+                        <div class="py-2 flex items-center justify-between text-xs">
+                          <div class="flex items-center gap-2">
+                            <span class="px-1.5 py-0.5 bg-zinc-850 text-green-400 font-bold rounded border border-zinc-800">${item.name}</span>
+                            <span class="text-zinc-500">Reps: ${item.repetitions}</span>
+                          </div>
+                          <span class="text-zinc-500">Next: ${new Date(item.nextReview).toLocaleDateString()}</span>
                         </div>
-                        <span class="text-zinc-500">Next: ${new Date(item.nextReview).toLocaleDateString()}</span>
-                      </div>
-                    `)}
+                      `)}
+                    </div>
                   </div>
+
+                  ${finalBacklog.length > 0 ? html`
+                    <div class="space-y-2 border-t border-zinc-900/60 pt-2">
+                      <span class="text-xs font-semibold text-zinc-500 uppercase tracking-wider block">Snoozed Backlog (${finalBacklog.length} rules)</span>
+                      <div class="divide-y divide-zinc-900/80 max-h-24 overflow-y-auto pr-1 opacity-60">
+                        ${finalBacklog.map(item => html`
+                          <div class="py-2 flex items-center justify-between text-xs">
+                            <div class="flex items-center gap-2">
+                              <span class="px-1.5 py-0.5 bg-zinc-850 text-zinc-400 font-bold rounded border border-zinc-800">${item.name}</span>
+                              <span class="text-zinc-500">Reps: ${item.repetitions}</span>
+                            </div>
+                            <span class="text-zinc-500">Next: ${new Date(item.nextReview).toLocaleDateString()}</span>
+                          </div>
+                        `)}
+                      </div>
+                    </div>
+                  ` : ""}
                 </div>
               ` : ""}
             </div>

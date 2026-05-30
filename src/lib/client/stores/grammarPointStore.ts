@@ -68,7 +68,7 @@ export const grammarPointStore = {
   /**
    * Computed list of active learning progress items (not yet graduated)
    */
-  readonly activeLearningRules: computed(() => {
+  activeLearningRules: computed(() => {
     const progress = baseGrammarPointStore.state.value;
     return progress.filter(p => p.intervalDays < 21);
   }),
@@ -76,7 +76,7 @@ export const grammarPointStore = {
   /**
    * Computed list of graduated progress items (intervalDays >= 21)
    */
-  readonly graduatedRules: computed(() => {
+  graduatedRules: computed(() => {
     const progress = baseGrammarPointStore.state.value;
     return progress.filter(p => p.intervalDays >= 21);
   }),
@@ -84,7 +84,7 @@ export const grammarPointStore = {
   /**
    * Computed list of locked catalog items (not yet in progress)
    */
-  readonly lockedCatalogItems: computed(() => {
+  lockedCatalogItems: computed(() => {
     const catalog = grammarPointCatalogStore.state.value;
     const progress = baseGrammarPointStore.state.value;
     const progressIds = new Set(progress.map(p => p.id));
@@ -94,7 +94,7 @@ export const grammarPointStore = {
   /**
    * Computed count of rules unlocked within the last 24 hours
    */
-  readonly unlockedLast24HoursCount: computed(() => {
+  unlockedLast24HoursCount: computed(() => {
     const progress = baseGrammarPointStore.state.value;
     return getDailyUnlockAllowance(progress, 3);
   }),
