@@ -52,7 +52,7 @@ test.describe("Grammar Explanation Study Flow", () => {
     // 8. Click the Explain button to reveal the explanation
     await page.locator("button", { hasText: "Explain" }).click();
     await expect(page.locator("text=Grammar Explanation")).toBeVisible();
-    await expect(page.locator("p")).toContainText("The copula 'です' is used to declare state of being 'is/am/are'.");
+    await expect(page.locator("p.leading-relaxed")).toContainText("The copula 'です' is used to declare state of being 'is/am/are'.");
 
     // 9. Click the Correct button to finish the session
     await page.locator("button", { hasText: "Correct" }).click();
