@@ -4,8 +4,8 @@ import { join } from "node:path";
 const INPUT_FILE = join(process.cwd(), "kaishi-1.5k.txt");
 const OUTPUT_FILE = join(process.cwd(), "src", "lib", "client", "stores", "kaishiPool.json");
 
-async function run() {
-  console.log("📂 Parsing Kaishi 1.5k deck...");
+function run() {
+  console.info("📂 Parsing Kaishi 1.5k deck...");
   if (!existsSync(INPUT_FILE)) {
     console.error(`❌ Error: Input file not found at ${INPUT_FILE}`);
     process.exit(1);
@@ -50,9 +50,9 @@ async function run() {
     pool.push(entry);
   }
 
-  console.log(`✨ Successfully parsed ${pool.length} vocabulary entries.`);
+  console.info(`✨ Successfully parsed ${pool.length} vocabulary entries.`);
   writeFileSync(OUTPUT_FILE, JSON.stringify(pool, null, 2), "utf-8");
-  console.log(`💾 Saved compact JSON to ${OUTPUT_FILE}`);
+  console.info(`💾 Saved compact JSON to ${OUTPUT_FILE}`);
 }
 
 void run();
