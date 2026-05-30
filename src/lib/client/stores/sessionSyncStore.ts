@@ -62,11 +62,10 @@ export const generateExportPayload = () =>
       }
     }
     
-    // Fallback if the local database has not been initialized with reviews yet
+        // Fallback if the local database has not been initialized with reviews yet
     if (queue.length === 0) {
       queue.push(
         { grammar_point_id: "e0eebc99-9c0b-4ef8-bb6d-6bb9bd380e55", formal_name: "だ", repetitions: 0, ease_factor: 2.5 },
-        { grammar_point_id: "f0eebc99-9c0b-4ef8-bb6d-6bb9bd380f66", formal_name: "です", repetitions: 0, ease_factor: 2.5 },
         { grammar_point_id: "00eebc99-9c0b-4ef8-bb6d-6bb9bd381a11", formal_name: "は", repetitions: 0, ease_factor: 2.5 },
         { grammar_point_id: "11eebc99-9c0b-4ef8-bb6d-6bb9bd381b22", formal_name: "も", repetitions: 0, ease_factor: 2.5 },
         { grammar_point_id: "22eebc99-9c0b-4ef8-bb6d-6bb9bd381c33", formal_name: "に", repetitions: 0, ease_factor: 2.5 },
@@ -81,12 +80,13 @@ export const generateExportPayload = () =>
         { grammar_point_id: "bbeebc99-9c0b-4ef8-bb6d-6bb9bd382f66", formal_name: "～んです", repetitions: 0, ease_factor: 2.5 },
         { grammar_point_id: "cceebc99-9c0b-4ef8-bb6d-6bb9bd383a11", formal_name: "の", repetitions: 0, ease_factor: 2.5 },
         { grammar_point_id: "ddeebc99-9c0b-4ef8-bb6d-6bb9bd383b22", formal_name: "けど", repetitions: 0, ease_factor: 2.5 },
-        { grammar_point_id: "eeeebc99-9c0b-4ef8-bb6d-6bb9bd383c33", formal_name: "って", repetitions: 0, ease_factor: 2.5 },
+        { grammar_point_id: "11eebc99-9c0b-4ef8-bb6d-6bb9bd389a11", formal_name: "って", repetitions: 0, ease_factor: 2.5 },
         { grammar_point_id: "01eebc99-9c0b-4ef8-bb6d-6bb9bd383d44", formal_name: "とか", repetitions: 0, ease_factor: 2.5 },
-        { grammar_point_id: "02eebc99-9c0b-4ef8-bb6d-6bb9bd383e55", formal_name: "ちゃう", repetitions: 0, ease_factor: 2.5 },
         { grammar_point_id: "03eebc99-9c0b-4ef8-bb6d-6bb9bd383f66", formal_name: "とく", repetitions: 0, ease_factor: 2.5 },
         { grammar_point_id: "04eebc99-9c0b-4ef8-bb6d-6bb9bd384a11", formal_name: "なきゃ", repetitions: 0, ease_factor: 2.5 },
-        { grammar_point_id: "05eebc99-9c0b-4ef8-bb6d-6bb9bd384b22", formal_name: "みたい", repetitions: 0, ease_factor: 2.5 }
+        { grammar_point_id: "05eebc99-9c0b-4ef8-bb6d-6bb9bd384b22", formal_name: "みたい", repetitions: 0, ease_factor: 2.5 },
+        { grammar_point_id: "06eebc99-9c0b-4ef8-bb6d-6bb9bd384c33", formal_name: "これ", repetitions: 0, ease_factor: 2.5 },
+        { grammar_point_id: "07eebc99-9c0b-4ef8-bb6d-6bb9bd384d44", formal_name: "それ", repetitions: 0, ease_factor: 2.5 }
       );
     }
 
@@ -107,14 +107,18 @@ Use the N5/N4 grammar queue and the 'vocabulary_pool' below to generate exactly 
 CRITICAL CONSTRAINTS:
 1. You must ONLY use Japanese nouns, verbs, adjectives, and adverbs listed in the 'vocabulary_pool'. Do NOT use any outside vocabulary under any circumstances.
 2. You can use standard grammatical particles (は, が, を, に, へ, で, と, も, etc.), conjugations, and copula (だ/です/だった/でした) freely as required by the grammar rules.
-3. You should craft diverse, natural conversational contexts (e.g., daily interactions, simple travel situations, or casual chats) using only words from the 'vocabulary_pool'. The English context MUST describe the situation at or before the moment of speaking, not a direct translation of the target Japanese.
+3. The English context must strictly set the scene without revealing the target translation, wording, or grammar point. It should focus exclusively on:
+   - The physical environment, visual/auditory trigger, or objective situation (e.g., hearing a sudden noise, seeing heavy gray clouds, carrying several heavy boxes).
+   - The speaker's internal feelings, physical state, or motivation (e.g., feeling extremely thirsty, wishing to offer help, realizing a personal mistake).
+   - The social relationship and politeness level (e.g., speaking casually to a sibling, addressing a superior/teacher politely).
+   DO NOT describe what the speaker actually says or how they say it. Stop the context description right before the moment of speaking so the student must deduce the appropriate Japanese phrasing entirely on their own.
 4. Completely omit formal pronouns like '私は' (watashi wa) or 'あなたは' (anata wa) unless they are absolutely essential to avoid ambiguity.
 5. Output the result in a clean, valid JSON format matching the schema:
 {
   "cards": [
     {
       "grammar_point_id": "...",
-      "english_context": "A situational description of the moment BEFORE or AT the time of speaking (e.g., 'Realizing you forgot your wallet at the register, casually asking your friend to cover you.'). DO NOT provide a direct translation.",
+      "english_context": "A scene-setting description focusing purely on the environment, the speaker's internal state/motivation, and the social dynamics. It must stop right before the utterance and must NOT hint at the target phrasing, grammar name, or translation (e.g., 'Walking home with a classmate, you look up as cold droplets begin to touch your skin. You address them casually.').",
       "japanese_sentence": "The natural, conversational, colloquial Japanese translation of the context.",
       "furigana": [
         { "kanji": "私", "kana": "わたし" },

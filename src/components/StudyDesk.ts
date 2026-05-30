@@ -149,7 +149,7 @@ export class StudyDesk extends LitElement {
                 >
                   📋 Copy Progress Payload
                 </button>
-                <p class="text-2xs text-zinc-500">Copies your due N5 progress rules so the AI can compile matching cards.</p>
+                <p class="text-2xs text-zinc-500">Copies your due progress rules so the AI can compile matching cards.</p>
               </div>
 
               <form @submit=${this.handleImport} class="space-y-2 pt-2 border-t border-zinc-900">

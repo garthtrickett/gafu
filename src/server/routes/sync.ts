@@ -168,9 +168,23 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
             return yield* Effect.fail(new Error("Missing parameters in review payload"));
           }
 
-          yield* Effect.logInfo(`[Sync:Push] Recording review grammarPointId=${grammarPointId}. easeFactor=${easeFactor}, reps=${repetitions}, nextReview=${nextReview}`);
+                    yield* Effect.logInfo(`[Sync:Push] Recording review grammarPointId=${grammarPointId}. easeFactor=${easeFactor}, reps=${repetitions}, nextReview=${nextReview}`);
 
-          yield* Effect.tryPromise({
+          // Verify grammar_point exists first to prevent foreign key violations from legacy/obsolete IDs
+          const gpExists = yield* Effect.tryPromise({ 
+            try: () => db.selectFrom("grammar_point")
+              .select("id")
+              .where("id", "=", grammarPointId as GrammarPointId)
+              .executeTakeFirst(),
+            catch: (cause) => new AuthDatabaseError({ cause })
+          });
+
+          if (!gpExists) {
+            yield* Effect.logWarning(`[Sync:Push] grammarPointId=${grammarPointId} not found in database. Discarding review to clear outbox queue.`);
+            return { success: true };
+          }
+
+          yield* Effect.tryPromise({ 
             try: () => db.insertInto("srs_card")
               .values({
                 id: crypto.randomUUID() as SrsCardId,
