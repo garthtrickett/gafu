@@ -42,10 +42,12 @@ export const activeSessionStore = {
     return (batchIndex.value + 1) * BATCH_SIZE < masterList.value.length;
   }),
   
-  loadSession: (cards: readonly SessionCard[]) => {
-    masterList.value = cards;
+    loadSession: (cards: readonly SessionCard[]) => {
+    // Enforce a strict daily study cap of exactly 20 reviews per session
+    const cappedCards = cards.slice(0, 20);
+    masterList.value = cappedCards;
     batchIndex.value = 0;
-    state.value = cards.slice(0, BATCH_SIZE);
+    state.value = cappedCards.slice(0, BATCH_SIZE);
     currentIndex.value = 0;
   },
   

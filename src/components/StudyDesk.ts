@@ -92,30 +92,56 @@ export class StudyDesk extends LitElement {
     this.showQueue = !this.showQueue;
   };
 
-  override render() {
+    override render() {
+    const now = new Date();
     const catalog = grammarPointCatalogStore.state.value;
-    const displayQueue = grammarPointStore.state.value.length > 0
-      ? grammarPointStore.state.value.map(p => {
-          const catalogItem = catalog.find(c => c.id === p.id);
-          return {
-            name: catalogItem ? catalogItem.formal_name : "は",
-            repetitions: p.repetitions,
-            nextReview: p.nextReview
-          };
-        })
-      : [
-          { name: "だ", repetitions: 0, nextReview: new Date().toISOString() },
-          { name: "です", repetitions: 0, nextReview: new Date().toISOString() },
-          { name: "は", repetitions: 0, nextReview: new Date().toISOString() },
-          { name: "も", repetitions: 0, nextReview: new Date().toISOString() },
-          { name: "に", repetitions: 0, nextReview: new Date().toISOString() },
-          { name: "で", repetitions: 0, nextReview: new Date().toISOString() },
-          { name: "を", repetitions: 0, nextReview: new Date().toISOString() },
-          { name: "が", repetitions: 0, nextReview: new Date().toISOString() },
-          { name: "から", repetitions: 0, nextReview: new Date().toISOString() },
-          { name: "まで", repetitions: 0, nextReview: new Date().toISOString() },
-          { name: "と", repetitions: 0, nextReview: new Date().toISOString() }
-        ];
+    
+    // Find and sort active progress items where nextReview is in the past (oldest first)
+    const allDueItems = grammarPointStore.state.value
+      .filter(p => new Date(p.nextReview).getTime() <= now.getTime())
+      .sort((a, b) => new Date(a.nextReview).getTime() - new Date(b.nextReview).getTime());
+
+    // Slice reviews to enforce a clean daily active cap of 20 and group the rest into backlog
+    const dailyTargetItems = allDueItems.slice(0, 20);
+    const backlogItems = allDueItems.slice(20);
+
+    const mappedDailyTarget = dailyTargetItems.map(p => {
+      const catalogItem = catalog.find(c => c.id === p.id);
+      return {
+        name: catalogItem ? catalogItem.formal_name : "は",
+        repetitions: p.repetitions,
+        nextReview: p.nextReview
+      };
+    });
+
+    const mappedBacklog = backlogItems.map(p => {
+      const catalogItem = catalog.find(c => c.id === p.id);
+      return {
+        name: catalogItem ? catalogItem.formal_name : "は",
+        repetitions: p.repetitions,
+        nextReview: p.nextReview
+      };
+    });
+
+    let finalDailyTarget = mappedDailyTarget;
+    let finalBacklog = mappedBacklog;
+
+    if (grammarPointStore.state.value.length === 0) {
+      finalDailyTarget = [
+        { name: "だ", repetitions: 0, nextReview: new Date().toISOString() },
+        { name: "です", repetitions: 0, nextReview: new Date().toISOString() },
+        { name: "は", repetitions: 0, nextReview: new Date().toISOString() },
+        { name: "も", repetitions: 0, nextReview: new Date().toISOString() },
+        { name: "に", repetitions: 0, nextReview: new Date().toISOString() },
+        { name: "で", repetitions: 0, nextReview: new Date().toISOString() },
+        { name: "を", repetitions: 0, nextReview: new Date().toISOString() },
+        { name: "が", repetitions: 0, nextReview: new Date().toISOString() },
+        { name: "から", repetitions: 0, nextReview: new Date().toISOString() },
+        { name: "まで", repetitions: 0, nextReview: new Date().toISOString() },
+        { name: "と", repetitions: 0, nextReview: new Date().toISOString() }
+      ];
+      finalBacklog = [];
+    }
 
     return html`
       <div class="max-w-4xl mx-auto space-y-6">
