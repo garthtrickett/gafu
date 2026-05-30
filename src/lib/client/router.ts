@@ -3,13 +3,10 @@ import { html, type TemplateResult } from "lit-html";
 import { clientLog } from "./clientLog.ts";
 import { LocationService } from "./LocationService.ts";
 import { runClientUnscoped } from "./runtime.ts";
-import { login, signup, logout } from "./stores/authStore.ts";
-import { generateExportPayload, importSessionPayload } from "./stores/sessionSyncStore.ts";
-import { grammarPointStore } from "./stores/grammarPointStore.ts";
+import { login, signup } from "./stores/authStore.ts";
 import "../../components/StudySession.ts";
 import "../../components/AiGenerator.ts";
-
-let showQueue = false;
+import "../../components/StudyDesk.ts";
 
 const NotFoundView = (): ViewResult => ({
   template: html`
@@ -37,177 +34,8 @@ export interface Route {
 type MatchedRoute = Route & { params: string[] };
 
 const homeView = (): ViewResult => {
-  let pasteValue = "";
-  let importError: string | null = null;
-
-  runClientUnscoped(grammarPointStore.load());
-
-  const toggleQueue = () => {
-    showQueue = !showQueue;
-    window.dispatchEvent(new CustomEvent("location-changed"));
-  };
-
-  const displayQueue = grammarPointStore.state.value.length > 0
-    ? grammarPointStore.state.value.map(p => ({
-        name: p.id === "e0eebc99-9c0b-4ef8-bb6d-6bb9bd380e55" ? "だ" :
-              p.id === "f0eebc99-9c0b-4ef8-bb6d-6bb9bd380f66" ? "です" : "は",
-        repetitions: p.repetitions,
-        nextReview: p.nextReview
-      }))
-    : [
-        { name: "だ", repetitions: 0, nextReview: new Date().toISOString() },
-        { name: "です", repetitions: 0, nextReview: new Date().toISOString() },
-        { name: "は", repetitions: 0, nextReview: new Date().toISOString() }
-      ];
-
-  const triggerExport = (e: Event) => {
-    const btn = e.target as HTMLButtonElement;
-    const originalText = btn.textContent || "";
-    btn.textContent = "⏱️ Compiling...";
-    btn.disabled = true;
-
-    runClientUnscoped(
-      generateExportPayload().pipe(
-        Effect.andThen(() => Effect.sync(() => {
-          btn.textContent = "✅ Copied to Clipboard!";
-          setTimeout(() => {
-            btn.textContent = originalText;
-            btn.disabled = false;
-          }, 2000);
-        })),
-        Effect.catchAll((err) => {
-          btn.textContent = "❌ Failed to Copy";
-          btn.disabled = false;
-          return clientLog("error", "Export failed", err);
-        })
-      )
-    );
-  };
-
-  const handleImport = (e: Event) => {
-    e.preventDefault();
-    importError = null;
-
-    if (!pasteValue.trim()) {
-      importError = "Please paste a valid session JSON payload.";
-      window.dispatchEvent(new CustomEvent("location-changed"));
-      return;
-    }
-
-    runClientUnscoped(
-      importSessionPayload(pasteValue).pipe(
-        Effect.andThen(() => navigate("/study")),
-        Effect.catchAll((err) => {
-          importError = err instanceof Error ? err.message : String(err);
-          window.dispatchEvent(new CustomEvent("location-changed"));
-          return clientLog("error", "Import failed", err);
-        })
-      )
-    );
-  };
-
   return {
-    template: html`
-      <div class="max-w-4xl mx-auto space-y-6">
-        <div class="flex items-center justify-between border-b border-zinc-800 pb-4">
-          <div>
-            <h1 class="text-2xl font-bold">Language Study Desk</h1>
-            <p class="text-sm text-zinc-400">Review your active decks and vocabulary cycles.</p>
-          </div>
-          <button 
-            @click=${logout}
-            class="px-4 py-2 bg-zinc-850 hover:bg-zinc-800 text-zinc-200 hover:text-white rounded text-sm font-medium border border-zinc-800 transition-colors cursor-pointer"
-          >
-            Logout
-          </button>
-        </div>
-
-        <div class="grid gap-6 md:grid-cols-2">
-          <!-- Setup Wizard Deck Card (Manual Handshake Compiler) -->
-          <div class="p-6 bg-zinc-950 border border-zinc-800 rounded-lg shadow-sm space-y-5">
-            <div>
-              <h2 class="text-lg font-semibold text-zinc-200">Conversational Japanese N5</h2>
-              <p class="text-sm text-zinc-400 mt-1">Essential survival phrases and foundational grammar.</p>
-            </div>
-
-            <div class="space-y-4 pt-2 border-t border-zinc-900">
-              <div class="space-y-2">
-                <span class="text-xs font-semibold text-zinc-400 uppercase tracking-wider block">1. Export Progress</span>
-                <button 
-                  @click=${triggerExport}
-                  class="w-full py-2.5 bg-zinc-900 hover:bg-zinc-850 text-zinc-100 hover:text-white font-medium rounded text-sm transition-colors cursor-pointer border border-zinc-800 flex items-center justify-center gap-2"
-                >
-                  📋 Copy Progress Payload
-                </button>
-                <p class="text-2xs text-zinc-500">Copies your due N5 progress rules so the AI can compile matching cards.</p>
-              </div>
-
-              <form @submit=${handleImport} class="space-y-2 pt-2 border-t border-zinc-900">
-                <span class="text-xs font-semibold text-zinc-400 uppercase tracking-wider block">2. Import Session</span>
-                <textarea
-                  @input=${(e: Event) => { pasteValue = (e.target as HTMLTextAreaElement).value; }}
-                  placeholder="Paste the compiled JSON session payload here..."
-                  class="w-full h-24 px-3 py-2 bg-zinc-900 border border-zinc-800 rounded text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-zinc-700 text-xs font-mono"
-                ></textarea>
-                
-                ${importError ? html`<p class="text-xs text-red-400 font-medium">${importError}</p>` : ""}
-
-                <button 
-                  type="submit"
-                  class="w-full py-2.5 bg-green-650 hover:bg-green-600 text-white font-bold rounded text-sm transition-colors cursor-pointer"
-                >
-                  🚀 Import & Start Study
-                </button>
-              </form>
-            </div>
-          </div>
-
-                    <!-- Study Progress / Stats Card -->
-          <div class="p-6 bg-zinc-950 border border-zinc-800 rounded-lg shadow-sm space-y-4 flex flex-col justify-between">
-            <div>
-              <h2 class="text-lg font-semibold text-zinc-200">Study Progress</h2>
-              <div class="space-y-3 text-sm text-zinc-400 mt-4">
-                <div class="flex justify-between border-b border-zinc-900 pb-2">
-                  <span>Total Studied Rules</span>
-                  <span class="text-zinc-200 font-semibold">N5 Catalog Active</span>
-                </div>
-                <div class="flex justify-between border-b border-zinc-900 pb-2">
-                  <span>Sync Outbox Queue</span>
-                  <span class="text-zinc-200">Local-first enabled</span>
-                </div>
-              </div>
-
-              <button 
-                @click=${toggleQueue}
-                class="w-full mt-4 py-2 bg-zinc-900 hover:bg-zinc-850 text-zinc-300 hover:text-white rounded text-xs font-medium border border-zinc-800 transition-colors cursor-pointer flex items-center justify-center gap-2"
-              >
-                ${showQueue ? "🙈 Hide Active Queue" : "👁️ View Active Queue"}
-              </button>
-
-              ${showQueue ? html`
-                <div class="mt-4 p-3 bg-zinc-900/60 border border-zinc-900 rounded-lg space-y-2 animate-fade-in">
-                  <span class="text-xs font-semibold text-zinc-400 uppercase tracking-wider block">Due Queue (${displayQueue.length} rules)</span>
-                  <div class="divide-y divide-zinc-900/80 max-h-40 overflow-y-auto pr-1">
-                    ${displayQueue.map(item => html`
-                      <div class="py-2 flex items-center justify-between text-xs">
-                        <div class="flex items-center gap-2">
-                          <span class="px-1.5 py-0.5 bg-zinc-850 text-green-400 font-bold rounded border border-zinc-800">${item.name}</span>
-                          <span class="text-zinc-500">Reps: ${item.repetitions}</span>
-                        </div>
-                        <span class="text-zinc-500">Next: ${new Date(item.nextReview).toLocaleDateString()}</span>
-                      </div>
-                    `)}
-                  </div>
-                </div>
-              ` : ""}
-            </div>
-            <div class="p-4 bg-zinc-900/40 border border-zinc-900 rounded-lg text-xs text-zinc-400 leading-relaxed">
-              💡 <strong>Handshake Flow</strong>: Click "Copy Progress", paste it to your language tutor bot to generate your daily review cards, then paste the returned JSON back here to review with zero latency.
-            </div>
-          </div>
-        </div>
-      </div>
-    `
+    template: html`<study-desk></study-desk>`
   };
 };
 

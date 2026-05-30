@@ -4,6 +4,31 @@ import { activeSessionStore, type SessionCard, type FuriganaSegment } from "./ac
 import { clientLog } from "../clientLog";
 import kaishiPool from "./kaishiPool.json";
 
+export const GRAMMAR_POINT_NAMES: Record<string, string> = {
+  "e0eebc99-9c0b-4ef8-bb6d-6bb9bd380e55": "だ",
+  "f0eebc99-9c0b-4ef8-bb6d-6bb9bd380f66": "です",
+  "00eebc99-9c0b-4ef8-bb6d-6bb9bd381a11": "は",
+  "11eebc99-9c0b-4ef8-bb6d-6bb9bd381b22": "も",
+  "22eebc99-9c0b-4ef8-bb6d-6bb9bd381c33": "に",
+  "33eebc99-9c0b-4ef8-bb6d-6bb9bd381d44": "で",
+  "44eebc99-9c0b-4ef8-bb6d-6bb9bd381e55": "を",
+  "55eebc99-9c0b-4ef8-bb6d-6bb9bd381f66": "が",
+  "66eebc99-9c0b-4ef8-bb6d-6bb9bd382a11": "から",
+  "77eebc99-9c0b-4ef8-bb6d-6bb9bd382b22": "まで",
+  "88eebc99-9c0b-4ef8-bb6d-6bb9bd382c33": "と",
+  "99eebc99-9c0b-4ef8-bb6d-6bb9bd382d44": "よ",
+  "aaeebc99-9c0b-4ef8-bb6d-6bb9bd382e55": "ね",
+  "bbeebc99-9c0b-4ef8-bb6d-6bb9bd382f66": "～んです",
+  "cceebc99-9c0b-4ef8-bb6d-6bb9bd383a11": "の",
+  "ddeebc99-9c0b-4ef8-bb6d-6bb9bd383b22": "けど",
+  "eeeebc99-9c0b-4ef8-bb6d-6bb9bd383c33": "って",
+  "01eebc99-9c0b-4ef8-bb6d-6bb9bd383d44": "とか",
+  "02eebc99-9c0b-4ef8-bb6d-6bb9bd383e55": "ちゃう",
+  "03eebc99-9c0b-4ef8-bb6d-6bb9bd383f66": "とく",
+  "04eebc99-9c0b-4ef8-bb6d-6bb9bd384a11": "なきゃ",
+  "05eebc99-9c0b-4ef8-bb6d-6bb9bd384b22": "みたい"
+};
+
 export interface ExportedGrammarProgress {
   readonly grammar_point_id: string;
   readonly formal_name: string;
@@ -18,7 +43,7 @@ export interface ExportPayload {
 }
 
 /**
- * Collects N5 grammar states from IndexedDB and copies a lightweight payload to the clipboard
+ * Collects N5/N4 grammar states from IndexedDB and copies a lightweight payload to the clipboard
  */
 export const generateExportPayload = () =>
   Effect.gen(function* () {
@@ -32,8 +57,7 @@ export const generateExportPayload = () =>
     // Map progress indicators
     const queue: ExportedGrammarProgress[] = localProgress.map((p) => ({
       grammar_point_id: p.id,
-      formal_name: p.id === "e0eebc99-9c0b-4ef8-bb6d-6bb9bd380e55" ? "だ" :
-                   p.id === "f0eebc99-9c0b-4ef8-bb6d-6bb9bd380f66" ? "です" : "は",
+      formal_name: GRAMMAR_POINT_NAMES[p.id] || "は",
       repetitions: p.repetitions,
       ease_factor: p.easeFactor,
     }));
@@ -43,14 +67,33 @@ export const generateExportPayload = () =>
       queue.push(
         { grammar_point_id: "e0eebc99-9c0b-4ef8-bb6d-6bb9bd380e55", formal_name: "だ", repetitions: 0, ease_factor: 2.5 },
         { grammar_point_id: "f0eebc99-9c0b-4ef8-bb6d-6bb9bd380f66", formal_name: "です", repetitions: 0, ease_factor: 2.5 },
-        { grammar_point_id: "00eebc99-9c0b-4ef8-bb6d-6bb9bd381a11", formal_name: "は", repetitions: 0, ease_factor: 2.5 }
+        { grammar_point_id: "00eebc99-9c0b-4ef8-bb6d-6bb9bd381a11", formal_name: "は", repetitions: 0, ease_factor: 2.5 },
+        { grammar_point_id: "11eebc99-9c0b-4ef8-bb6d-6bb9bd381b22", formal_name: "も", repetitions: 0, ease_factor: 2.5 },
+        { grammar_point_id: "22eebc99-9c0b-4ef8-bb6d-6bb9bd381c33", formal_name: "に", repetitions: 0, ease_factor: 2.5 },
+        { grammar_point_id: "33eebc99-9c0b-4ef8-bb6d-6bb9bd381d44", formal_name: "で", repetitions: 0, ease_factor: 2.5 },
+        { grammar_point_id: "44eebc99-9c0b-4ef8-bb6d-6bb9bd381e55", formal_name: "を", repetitions: 0, ease_factor: 2.5 },
+        { grammar_point_id: "55eebc99-9c0b-4ef8-bb6d-6bb9bd381f66", formal_name: "が", repetitions: 0, ease_factor: 2.5 },
+        { grammar_point_id: "66eebc99-9c0b-4ef8-bb6d-6bb9bd382a11", formal_name: "から", repetitions: 0, ease_factor: 2.5 },
+        { grammar_point_id: "77eebc99-9c0b-4ef8-bb6d-6bb9bd382b22", formal_name: "まで", repetitions: 0, ease_factor: 2.5 },
+        { grammar_point_id: "88eebc99-9c0b-4ef8-bb6d-6bb9bd382c33", formal_name: "と", repetitions: 0, ease_factor: 2.5 },
+        { grammar_point_id: "99eebc99-9c0b-4ef8-bb6d-6bb9bd382d44", formal_name: "よ", repetitions: 0, ease_factor: 2.5 },
+        { grammar_point_id: "aaeebc99-9c0b-4ef8-bb6d-6bb9bd382e55", formal_name: "ね", repetitions: 0, ease_factor: 2.5 },
+        { grammar_point_id: "bbeebc99-9c0b-4ef8-bb6d-6bb9bd382f66", formal_name: "～んです", repetitions: 0, ease_factor: 2.5 },
+        { grammar_point_id: "cceebc99-9c0b-4ef8-bb6d-6bb9bd383a11", formal_name: "の", repetitions: 0, ease_factor: 2.5 },
+        { grammar_point_id: "ddeebc99-9c0b-4ef8-bb6d-6bb9bd383b22", formal_name: "けど", repetitions: 0, ease_factor: 2.5 },
+        { grammar_point_id: "eeeebc99-9c0b-4ef8-bb6d-6bb9bd383c33", formal_name: "って", repetitions: 0, ease_factor: 2.5 },
+        { grammar_point_id: "01eebc99-9c0b-4ef8-bb6d-6bb9bd383d44", formal_name: "とか", repetitions: 0, ease_factor: 2.5 },
+        { grammar_point_id: "02eebc99-9c0b-4ef8-bb6d-6bb9bd383e55", formal_name: "ちゃう", repetitions: 0, ease_factor: 2.5 },
+        { grammar_point_id: "03eebc99-9c0b-4ef8-bb6d-6bb9bd383f66", formal_name: "とく", repetitions: 0, ease_factor: 2.5 },
+        { grammar_point_id: "04eebc99-9c0b-4ef8-bb6d-6bb9bd384a11", formal_name: "なきゃ", repetitions: 0, ease_factor: 2.5 },
+        { grammar_point_id: "05eebc99-9c0b-4ef8-bb6d-6bb9bd384b22", formal_name: "みたい", repetitions: 0, ease_factor: 2.5 }
       );
     }
 
     const queueLength = queue.length;
 
     const promptInstructions = `You are a professional, native Japanese language tutor and structural linguist. Your task is to act as an offline-first Sentence Generator.
-Use the N5 grammar queue and the 'vocabulary_pool' below to generate exactly ${queueLength} unique review cards (exactly 1 unique card for each of the ${queueLength} grammar points in the queue).
+Use the N5/N4 grammar queue and the 'vocabulary_pool' below to generate exactly ${queueLength} unique review cards (exactly 1 unique card for each of the ${queueLength} grammar points in the queue).
 
 CRITICAL CONSTRAINTS:
 1. You must ONLY use Japanese nouns, verbs, adjectives, and adverbs listed in the 'vocabulary_pool'. Do NOT use any outside vocabulary under any circumstances.

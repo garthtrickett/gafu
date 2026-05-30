@@ -3,7 +3,7 @@ import { customElement, state } from "lit/decorators.js";
 import { effect } from "@preact/signals-core";
 import { grammarPointStore } from "../lib/client/stores/grammarPointStore";
 import { logout } from "../lib/client/stores/authStore";
-import { generateExportPayload, importSessionPayload } from "../lib/client/stores/sessionSyncStore";
+import { generateExportPayload, importSessionPayload, GRAMMAR_POINT_NAMES } from "../lib/client/stores/sessionSyncStore";
 import { clientLog } from "../lib/client/clientLog";
 import { runClientUnscoped } from "../lib/client/runtime";
 import { navigate } from "../lib/client/router";
@@ -26,12 +26,13 @@ export class StudyDesk extends LitElement {
     return this;
   }
 
-  override connectedCallback() {
+    override connectedCallback() {
     super.connectedCallback();
     runClientUnscoped(grammarPointStore.load());
     
     this._disposeEffect = effect(() => {
-      void grammarPointStore.state.value;
+      const count = grammarPointStore.state.value.length;
+      runClientUnscoped(clientLog("info", `[StudyDesk] grammarPointStore state updated, count: ${count}`));
       this.requestUpdate();
     });
   }
@@ -76,7 +77,7 @@ export class StudyDesk extends LitElement {
 
     runClientUnscoped(
       importSessionPayload(this.pasteValue).pipe(
-        Effect.andThen(() => navigate("/study")),
+        Effect.andThen(() => navigate("study")),
         Effect.catchAll((err) => {
           this.importError = err instanceof Error ? err.message : String(err);
           return clientLog("error", "Import failed", err);
@@ -92,15 +93,22 @@ export class StudyDesk extends LitElement {
   override render() {
     const displayQueue = grammarPointStore.state.value.length > 0
       ? grammarPointStore.state.value.map(p => ({
-          name: p.id === "e0eebc99-9c0b-4ef8-bb6d-6bb9bd380e55" ? "だ" :
-                p.id === "f0eebc99-9c0b-4ef8-bb6d-6bb9bd380f66" ? "です" : "は",
+          name: GRAMMAR_POINT_NAMES[p.id] || "は",
           repetitions: p.repetitions,
           nextReview: p.nextReview
         }))
       : [
           { name: "だ", repetitions: 0, nextReview: new Date().toISOString() },
           { name: "です", repetitions: 0, nextReview: new Date().toISOString() },
-          { name: "は", repetitions: 0, nextReview: new Date().toISOString() }
+          { name: "は", repetitions: 0, nextReview: new Date().toISOString() },
+          { name: "も", repetitions: 0, nextReview: new Date().toISOString() },
+          { name: "に", repetitions: 0, nextReview: new Date().toISOString() },
+          { name: "で", repetitions: 0, nextReview: new Date().toISOString() },
+          { name: "を", repetitions: 0, nextReview: new Date().toISOString() },
+          { name: "が", repetitions: 0, nextReview: new Date().toISOString() },
+          { name: "から", repetitions: 0, nextReview: new Date().toISOString() },
+          { name: "まで", repetitions: 0, nextReview: new Date().toISOString() },
+          { name: "と", repetitions: 0, nextReview: new Date().toISOString() }
         ];
 
     return html`
@@ -122,7 +130,7 @@ export class StudyDesk extends LitElement {
           <!-- Setup Wizard Deck Card (Manual Handshake Compiler) -->
           <div class="p-6 bg-zinc-950 border border-zinc-800 rounded-lg shadow-sm space-y-5">
             <div>
-              <h2 class="text-lg font-semibold text-zinc-200">Conversational Japanese N5</h2>
+              <h2 class="text-lg font-semibold text-zinc-200">Conversational Japanese</h2>
               <p class="text-sm text-zinc-400 mt-1">Essential survival phrases and foundational grammar.</p>
             </div>
 
@@ -198,7 +206,7 @@ export class StudyDesk extends LitElement {
               ` : ""}
             </div>
             <div class="p-4 bg-zinc-900/40 border border-zinc-900 rounded-lg text-xs text-zinc-400 leading-relaxed">
-              💡 <strong>Handshake Flow</strong>: Click "Copy Progress", paste it to your language tutor bot to generate your daily review cards, then paste the returned JSON back here to review with zero latency.
+              💡 <strong>Handshake Flow</strong>: Click \"Copy Progress\", paste it to your language tutor bot to generate your daily review cards, then paste the returned JSON back here to review with zero latency.
             </div>
           </div>
         </div>

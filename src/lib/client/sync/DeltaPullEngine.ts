@@ -10,23 +10,22 @@ const syncMetadataStore = createStore(DB_NAME, STORE_NAME);
 const LAST_PULL_KEY = "last_pull_timestamp";
 
 interface DeltaResponse {
-    readonly serverTimestamp: number;
-     readonly decks: Array<{
-          readonly id: string;
-              readonly name: string;
-                  readonly category: string;
-                      readonly content: unknown;
-                        }>;
-                          readonly srsUpdates: Array<{
-                                readonly id: string;
-                                  readonly front: string;
-                                    readonly back: string;    readonly easeFactor: number;    readonly repetitions: number;
-                                       readonly intervalDays: number;
-                                           readonly nextReview: string;
-                                           readonly audioUrl?: string | null;
-                                             }>;
-
-                                           }
+  readonly serverTimestamp: number;
+  readonly decks: Array<{
+    readonly id: string;
+    readonly name: string;
+    readonly category: string;
+    readonly content: unknown;
+  }>;
+  readonly srsUpdates: Array<{
+    readonly id: string;
+    readonly grammarPointId: string;
+    readonly easeFactor: number;
+    readonly repetitions: number;
+    readonly intervalDays: number;
+    readonly nextReview: string;
+  }>;
+}
 
 const getStoredPullTimestamp = (): Promise<number> => {
   return get<number>(LAST_PULL_KEY, syncMetadataStore).then((ts) => ts || 0);
@@ -53,10 +52,26 @@ export const executeDeltaPull = () =>
       return;
     }
 
-    const lastPull = yield* Effect.tryPromise({
+    let lastPull = yield* Effect.tryPromise({
       try: () => getStoredPullTimestamp(),
       catch: (e) => e,
     });
+
+    // Dynamic store imports to prevent circular dependencies
+    const { deckStore } = yield* Effect.promise(() => import("../stores/deckStore"));
+    const { srsStore } = yield* Effect.promise(() => import("../stores/srsStore"));
+    const { grammarPointStore } = yield* Effect.promise(() => import("../stores/grammarPointStore"));
+
+    // Self-healing: If our local stores are completely empty but we have a non-zero lastPull timestamp,
+    // it's highly likely the server database was wiped/reset. Let's force a full sync (since=0).
+    const deckCount = deckStore.state.peek().length;
+    const gpCount = grammarPointStore.state.peek().length;
+    yield* clientLog("info", `[DeltaPull] Local state inspection - deckCount: ${deckCount}, gpCount: ${gpCount}, lastPull: ${lastPull}`);
+    
+    if (lastPull > 0 && deckCount === 0 && gpCount === 0) {
+      yield* clientLog("warn", "[DeltaPull] Local stores are empty but lastPull is non-zero. Forcing full sync (since=0) to heal from server reset.");
+      lastPull = 0;
+    }
 
     yield* clientLog("info", `[DeltaPull] Executing pull request (Since: ${lastPull})...`);
 
@@ -84,19 +99,35 @@ export const executeDeltaPull = () =>
       catch: (e) => new Error(`Invalid JSON received from pull: ${String(e)}`),
     }));
 
+    yield* clientLog("info", `[DeltaPull] Received pull payload - Decks: ${delta.decks.length}, SRS updates: ${delta.srsUpdates.length}, serverTimestamp: ${delta.serverTimestamp}`);
+
     // Process and dispatch updates to local stores if payload contains updates
     if (delta.decks.length > 0 || delta.srsUpdates.length > 0) {
       yield* clientLog("info", `[DeltaPull] Applying updates: ${delta.decks.length} decks, ${delta.srsUpdates.length} SRS metrics.`);
       
-      // Dynamic store imports to prevent circular dependencies
-      const { deckStore } = yield* Effect.promise(() => import("../stores/deckStore"));
-      const { srsStore } = yield* Effect.promise(() => import("../stores/srsStore"));
-
       if (delta.decks.length > 0) {
         yield* deckStore.putAll(delta.decks);
       }
       if (delta.srsUpdates.length > 0) {
-        yield* srsStore.putAll(delta.srsUpdates);
+        // Hydrate srsStore
+        yield* srsStore.putAll(delta.srsUpdates.map(u => ({
+          id: u.id,
+          front: "",
+          back: "",
+          easeFactor: u.easeFactor,
+          repetitions: u.repetitions,
+          intervalDays: u.intervalDays,
+          nextReview: u.nextReview
+        })));
+
+        // Hydrate grammarPointStore mapped by grammarPointId
+        yield* grammarPointStore.putAll(delta.srsUpdates.map(u => ({
+          id: u.grammarPointId,
+          easeFactor: u.easeFactor,
+          repetitions: u.repetitions,
+          intervalDays: u.intervalDays,
+          nextReview: u.nextReview
+        })));
       }
     }
 
