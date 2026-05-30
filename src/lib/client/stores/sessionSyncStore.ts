@@ -125,7 +125,7 @@ export const generateExportPayload = () =>
       );
     }
 
-    let finalQueue = queue;
+    const finalQueue = queue;
     const queueLength = finalQueue.length;
 
     const promptInstructions = `You are a professional, native Japanese language tutor and structural linguist. Your task is to act as an offline-first Sentence Generator.

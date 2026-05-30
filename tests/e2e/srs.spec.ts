@@ -2,7 +2,7 @@ import { test, expect } from "./utils/base-test";
 import { createVerifiedSubscriber, cleanupTestUser } from "./utils/seed";
 import { Kysely, PostgresDialect } from "kysely";
 import { Pool } from "pg";
-import type { Database, SrsCardId } from "../../src/types";
+import type { Database, SrsCardId, UserId } from "../../src/types";
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL_TEST || process.env.DATABASE_URL_LOCAL || process.env.DATABASE_URL,
@@ -13,7 +13,7 @@ const db = new Kysely<Database>({
 });
 
 test.describe("SRS Pacing, Daily Cap, and Mastery Gating E2E Flow", () => {
-  let testUser: any;
+  let testUser: { email: string; password: string; userId: UserId } | undefined;
 
   test.beforeEach(async () => {
     testUser = await createVerifiedSubscriber();
@@ -32,6 +32,10 @@ test.describe("SRS Pacing, Daily Cap, and Mastery Gating E2E Flow", () => {
   });
 
   test("should enforce lock-step daily pacing and caps during study desk operations", async ({ page }) => {
+    if (!testUser) {
+      throw new Error("testUser is undefined");
+    }
+
     // 1. Authenticate the test user
     await page.goto("/login");
     await page.locator("#email").fill(testUser.email);
@@ -67,6 +71,10 @@ test.describe("SRS Pacing, Daily Cap, and Mastery Gating E2E Flow", () => {
   });
 
   test("should enforce the 20-card review cap and partition excess due rules into the snoozed backlog", async ({ page }) => {
+    if (!testUser) {
+      throw new Error("testUser is undefined");
+    }
+
     // 1. Retrieve N5 abstract grammar points to mock the user's progress records
     const grammarPoints = await db
       .selectFrom("grammar_point")
@@ -78,7 +86,7 @@ test.describe("SRS Pacing, Daily Cap, and Mastery Gating E2E Flow", () => {
 
     // 2. Pre-seed the database with 30 due srs_card records for this user (all due in the past)
     const pastDate = new Date(Date.now() - 3600000); // 1h in past
-        const srsCards = grammarPoints.map((gp, i) => ({
+        const srsCards = grammarPoints.map((gp) => ({
       id: crypto.randomUUID() as SrsCardId,
       user_id: testUser.userId,
       grammar_point_id: gp.id,
