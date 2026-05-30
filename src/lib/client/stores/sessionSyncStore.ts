@@ -102,7 +102,7 @@ export const generateExportPayload = () =>
     const queueLength = finalQueue.length;
 
     const promptInstructions = `You are a professional, native Japanese language tutor and structural linguist. Your task is to act as an offline-first Sentence Generator.
-Use the N5/N4 grammar queue and the 'vocabulary_pool' below to generate exactly 15 unique review cards (exactly 1 unique card for each of the next 15 due cards from the grammar points in the queue).
+Use the N5/N4 grammar queue and the 'vocabulary_pool' below to generate exactly 30 unique review cards (exactly 1 unique card for each of the next 30 due cards from the grammar points in the queue).
 
 CRITICAL CONSTRAINTS:
 1. You must ONLY use Japanese nouns, verbs, adjectives, and adverbs listed in the 'vocabulary_pool'. Do NOT use any outside vocabulary under any circumstances.
