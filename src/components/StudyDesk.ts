@@ -257,7 +257,7 @@ export class StudyDesk extends LitElement {
               ` : ""}
             </div>
             <div class="p-4 bg-zinc-900/40 border border-zinc-900 rounded-lg text-xs text-zinc-400 leading-relaxed">
-              💡 <strong>Handshake Flow</strong>: Click \"Copy Progress\", paste it to your language tutor bot to generate your daily review cards, then paste the returned JSON back here to review with zero latency.
+              💡 <strong>Handshake Flow</strong>: Click \"Copy Progress\", paste it to your https://aistudio.google.com with 3.5 Flash selected in the playground to generate your daily review cards, then paste the returned JSON back here to review with zero latency.
             </div>
           </div>
         </div>

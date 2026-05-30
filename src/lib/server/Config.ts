@@ -6,9 +6,6 @@ const getEnv = (key: string): string => {
   return value;
 };
 
-const getEnvOptional = (key: string): string | undefined => {
-  return process.env[key];
-};
 
 const getEnvOrDefault = (key: string, defaultValue: string): string => {
   return process.env[key] || defaultValue;
