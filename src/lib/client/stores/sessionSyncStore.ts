@@ -31,7 +31,7 @@ export const generateExportPayload = () =>
     const localProgress = grammarPointStore.state.peek();
     const catalog = grammarPointCatalogStore.state.peek();
     
-    // Map progress indicators dynamically matching against the local catalog store
+        // Map progress indicators dynamically matching against the local catalog store
     const queue: ExportedGrammarProgress[] = localProgress.map((p) => {
       const match = catalog.find((c) => c.id === p.id);
       return {
@@ -41,6 +41,26 @@ export const generateExportPayload = () =>
         ease_factor: p.easeFactor,
       };
     });
+
+    // GATING & EXPANSION: If the active review cycle has fewer than 15 rules,
+    // look ahead and pull the next 5 locked (unstudied) grammar points from the catalog.
+    if (queue.length < 15) {
+      yield* clientLog("info", `[SessionSync] Active queue size (${queue.length}) is below threshold of 15. Appending new catalog rules...`);
+      const activeIds = new Set(localProgress.map((p) => p.id));
+      const unstudied = catalog.filter((c) => !activeIds.has(c.id));
+      
+      // Slice the first 5 unstudied rules (the relative sequence is preserved in catalog seed order)
+      const nextIntroductions = unstudied.slice(0, 5);
+      
+      for (const item of nextIntroductions) {
+        queue.push({
+          grammar_point_id: item.id,
+          formal_name: item.formal_name,
+          repetitions: 0,
+          ease_factor: 2.5,
+        });
+      }
+    }
     
     // Fallback if the local database has not been initialized with reviews yet
     if (queue.length === 0) {
