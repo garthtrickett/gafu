@@ -102,16 +102,19 @@ export const executeDeltaPull = () =>
       return yield* Effect.fail(new Error(`Server returned HTTP ${response.status}`));
     }
 
-    const delta = (yield* Effect.tryPromise({
+        const delta = (yield* Effect.tryPromise({
       try: () => response.json() as Promise<DeltaResponse>,
       catch: (e) => new Error(`Invalid JSON received from pull: ${String(e)}`),
     }));
 
-    yield* clientLog("info", `[DeltaPull] Received pull payload - Decks: ${delta.decks.length}, SRS updates: ${delta.srsUpdates.length}, Grammar Points: ${delta.grammarPoints?.length || 0}, serverTimestamp: ${delta.serverTimestamp}`);
-
-        const decksLen = delta?.decks?.length ?? 0;
+    const decksLen = delta?.decks?.length ?? 0;
     const srsUpdatesLen = delta?.srsUpdates?.length ?? 0;
     const gpLen = delta?.grammarPoints?.length ?? 0;
+
+    yield* clientLog(
+      "info",
+      `[DeltaPull] Received pull payload - Decks: ${decksLen}, SRS updates: ${srsUpdatesLen}, Grammar Points: ${gpLen}, serverTimestamp: ${delta?.serverTimestamp}`
+    );
 
     // Process and dispatch updates to local stores if payload contains updates
     if (decksLen > 0 || srsUpdatesLen > 0 || gpLen > 0) {
@@ -153,8 +156,8 @@ export const executeDeltaPull = () =>
       }
     }
 
-    yield* Effect.tryPromise({
-      try: () => savePullTimestamp(delta.serverTimestamp),
+        yield* Effect.tryPromise({
+      try: () => savePullTimestamp(delta?.serverTimestamp ?? Date.now()),
       catch: (e) => e,
     });
 
