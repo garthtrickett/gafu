@@ -71,3 +71,5 @@ export const cleanupTestUser = async (data: { userId?: string }) => {
     await db.deleteFrom("user").where("id", "=", data.userId as UserId).execute();
   }
 };
+
+export const getTestConnectionString = () => connectionString;

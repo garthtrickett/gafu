@@ -22,3 +22,48 @@ describe("StudySession SRS calculations", () => {
     expect(result.easeFactor).toBe(2.6); 
   });
 });
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import "./StudySession";
+import { StudySession } from "./StudySession";
+
+describe("StudySession Component State Logic", () => {
+  let element: StudySession;
+
+  beforeEach(() => {
+    element = document.createElement("study-session") as StudySession;
+    document.body.appendChild(element);
+  });
+
+  afterEach(() => {
+    element.remove();
+  });
+
+  it("should default explanationVisible to false", () => {
+    const controller = (element as any).controller;
+    expect(controller.model.explanationVisible).toBe(false);
+  });
+
+  it("should toggle explanationVisible when TOGGLE_EXPLANATION is proposed", async () => {
+    const controller = (element as any).controller;
+    controller.propose({ type: "TOGGLE_EXPLANATION" });
+    
+    // Allow the async action queue to process
+    await new Promise((resolve) => setTimeout(resolve, 15));
+    expect(controller.model.explanationVisible).toBe(true);
+
+    controller.propose({ type: "TOGGLE_EXPLANATION" });
+    await new Promise((resolve) => setTimeout(resolve, 15));
+    expect(controller.model.explanationVisible).toBe(false);
+  });
+
+  it("should reset explanationVisible to false when SUBMIT_GRADE is proposed", async () => {
+    const controller = (element as any).controller;
+    controller.propose({ type: "TOGGLE_EXPLANATION" });
+    await new Promise((resolve) => setTimeout(resolve, 15));
+    expect(controller.model.explanationVisible).toBe(true);
+
+    controller.propose({ type: "SUBMIT_GRADE", grammarPointId: "gp-123", isCorrect: true });
+    await new Promise((resolve) => setTimeout(resolve, 15));
+    expect(controller.model.explanationVisible).toBe(false);
+  });
+});
