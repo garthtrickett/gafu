@@ -141,6 +141,7 @@ interface ImportedCard {
   readonly japanese_sentence?: string;
   readonly furigana?: readonly FuriganaSegment[];
   readonly audio_url?: string | null;
+  readonly explanation?: string;
 }
 
 interface ImportedPayload {
@@ -226,12 +227,13 @@ export const importSessionPayload = (jsonString: string) =>
             activeIds.add(gpId);
           }
 
-          sessionCards.push({
+                    sessionCards.push({
             grammarPointId: gpId,
             englishContext: card.english_context,
             japaneseSentence: card.japanese_sentence,
             furigana: card.furigana || [],
             audioUrl: card.audio_url || null,
+            explanation: card.explanation,
           });
         }
 

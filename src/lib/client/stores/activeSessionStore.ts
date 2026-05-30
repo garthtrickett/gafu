@@ -11,6 +11,7 @@ export interface SessionCard {
   readonly japaneseSentence: string;
   readonly furigana: readonly FuriganaSegment[];
   readonly audioUrl?: string | null;
+  readonly explanation?: string;
 }
 
 const BATCH_SIZE = 15;
