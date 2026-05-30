@@ -44,7 +44,7 @@ export class StudyDesk extends LitElement {
     this._disposeEffect?.();
   }
 
-  private triggerExport(e: Event) {
+    private triggerExport = (e: Event) => {
     const btn = e.target as HTMLButtonElement;
     const originalText = btn.textContent || "";
     btn.textContent = "⏱️ Compiling...";
@@ -66,9 +66,9 @@ export class StudyDesk extends LitElement {
         })
       )
     );
-  }
+  };
 
-  private handleImport(e: Event) {
+  private handleImport = (e: Event) => {
     e.preventDefault();
     this.importError = null;
 
@@ -86,11 +86,11 @@ export class StudyDesk extends LitElement {
         })
       )
     );
-  }
+  };
 
-  private toggleQueue() {
+  private toggleQueue = () => {
     this.showQueue = !this.showQueue;
-  }
+  };
 
   override render() {
     const catalog = grammarPointCatalogStore.state.value;
