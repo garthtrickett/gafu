@@ -1,7 +1,12 @@
 import { Effect } from "effect";
-import { grammarPointStore, grammarPointCatalogStore } from "./grammarPointStore";
-import { activeSessionStore, type SessionCard, type FuriganaSegment } from "./activeSessionStore";
-import { clientLog } from "../clientLog";
+import {
+  grammarPointStore,
+  grammarPointCatalogStore,
+  canUnlockMoreRules,
+  getDailyUnlockAllowance
+} from "./grammarPointStore.ts";
+import { activeSessionStore, type SessionCard, type FuriganaSegment } from "./activeSessionStore.ts";
+import { clientLog } from "../clientLog.ts";
 import kaishiPool from "./kaishiPool.json";
 
 export interface ExportedGrammarProgress {
@@ -31,8 +36,17 @@ export const generateExportPayload = () =>
     const localProgress = grammarPointStore.state.peek();
     const catalog = grammarPointCatalogStore.state.peek();
     
+    const now = new Date();
+
+    // 1. Filter active rules where nextReview <= now, sort by oldest first, and slice top 15
+    const activeDueProgress = localProgress
+      .filter((p) => new Date(p.nextReview).getTime() <= now.getTime())
+      .sort((a, b) => new Date(a.nextReview).getTime() - new Date(b.nextReview).getTime());
+
+    const activeDueSliced = activeDueProgress.slice(0, 15);
+    
     // Map progress indicators dynamically matching against the local catalog store
-    const queue: ExportedGrammarProgress[] = localProgress.map((p) => {
+    const queue: ExportedGrammarProgress[] = activeDueSliced.map((p) => {
       const match = catalog.find((c) => c.id === p.id);
       return {
         grammar_point_id: p.id,
@@ -42,28 +56,49 @@ export const generateExportPayload = () =>
       };
     });
 
-    // GATING & EXPANSION: If the active review cycle has fewer than 15 rules,
-    // look ahead and pull the next 5 locked (unstudied) grammar points from the catalog.
-    if (queue.length < 15) {
-      yield* clientLog("info", `[SessionSync] Active queue size (${queue.length}) is below threshold of 15. Appending new catalog rules...`);
-      const activeIds = new Set(localProgress.map((p) => p.id));
-      const unstudied = catalog.filter((c) => !activeIds.has(c.id));
-      
-      // Slice the first 5 unstudied rules (the relative sequence is preserved in catalog seed order)
-      const nextIntroductions = unstudied.slice(0, 5);
-      
-      for (const item of nextIntroductions) {
-        queue.push({
-          grammar_point_id: item.id,
-          formal_name: item.formal_name,
-          repetitions: 0,
-          ease_factor: 2.5,
-        });
+    // 2. Evaluate unlock eligibility. If allowed, look ahead in the catalog and append up to the daily unlock allowance (max 3) of unstudied rules
+    const eligible = canUnlockMoreRules(localProgress);
+    if (eligible) {
+      const allowance = getDailyUnlockAllowance(localProgress, 3);
+      if (allowance > 0) {
+        yield* clientLog("info", `[SessionSync] User is eligible for new rules. Remaining allowance today: ${allowance}`);
+        const activeIds = new Set(localProgress.map((p) => p.id));
+        const unstudied = catalog.filter((c) => !activeIds.has(c.id));
+        
+        const nextIntroductions = unstudied.slice(0, allowance);
+        if (nextIntroductions.length > 0) {
+          yield* clientLog("info", `[SessionSync] Unlocking ${nextIntroductions.length} new grammar points.`);
+          
+          const newProgressRecords = nextIntroductions.map((item) => ({
+            id: item.id,
+            easeFactor: 2.5,
+            repetitions: 0,
+            intervalDays: 0,
+            nextReview: now.toISOString(),
+            unlockedAt: now.toISOString(),
+          }));
+          
+          // Save these new rules to grammarPointStore immediately so they count toward today's limit
+          yield* grammarPointStore.putAll(newProgressRecords);
+          
+          for (const item of nextIntroductions) {
+            queue.push({
+              grammar_point_id: item.id,
+              formal_name: item.formal_name,
+              repetitions: 0,
+              ease_factor: 2.5,
+            });
+          }
+        }
+      } else {
+        yield* clientLog("info", "[SessionSync] Daily unlock allowance exhausted (3 rules maximum per 24 hours). No new rules will be introduced today.");
       }
+    } else {
+      yield* clientLog("info", "[SessionSync] User is not eligible for new rules because less than 80% of active learning rules are mastered.");
     }
     
-        // Fallback if the local database has not been initialized with reviews yet
-    if (queue.length === 0) {
+    // Fallback if the local database has not been initialized with reviews yet and catalog is empty
+    if (queue.length === 0 && catalog.length === 0) {
       queue.push(
         { grammar_point_id: "e0eebc99-9c0b-4ef8-bb6d-6bb9bd380e55", formal_name: "だ", repetitions: 0, ease_factor: 2.5 },
         { grammar_point_id: "00eebc99-9c0b-4ef8-bb6d-6bb9bd381a11", formal_name: "は", repetitions: 0, ease_factor: 2.5 },
@@ -90,15 +125,7 @@ export const generateExportPayload = () =>
       );
     }
 
-    // Limit the queue to a maximum of 40 elements to prevent context/token overload in the LLM
     let finalQueue = queue;
-    if (queue.length > 40) {
-      yield* clientLog("info", `[SessionSync] Active queue size (${queue.length}) exceeds maximum limit of 40. Slicing queue to first 40 entries to prevent token exhaustion and timeouts.`);
-      finalQueue = queue.slice(0, 40);
-    } else {
-      yield* clientLog("info", `[SessionSync] Active queue size (${queue.length}) is within limits. Proceeding without slicing.`);
-    }
-
     const queueLength = finalQueue.length;
 
     const promptInstructions = `You are a professional, native Japanese language tutor and structural linguist. Your task is to act as an offline-first Sentence Generator.
