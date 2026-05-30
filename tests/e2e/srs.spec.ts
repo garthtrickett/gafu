@@ -20,6 +20,7 @@ test.describe("SRS Pacing, Daily Cap, and Mastery Gating E2E Flow", () => {
     console.log(`[E2E srs.spec.ts] E2E Resolved Database Connection String: ${connStr ? connStr.replace(/:([^@]+)@/, ":****@") : "undefined"}`);
     if (connStr) {
       process.env.DATABASE_URL = connStr;
+      process.env.USE_LOCAL_NEON_PROXY = "false";
     }
 
     const { seedDb } = await import("../../src/db/seed");

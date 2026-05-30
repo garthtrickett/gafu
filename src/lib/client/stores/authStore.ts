@@ -64,6 +64,10 @@ export const initAuth = () =>
       if (dataResult._tag === "Right") {
         userState.value = dataResult.right.user;
         yield* clientLog("info", `[AuthStore] Session recovered successfully: ${dataResult.right.user.email}`);
+        const { executeDeltaPull } = yield* Effect.promise(() => import("../sync/DeltaPullEngine.ts"));
+        yield* executeDeltaPull().pipe(
+          Effect.catchAll((err) => clientLog("error", "[AuthStore:initAuth] Immediate delta pull failed", err))
+        );
       } else {
         yield* clientLog("error", `[AuthStore] Failed to decode user profile: ${dataResult.left.message}`);
       }
@@ -110,6 +114,11 @@ export const login = (email: string, password: string) =>
     localStorage.setItem("jwt", data.token);
 
     yield* clientLog("info", `[AuthStore] Session authenticated successfully for user: ${data.user?.email}`);
+
+    const { executeDeltaPull } = yield* Effect.promise(() => import("../sync/DeltaPullEngine.ts"));
+    yield* executeDeltaPull().pipe(
+      Effect.catchAll((err) => clientLog("error", "[AuthStore:login] Immediate delta pull failed", err))
+    );
 
     yield* clientLog("debug", "[AuthStore:login] Dynamically importing router...");
     const { navigate } = yield* Effect.promise(() => import("../router.ts"));
