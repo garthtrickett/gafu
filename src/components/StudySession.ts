@@ -209,13 +209,14 @@ export class StudySession extends LitElement {
     );
   }
 
-  override render() {
+    override render() {
     const cards = activeSessionStore.state.value;
     const currentIndex = activeSessionStore.currentIndex.value;
     const isFinished = activeSessionStore.isFinished.value;
     const currentCard = activeSessionStore.currentCard.value;
+    const { explanationVisible } = this.controller.model;
 
-        if (isFinished) {
+    if (isFinished) {
       const hasMore = activeSessionStore.hasMoreBatches.value;
       if (hasMore) {
         return html`
@@ -297,15 +298,38 @@ export class StudySession extends LitElement {
               </div>
             </div>
 
-            ${currentCard.audioUrl
+                        <div class="flex items-center gap-3">
+              ${currentCard.audioUrl
+                ? html`
+                    <button
+                      @click=${() => this.controller.propose({ type: "PLAY_AUDIO", audioUrl: currentCard.audioUrl! })}
+                      class="p-2.5 bg-zinc-900 hover:bg-zinc-850 text-zinc-300 hover:text-white rounded-full transition-colors border border-zinc-800 cursor-pointer flex items-center gap-1.5 text-xs font-medium"
+                      title="Play pronunciation audio"
+                    >
+                      🔊 Listen
+                    </button>
+                  `
+                : ""}
+
+              ${currentCard.explanation
+                ? html`
+                    <button
+                      @click=${() => this.controller.propose({ type: "TOGGLE_EXPLANATION" })}
+                      class="p-2.5 bg-zinc-900 hover:bg-zinc-850 text-zinc-300 hover:text-white rounded-full transition-colors border border-zinc-800 cursor-pointer flex items-center gap-1.5 text-xs font-medium"
+                      title="Toggle grammatical explanation"
+                    >
+                      💡 ${explanationVisible ? "Hide Explanation" : "Explain"}
+                    </button>
+                  `
+                : ""}
+            </div>
+
+            ${currentCard.explanation && explanationVisible
               ? html`
-                  <button
-                    @click=${() => this.controller.propose({ type: "PLAY_AUDIO", audioUrl: currentCard.audioUrl! })}
-                    class="p-2.5 bg-zinc-900 hover:bg-zinc-850 text-zinc-300 hover:text-white rounded-full transition-colors border border-zinc-800 cursor-pointer flex items-center gap-1.5 text-xs font-medium"
-                    title="Play pronunciation audio"
-                  >
-                    🔊 Listen
-                  </button>
+                  <div class="w-full text-left p-4 bg-zinc-900/60 border border-zinc-800 rounded-lg space-y-2 animate-fade-in">
+                    <span class="text-xs font-semibold text-green-400 uppercase tracking-wider block">Grammar Explanation</span>
+                    <p class="text-xs text-zinc-300 leading-relaxed">${currentCard.explanation}</p>
+                  </div>
                 `
               : ""}
           </div>
