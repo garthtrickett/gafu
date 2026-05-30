@@ -31,7 +31,7 @@ export const generateExportPayload = () =>
     const localProgress = grammarPointStore.state.peek();
     const catalog = grammarPointCatalogStore.state.peek();
     
-        // Map progress indicators dynamically matching against the local catalog store
+    // Map progress indicators dynamically matching against the local catalog store
     const queue: ExportedGrammarProgress[] = localProgress.map((p) => {
       const match = catalog.find((c) => c.id === p.id);
       return {
@@ -90,7 +90,7 @@ export const generateExportPayload = () =>
       );
     }
 
-        // Limit the queue to a maximum of 40 elements to prevent context/token overload in the LLM
+    // Limit the queue to a maximum of 40 elements to prevent context/token overload in the LLM
     let finalQueue = queue;
     if (queue.length > 40) {
       yield* clientLog("info", `[SessionSync] Active queue size (${queue.length}) exceeds maximum limit of 40. Slicing queue to first 40 entries to prevent token exhaustion and timeouts.`);
@@ -101,8 +101,8 @@ export const generateExportPayload = () =>
 
     const queueLength = finalQueue.length;
 
-    const promptInstructions = `You are a professional, native Japanese language tutor and structural linguist. Your task is to act as an offline-first Sentence Generator.`
-Use the N5/N4 grammar queue and the 'vocabulary_pool' below to generate exactly ${queueLength} unique review cards (exactly 1 unique card for each of the ${queueLength} grammar points in the queue).
+    const promptInstructions = `You are a professional, native Japanese language tutor and structural linguist. Your task is to act as an offline-first Sentence Generator.
+Use the N5/N4 grammar queue and the 'vocabulary_pool' below to generate exactly 15 unique review cards (exactly 1 unique card for each of the next 15 due cards from the grammar points in the queue).
 
 CRITICAL CONSTRAINTS:
 1. You must ONLY use Japanese nouns, verbs, adjectives, and adverbs listed in the 'vocabulary_pool'. Do NOT use any outside vocabulary under any circumstances.
@@ -121,13 +121,13 @@ CRITICAL CONSTRAINTS:
         { "kanji": "の" },
         { "kanji": "本", "kana": "ほん" }
       ],
-            "audio_url": null,
+      "audio_url": null,
       "explanation": "A concise, high-yield linguistic explanation detailing exactly how the grammar point is being applied and translated in this specific sentence context."            
     }
   ]
 }`;
 
-        const payload: ExportPayload = {
+    const payload: ExportPayload = {
       instructions: promptInstructions,
       queue: finalQueue,
       vocabulary_pool: kaishiPool,
@@ -135,7 +135,7 @@ CRITICAL CONSTRAINTS:
 
     const jsonString = JSON.stringify(payload, null, 2);
     
-        // Write the compiled payload string directly to the user's system clipboard if API is available
+    // Write the compiled payload string directly to the user's system clipboard if API is available
     if (typeof navigator !== "undefined" && navigator.clipboard) {
       yield* Effect.tryPromise({
         try: () => navigator.clipboard.writeText(jsonString),
@@ -196,60 +196,60 @@ export const importSessionPayload = (jsonString: string) =>
       return yield* Effect.fail(new Error("Invalid session payload: 'cards' array is missing or empty."));
     }
 
-            // Load the local progress store state to identify unrecognized incoming grammar points
-        yield* grammarPointStore.load();
-        const localProgress = grammarPointStore.state.peek();
-        const activeIds = new Set(localProgress.map((p) => p.id));
-        const now = new Date();
+    // Load the local progress store state to identify unrecognized incoming grammar points
+    yield* grammarPointStore.load();
+    const localProgress = grammarPointStore.state.peek();
+    const activeIds = new Set(localProgress.map((p) => p.id));
+    const now = new Date();
 
-        const sessionCards: SessionCard[] = [];
-        for (const card of cards as readonly ImportedCard[]) {
-          if (!card.grammar_point_id || !card.english_context || !card.japanese_sentence) {
-            yield* clientLog("error", "[SessionSync] Skipping malformed card:", card);
-            return yield* Effect.fail(new Error("Invalid card schema: each card requires 'grammar_point_id', 'english_context', and 'japanese_sentence'."));
-          }
-          
-          const gpId = card.grammar_point_id;
+    const sessionCards: SessionCard[] = [];
+    for (const card of cards as readonly ImportedCard[]) {
+      if (!card.grammar_point_id || !card.english_context || !card.japanese_sentence) {
+        yield* clientLog("error", "[SessionSync] Skipping malformed card:", card);
+        return yield* Effect.fail(new Error("Invalid card schema: each card requires 'grammar_point_id', 'english_context', and 'japanese_sentence'."));
+      }
+      
+      const gpId = card.grammar_point_id;
 
-          // GATING & ACTIVATION: If an imported card belongs to a previously locked grammar point,
-          // initialize its local progress and notify the sync system of activation.
-          if (!activeIds.has(gpId)) {
-            yield* clientLog("info", `[SessionSync] Activating newly introduced grammar point ID: ${gpId}`);
-            
-            const initialProgress = {
-              id: gpId,
-              easeFactor: 2.5,
-              repetitions: 0,
-              intervalDays: 0,
-              nextReview: now.toISOString(),
-            };
-            
-            // Persist locally
-            yield* grammarPointStore.put(initialProgress);
+      // GATING & ACTIVATION: If an imported card belongs to a previously locked grammar point,
+      // initialize its local progress and notify the sync system of activation.
+      if (!activeIds.has(gpId)) {
+        yield* clientLog("info", `[SessionSync] Activating newly introduced grammar point ID: ${gpId}`);
+        
+        const initialProgress = {
+          id: gpId,
+          easeFactor: 2.5,
+          repetitions: 0,
+          intervalDays: 0,
+          nextReview: now.toISOString(),
+        };
+        
+        // Persist locally
+        yield* grammarPointStore.put(initialProgress);
 
-            // Notify backend through outbox sync transaction
-            const { enqueueTransaction } = yield* Effect.promise(() => import("../sync/OutboxQueue"));
-            yield* enqueueTransaction("record_review", {
-              grammarPointId: gpId,
-              easeFactor: 2.5,
-              repetitions: 0,
-              intervalDays: 0,
-              nextReview: initialProgress.nextReview,
-            });
+        // Notify backend through outbox sync transaction
+        const { enqueueTransaction } = yield* Effect.promise(() => import("../sync/OutboxQueue"));
+        yield* enqueueTransaction("record_review", {
+          grammarPointId: gpId,
+          easeFactor: 2.5,
+          repetitions: 0,
+          intervalDays: 0,
+          nextReview: initialProgress.nextReview,
+        });
 
-            // Prevent multiple initializations if multiple cards reference the same ID in this payload
-            activeIds.add(gpId);
-          }
+        // Prevent multiple initializations if multiple cards reference the same ID in this payload
+        activeIds.add(gpId);
+      }
 
-                    sessionCards.push({
-            grammarPointId: gpId,
-            englishContext: card.english_context,
-            japaneseSentence: card.japanese_sentence,
-            furigana: card.furigana || [],
-            audioUrl: card.audio_url || null,
-            explanation: card.explanation,
-          });
-        }
+      sessionCards.push({
+        grammarPointId: gpId,
+        englishContext: card.english_context,
+        japaneseSentence: card.japanese_sentence,
+        furigana: card.furigana || [],
+        audioUrl: card.audio_url || null,
+        explanation: card.explanation,
+      });
+    }
 
     activeSessionStore.loadSession(sessionCards);
     yield* clientLog("info", `[SessionSync] Successfully imported ${sessionCards.length} dynamic cards into active session.`);
