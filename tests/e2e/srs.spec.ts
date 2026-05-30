@@ -70,10 +70,11 @@ test.describe("SRS Pacing, Daily Cap, and Mastery Gating E2E Flow", () => {
     await expect(page.locator("text=Due Today - Daily Target (3 rules)")).toBeVisible();
   });
 
-  test("should enforce the 20-card review cap and partition excess due rules into the snoozed backlog", async ({ page }) => {
+    test("should enforce the 20-card review cap and partition excess due rules into the snoozed backlog", async ({ page }) => {
     if (!testUser) {
       throw new Error("testUser is undefined");
     }
+    const currentUser = testUser;
 
     // 1. Retrieve N5 abstract grammar points to mock the user's progress records
     const grammarPoints = await db
@@ -86,9 +87,9 @@ test.describe("SRS Pacing, Daily Cap, and Mastery Gating E2E Flow", () => {
 
     // 2. Pre-seed the database with 30 due srs_card records for this user (all due in the past)
     const pastDate = new Date(Date.now() - 3600000); // 1h in past
-        const srsCards = grammarPoints.map((gp) => ({
+            const srsCards = grammarPoints.map((gp) => ({
       id: crypto.randomUUID() as SrsCardId,
-      user_id: testUser.userId,
+      user_id: currentUser.userId,
       grammar_point_id: gp.id,
       ease_factor: 2.5,
       repetitions: 1,
