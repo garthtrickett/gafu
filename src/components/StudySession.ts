@@ -292,7 +292,7 @@ export class StudySession extends LitElement {
             </div>
 
             <div class="space-y-3 w-full border-t border-zinc-900/60 pt-6">
-              <span class="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Sentence (Furigana Rendering)</span>
+              <span class="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Sentence</span>
               <div class="p-4 bg-zinc-900/40 border border-zinc-800/40 rounded-lg flex items-center justify-center">
                 <furigana-sentence .segments=${currentCard.furigana}></furigana-sentence>
               </div>
