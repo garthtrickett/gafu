@@ -35,9 +35,10 @@ interface DeltaResponse {
     readonly difficulty_level: string;
     readonly hlc: string;
   }>;
-  readonly userPreference?: {
+    readonly userPreference?: {
     readonly dailyReviewLimit: number;
     readonly dailyNewRuleLimit: number;
+    readonly enforceMasteryGates: boolean;
     readonly hlc: string;
   };
 }
@@ -192,13 +193,14 @@ export const executeDeltaPull = () =>
         }
       }
 
-      if (delta.userPreference && userPreferencesStore) {
+            if (delta.userPreference && userPreferencesStore) {
         const existingPref = userPreferencesStore.state.peek().find(p => p.id === "settings");
         if (!existingPref || !existingPref.hlc || !delta.userPreference.hlc || delta.userPreference.hlc > existingPref.hlc) {
           yield* userPreferencesStore.put({
             id: "settings",
             dailyReviewLimit: delta.userPreference.dailyReviewLimit,
             dailyNewRuleLimit: delta.userPreference.dailyNewRuleLimit,
+            enforceMasteryGates: delta.userPreference.enforceMasteryGates,
             hlc: delta.userPreference.hlc
           });
         }

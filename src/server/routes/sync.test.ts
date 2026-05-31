@@ -259,8 +259,8 @@ describe("HLC Synchronization Causal Order Integration", () => {
       nodeId: "drifted-client"
     });
 
-    // 2. Push a preference update stamped with the future HLC
-    const pushResponse = await app.handle(
+        // 2. Push a preference update stamped with the future HLC
+    const pushResponse = await app.handle( 
       new Request("http://localhost/api/sync/push", {
         method: "POST",
         headers: {
@@ -272,7 +272,8 @@ describe("HLC Synchronization Causal Order Integration", () => {
           type: "update_preferences",
           payload: {
             dailyReviewLimit: 45,
-            dailyNewRuleLimit: 8
+            dailyNewRuleLimit: 8,
+            enforceMasteryGates: false
           },
           hlc: clientAheadHlc
         })
@@ -290,6 +291,7 @@ describe("HLC Synchronization Causal Order Integration", () => {
     const unpackedPrefHlc = unpackHlc(pref.hlc);
     expect(unpackedPrefHlc.physical).toBe(futureTime);
     expect(unpackedPrefHlc.counter).toBe(6); // should be remote.counter + 1 = 6
+    expect(pref.enforce_mastery_gates).toBe(false);
 
     // 4. Execute a pull using a slightly older HLC than the clientAheadHlc
     const olderHlc = packHlc({
@@ -309,8 +311,9 @@ describe("HLC Synchronization Causal Order Integration", () => {
     expect(pullResponse.status).toBe(200);
     const pullBody = (await pullResponse.json()) as { userPreference?: { dailyReviewLimit: number } };
     
-    // Since pref.hlc is futureTime (which is > olderHlc), it must be returned in the pull payload
+        // Since pref.hlc is futureTime (which is > olderHlc), it must be returned in the pull payload
     expect(pullBody.userPreference).toBeDefined();
     expect(pullBody.userPreference?.dailyReviewLimit).toBe(45);
+    expect(pullBody.userPreference?.enforceMasteryGates).toBe(false);
   });
 });

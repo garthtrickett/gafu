@@ -10,7 +10,9 @@ export default interface UserPreferenceTable {
 
   daily_review_limit: ColumnType<number, number | undefined, number>;
 
-  daily_new_rule_limit: ColumnType<number, number | undefined, number>;
+    daily_new_rule_limit: ColumnType<number, number | undefined, number>;
+
+  enforce_mastery_gates: ColumnType<boolean, boolean | undefined, boolean>;
 
   created_at: ColumnType<Date, Date | string | undefined, Date | string>;
 

@@ -105,20 +105,21 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
 
         if (!userPreference) {
           yield* Effect.logInfo(`[Sync:Pull] Seed default preferences for user_id=${user.id}`);
-          userPreference = yield* Effect.tryPromise({
-            try: () => db.insertInto("user_preference")
-              .values({
-                user_id: user.id as UserId,
-                daily_review_limit: 20,
-                daily_new_rule_limit: 3,
-                created_at: new Date(),
-                updated_at: new Date(),
-                hlc: "0000000000000:0000:initial"
-              })
-              .returningAll()
-              .executeTakeFirstOrThrow(),
-            catch: (cause) => new AuthDatabaseError({ cause })
-          });
+                      userPreference = yield* Effect.tryPromise({
+              try: () => db.insertInto("user_preference")
+                .values({
+                  user_id: user.id as UserId,
+                  daily_review_limit: 20,
+                  daily_new_rule_limit: 3,
+                  enforce_mastery_gates: true,
+                  created_at: new Date(),
+                  updated_at: new Date(),
+                  hlc: "0000000000000:0000:initial"
+                })
+                .returningAll()
+                .executeTakeFirstOrThrow(),
+              catch: (cause) => new AuthDatabaseError({ cause })
+            });
         }
 
         const showPreference = userPreference && (op === ">=" ? userPreference.hlc >= since : userPreference.hlc > since);
@@ -131,9 +132,10 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
           decks: decksResult,
           srsUpdates: srsUpdatesResult,
           grammarPoints: grammarPointsResult,
-          userPreference: showPreference ? {
+                    userPreference: showPreference ? {
             dailyReviewLimit: userPreference.daily_review_limit,
-            dailyNewRuleLimit: userPreference.daily_new_rule_limit
+            dailyNewRuleLimit: userPreference.daily_new_rule_limit,
+            enforceMasteryGates: userPreference.enforce_mastery_gates
           } : undefined
         };
       });
@@ -253,12 +255,13 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
             catch: (cause) => new AuthDatabaseError({ cause })
           });
           yield* Effect.logInfo(`[Sync:Push] Review recorded for grammarPointId=${grammarPointId}`);
-        } else if (decodedTx.type === "update_preferences") {
+                } else if (decodedTx.type === "update_preferences") {
           const payload = decodedTx.payload;
           const dailyReviewLimit = payload.dailyReviewLimit;
           const dailyNewRuleLimit = payload.dailyNewRuleLimit;
+          const enforceMasteryGates = payload.enforceMasteryGates !== undefined ? payload.enforceMasteryGates : true;
 
-          yield* Effect.logInfo(`[Sync:Push] Updating preferences for user_id=${user.id}. dailyReviewLimit=${dailyReviewLimit}, dailyNewRuleLimit=${dailyNewRuleLimit}`);
+          yield* Effect.logInfo(`[Sync:Push] Updating preferences for user_id=${user.id}. dailyReviewLimit=${dailyReviewLimit}, dailyNewRuleLimit=${dailyNewRuleLimit}, enforceMasteryGates=${enforceMasteryGates}`);
 
           yield* Effect.tryPromise({ 
             try: () => db.insertInto("user_preference")
@@ -266,6 +269,7 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
                 user_id: user.id as UserId,
                 daily_review_limit: dailyReviewLimit,
                 daily_new_rule_limit: dailyNewRuleLimit,
+                enforce_mastery_gates: enforceMasteryGates,
                 created_at: new Date(),
                 updated_at: new Date(),
                 hlc: convergedPacked
@@ -275,6 +279,7 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
                 .doUpdateSet({
                   daily_review_limit: dailyReviewLimit,
                   daily_new_rule_limit: dailyNewRuleLimit,
+                  enforce_mastery_gates: enforceMasteryGates,
                   updated_at: new Date(),
                   hlc: convergedPacked
                 })

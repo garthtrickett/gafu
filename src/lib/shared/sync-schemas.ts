@@ -59,6 +59,7 @@ export type RecordReviewPayload = Schema.Schema.Type<typeof RecordReviewPayloadS
 export const UpdatePreferencesPayloadSchema = Schema.Struct({
   dailyReviewLimit: Schema.Int.pipe(Schema.nonNegative()),
   dailyNewRuleLimit: Schema.Int.pipe(Schema.nonNegative()),
+  enforceMasteryGates: Schema.optional(Schema.Boolean).pipe(Schema.withDecodingDefault(() => true)),
 });
 
 export type UpdatePreferencesPayload = Schema.Schema.Type<typeof UpdatePreferencesPayloadSchema>;

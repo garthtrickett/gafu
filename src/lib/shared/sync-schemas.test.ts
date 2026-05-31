@@ -67,7 +67,7 @@ describe("Sync schemas verification", () => {
     expect(Either.isLeft(result)).toBe(true);
   });
 
-  it("should successfully decode update_preferences payload", () => {
+    it("should successfully decode update_preferences payload with default enforceMasteryGates fallback", () => {
     const raw = {
       dailyReviewLimit: 30,
       dailyNewRuleLimit: 5,
@@ -75,6 +75,23 @@ describe("Sync schemas verification", () => {
 
     const result = Schema.decodeUnknownEither(UpdatePreferencesPayloadSchema)(raw);
     expect(Either.isRight(result)).toBe(true);
+    if (Either.isRight(result)) {
+      expect(result.right.enforceMasteryGates).toBe(true);
+    }
+  });
+
+  it("should successfully decode update_preferences payload with custom enforceMasteryGates value", () => {
+    const raw = {
+      dailyReviewLimit: 30,
+      dailyNewRuleLimit: 5,
+      enforceMasteryGates: false,
+    };
+
+    const result = Schema.decodeUnknownEither(UpdatePreferencesPayloadSchema)(raw);
+    expect(Either.isRight(result)).toBe(true);
+    if (Either.isRight(result)) {
+      expect(result.right.enforceMasteryGates).toBe(false);
+    }
   });
 
   it("should fail to decode update_preferences with negative values", () => {
