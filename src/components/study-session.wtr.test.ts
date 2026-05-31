@@ -44,6 +44,6 @@ describe("StudySession Component - Comprehension-First Review Loop", () => {
 
     // Check Furigana rendering element is present
     const furiganaSentence = el.querySelector("furigana-sentence");
-    expect(furiSg == null ? furiganaSentence : furiSg).to.exist;
+    expect(furiganaSentence).to.exist;
   });
 });
