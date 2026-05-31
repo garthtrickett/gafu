@@ -67,7 +67,7 @@ describe("Sync schemas verification", () => {
     expect(Either.isLeft(result)).toBe(true);
   });
 
-    it("should successfully decode update_preferences payload with default enforceMasteryGates fallback", () => {
+  it("should successfully decode update_preferences payload with default enforceMasteryGates fallback", () => {
     const raw = {
       dailyReviewLimit: 30,
       dailyNewRuleLimit: 5,
@@ -132,6 +132,7 @@ describe("Sync schemas verification", () => {
       expect(result.right.payload).toEqual({
         dailyReviewLimit: 50,
         dailyNewRuleLimit: 5,
+        enforceMasteryGates: true,
       });
     }
   });

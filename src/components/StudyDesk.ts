@@ -183,10 +183,10 @@ export class StudyDesk extends LitElement {
     const showMasteryGateWarning = enforceGates && masteryRate < 80 && grammarPointStore.activeLearningRules.value.length > 0;
     const hasBacklog = backlogItems.length > 0;
 
-    const mappedDailyTarget = dailyTargetItems.map(p => {
+        const mappedDailyTarget = dailyTargetItems.map(p => {
       const catalogItem = catalog.find(c => c.id === p.id);
       return {
-        name: catalogItem ? catalogItem.formal_name : "は",
+        name: catalogItem ? catalogItem.formal_name : "Loading...",
         repetitions: p.repetitions,
         nextReview: p.nextReview
       };
@@ -195,7 +195,7 @@ export class StudyDesk extends LitElement {
     const mappedBacklog = backlogItems.map(p => {
       const catalogItem = catalog.find(c => c.id === p.id);
       return {
-        name: catalogItem ? catalogItem.formal_name : "は",
+        name: catalogItem ? catalogItem.formal_name : "Loading...",
         repetitions: p.repetitions,
         nextReview: p.nextReview
       };
@@ -258,11 +258,11 @@ export class StudyDesk extends LitElement {
 
             <div class='space-y-1.5 pt-1'>
               <span class='text-[10px] font-bold text-zinc-500 uppercase tracking-wider block'>Unmastered Rules Blocking Progress:</span>
-              <div class='flex flex-wrap gap-1.5' id='unmastered-blocking-list'>
+                            <div class='flex flex-wrap gap-1.5' id='unmastered-blocking-list'>
                 ${grammarPointStore.unmasteredActiveRules.value.map(rule => {
                   const catalogItem = grammarPointCatalogStore.state.value.find(c => c.id === rule.id);
                   return html`
-                    <span class='px-2 py-0.5 bg-zinc-900 text-yellow-500 border border-yellow-500/10 text-xs font-semibold rounded'>${catalogItem ? catalogItem.formal_name : "は"}</span>
+                    <span class='px-2 py-0.5 bg-zinc-900 text-yellow-500 border border-yellow-500/10 text-xs font-semibold rounded'>${catalogItem ? catalogItem.formal_name : "Loading..."}</span>
                   `;
                 })}
               </div>

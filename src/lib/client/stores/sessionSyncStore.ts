@@ -69,11 +69,11 @@ export const generateExportPayload = (options?: { isCram?: boolean }) => {
 
       const unmasteredSliced = unmasteredActive.slice(0, 15);
 
-      queue = unmasteredSliced.map((p) => {
+            queue = unmasteredSliced.map((p) => {
         const match = catalog.find((c) => c.id === p.id);
         return {
           grammar_point_id: p.id,
-          formal_name: match ? match.formal_name : "は",
+          formal_name: match ? match.formal_name : "Loading...",
           repetitions: p.repetitions,
           ease_factor: p.easeFactor,
         };
@@ -90,11 +90,11 @@ export const generateExportPayload = (options?: { isCram?: boolean }) => {
       const activeDueSliced = activeDueProgress.slice(0, dueReviewsTargetCount);
       
       // Map progress indicators dynamically matching against the local catalog store
-      queue = activeDueSliced.map((p) => {
+            queue = activeDueSliced.map((p) => {
         const match = catalog.find((c) => c.id === p.id);
         return {
           grammar_point_id: p.id,
-          formal_name: match ? match.formal_name : "は",
+          formal_name: match ? match.formal_name : "Loading...",
           repetitions: p.repetitions,
           ease_factor: p.easeFactor,
         };

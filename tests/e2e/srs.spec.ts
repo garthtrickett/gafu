@@ -15,7 +15,7 @@ const db = new Kysely<Database>({
 test.describe("SRS Pacing, Daily Cap, and Mastery Gating E2E Flow", () => {
   let testUser: { email: string; password: string; userId: UserId } | undefined;
 
-    test.beforeAll(async () => {
+  test.beforeAll(async () => {
     const connStr = process.env.DATABASE_URL_TEST || process.env.DATABASE_URL;
     console.warn(`[E2E srs.spec.ts] E2E Resolved Database Connection String: ${connStr ? connStr.replace(/:([^@]+)@/, ":****@") : "undefined"}`);
     if (connStr) {
@@ -30,7 +30,7 @@ test.describe("SRS Pacing, Daily Cap, and Mastery Gating E2E Flow", () => {
     console.warn("[E2E srs.spec.ts] Test database seeding complete.");
   });
 
-    test.beforeEach(async () => {
+  test.beforeEach(async () => {
     testUser = await createVerifiedSubscriber();
     // Seed default testing preferences to match original test assertions
     await db.insertInto("user_preference").values({
@@ -50,7 +50,7 @@ test.describe("SRS Pacing, Daily Cap, and Mastery Gating E2E Flow", () => {
     }
   });
 
-    test.afterAll(async () => {
+  test.afterAll(async () => {
     const { closeDb } = await import("../../src/db/client");
     console.warn("[E2E srs.spec.ts] Closing server database client connection pool...");
     await closeDb();
@@ -85,7 +85,7 @@ test.describe("SRS Pacing, Daily Cap, and Mastery Gating E2E Flow", () => {
     // The system should reactively transition from fallback lists to active, paced learning rules
     // (exactly 3 rules unlocked: だ, は, も) because the local progress was empty and daily cap is 3
     await expect(page.locator("text=Due Today - Daily Target (3 rules)")).toBeVisible();
-    await expect(page.locator("span", { hasText: "だ" })).toBeVisible();
+    await expect(page.locator(".divide-y span", { hasText: "だ" })).toBeVisible();
     expect(await page.locator("div.py-2").count()).toBe(3);
 
     // 4. Rate-Limiting: Exporting again immediately should yield 0 new rules (daily cap is exhausted)
@@ -97,7 +97,7 @@ test.describe("SRS Pacing, Daily Cap, and Mastery Gating E2E Flow", () => {
     await expect(page.locator("text=Due Today - Daily Target (3 rules)")).toBeVisible();
   });
 
-    test("should enforce the 20-card review cap and partition excess due rules into the snoozed backlog", async ({ page }) => {
+  test("should enforce the 20-card review cap and partition excess due rules into the snoozed backlog", async ({ page }) => {
     if (!testUser) {
       throw new Error("testUser is undefined");
     }
@@ -114,7 +114,7 @@ test.describe("SRS Pacing, Daily Cap, and Mastery Gating E2E Flow", () => {
 
     // 2. Pre-seed the database with 30 due srs_card records for this user (all due in the past)
     const pastDate = new Date(Date.now() - 3600000); // 1h in past
-            const srsCards = grammarPoints.map((gp) => ({
+    const srsCards = grammarPoints.map((gp) => ({
       id: crypto.randomUUID() as SrsCardId,
       user_id: currentUser.userId,
       grammar_point_id: gp.id,
@@ -140,7 +140,7 @@ test.describe("SRS Pacing, Daily Cap, and Mastery Gating E2E Flow", () => {
     // 4. View active queue
     await page.locator("button", { hasText: "View Active Queue" }).click();
 
-        // 5. Verify the 30 due items are split: 20 in Due Today target and 10 in Snoozed Backlog
+    // 5. Verify the 30 due items are split: 20 in Due Today target and 10 in Snoozed Backlog
     await expect(page.locator("text=Due Today - Daily Target (20 rules)")).toBeVisible();
     await expect(page.locator("text=Snoozed Backlog (10 rules)")).toBeVisible();
   });

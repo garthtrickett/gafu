@@ -161,8 +161,8 @@ test.describe("Mastery Gating, Cram Generation, and Preferences Bypass E2E Flow"
     await page.locator("button", { hasText: "Copy Progress Payload" }).click();
     await expect(page.locator("button", { hasText: "Copied to Clipboard!" })).toBeVisible();
 
-    let clipboardText = await page.evaluate(() => navigator.clipboard.readText());
-    let payload = JSON.parse(clipboardText);
+    const clipboardText = await page.evaluate(() => navigator.clipboard.readText());
+    const payload = JSON.parse(clipboardText) as { queue: unknown[] };
     expect(payload.queue).toHaveLength(5);
 
     // 5. Verify the 'Compile Cram Payload' button is visible, click it, and assert the payload structure is specialized
@@ -171,8 +171,8 @@ test.describe("Mastery Gating, Cram Generation, and Preferences Bypass E2E Flow"
     await cramBtn.click();
     await expect(cramBtn).toContainText("Cram Copied!");
 
-    let cramClipboardText = await page.evaluate(() => navigator.clipboard.readText());
-    let cramPayload = JSON.parse(cramClipboardText);
+    const cramClipboardText = await page.evaluate(() => navigator.clipboard.readText());
+    const cramPayload = JSON.parse(cramClipboardText) as { instructions: string; queue: unknown[] };
     expect(cramPayload.instructions).toContain("CRAM/REINFORCEMENT");
     expect(cramPayload.queue).toHaveLength(3); // Only the 3 unmastered active rules
 
@@ -186,8 +186,8 @@ test.describe("Mastery Gating, Cram Generation, and Preferences Bypass E2E Flow"
     await page.locator("button", { hasText: "Copy Progress Payload" }).click();
     await expect(page.locator("button", { hasText: "Copied to Clipboard!" })).toBeVisible();
 
-    let bypassedClipboardText = await page.evaluate(() => navigator.clipboard.readText());
-    let bypassedPayload = JSON.parse(bypassedClipboardText);
+    const bypassedClipboardText = await page.evaluate(() => navigator.clipboard.readText());
+    const bypassedPayload = JSON.parse(bypassedClipboardText) as { queue: unknown[] };
     expect(bypassedPayload.queue.length).toBeGreaterThan(5);
   });
 });

@@ -44,7 +44,7 @@ test.describe("Grammar Explanation Study Flow", () => {
 
     // 6. Verify transition to study interface
     await expect(page).toHaveURL(/\/study/);
-    await expect(page.locator("p")).toContainText("Stating that you are a student.");
+    await expect(page.locator("study-session p").first()).toContainText("Stating that you are a student.");
 
     // 7. Verify the explanation panel is not visible initially
     await expect(page.locator("text=Grammar Explanation")).not.toBeVisible();
@@ -54,7 +54,7 @@ test.describe("Grammar Explanation Study Flow", () => {
     await expect(page.locator("text=Grammar Explanation")).toBeVisible();
     await expect(page.locator("p.leading-relaxed")).toContainText("The copula 'です' is used to declare state of being 'is/am/are'.");
 
-        // 9. Click the Correct button to finish the session
+    // 9. Click the Correct button to finish the session
     await page.getByRole("button", { name: "Correct", exact: true }).click();
 
     // 10. Verify the completed session screen is shown
