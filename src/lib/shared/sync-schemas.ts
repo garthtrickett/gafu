@@ -2,17 +2,17 @@ import { Schema } from "effect";
 
 export const CamelCaseReviewSchema = Schema.Struct({
   grammarPointId: Schema.UUID,
-  easeFactor: Schema.optional(Schema.Number).pipe(Schema.withDefault(() => 2.5)),
+  easeFactor: Schema.optional(Schema.Number).pipe(Schema.withDecodingDefault(() => 2.5)),
   repetitions: Schema.Int,
-  intervalDays: Schema.optional(Schema.Int).pipe(Schema.withDefault(() => 0)),
+  intervalDays: Schema.optional(Schema.Int).pipe(Schema.withDecodingDefault(() => 0)),
   nextReview: Schema.String,
 });
 
 export const SnakeCaseReviewSchema = Schema.Struct({
   grammar_point_id: Schema.UUID,
-  ease_factor: Schema.optional(Schema.Number).pipe(Schema.withDefault(() => 2.5)),
+  ease_factor: Schema.optional(Schema.Number).pipe(Schema.withDecodingDefault(() => 2.5)),
   repetitions: Schema.Int,
-  interval_days: Schema.optional(Schema.Int).pipe(Schema.withDefault(() => 0)),
+  interval_days: Schema.optional(Schema.Int).pipe(Schema.withDecodingDefault(() => 0)),
   next_review: Schema.String,
 });
 
@@ -39,7 +39,7 @@ export const RecordReviewPayloadSchema = Schema.transform(
         repetitions,
         intervalDays,
         nextReview,
-      };
+      } as any;
     },
     encode: (normalized) => ({
       grammarPointId: normalized.grammarPointId,
@@ -47,7 +47,7 @@ export const RecordReviewPayloadSchema = Schema.transform(
       repetitions: normalized.repetitions,
       intervalDays: normalized.intervalDays,
       nextReview: normalized.nextReview,
-    }),
+    }) as any,
   }
 );
 

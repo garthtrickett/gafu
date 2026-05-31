@@ -12,7 +12,7 @@ describe("Sync schemas verification", () => {
       nextReview: "2026-05-31T04:32:00.000Z",
     };
 
-    const result = Schema.decodeEither(RecordReviewPayloadSchema)(raw);
+    const result = Schema.decodeUnknownEither(RecordReviewPayloadSchema)(raw);
     expect(Either.isRight(result)).toBe(true);
     if (Either.isRight(result)) {
       expect(result.right.grammarPointId).toBe(raw.grammarPointId);
@@ -31,7 +31,7 @@ describe("Sync schemas verification", () => {
       next_review: "2026-05-31T04:32:00.000Z",
     };
 
-    const result = Schema.decodeEither(RecordReviewPayloadSchema)(raw);
+    const result = Schema.decodeUnknownEither(RecordReviewPayloadSchema)(raw);
     expect(Either.isRight(result)).toBe(true);
     if (Either.isRight(result)) {
       expect(result.right.grammarPointId).toBe(raw.grammar_point_id);
@@ -48,7 +48,7 @@ describe("Sync schemas verification", () => {
       nextReview: "2026-05-31T04:32:00.000Z",
     };
 
-    const result = Schema.decodeEither(RecordReviewPayloadSchema)(raw);
+    const result = Schema.decodeUnknownEither(RecordReviewPayloadSchema)(raw);
     expect(Either.isRight(result)).toBe(true);
     if (Either.isRight(result)) {
       expect(result.right.easeFactor).toBe(2.5);
@@ -63,7 +63,7 @@ describe("Sync schemas verification", () => {
       nextReview: "2026-05-31T04:32:00.000Z",
     };
 
-    const result = Schema.decodeEither(RecordReviewPayloadSchema)(raw);
+    const result = Schema.decodeUnknownEither(RecordReviewPayloadSchema)(raw);
     expect(Either.isLeft(result)).toBe(true);
   });
 
@@ -73,7 +73,7 @@ describe("Sync schemas verification", () => {
       dailyNewRuleLimit: 5,
     };
 
-    const result = Schema.decodeEither(UpdatePreferencesPayloadSchema)(raw);
+    const result = Schema.decodeUnknownEither(UpdatePreferencesPayloadSchema)(raw);
     expect(Either.isRight(result)).toBe(true);
   });
 
@@ -83,7 +83,7 @@ describe("Sync schemas verification", () => {
       dailyNewRuleLimit: 3,
     };
 
-    const result = Schema.decodeEither(UpdatePreferencesPayloadSchema)(raw);
+    const result = Schema.decodeUnknownEither(UpdatePreferencesPayloadSchema)(raw);
     expect(Either.isLeft(result)).toBe(true);
   });
 
@@ -93,7 +93,7 @@ describe("Sync schemas verification", () => {
       dailyNewRuleLimit: 3,
     };
 
-    const result = Schema.decodeEither(UpdatePreferencesPayloadSchema)(raw);
+    const result = Schema.decodeUnknownEither(UpdatePreferencesPayloadSchema)(raw);
     expect(Either.isLeft(result)).toBe(true);
   });
 
@@ -108,7 +108,7 @@ describe("Sync schemas verification", () => {
       hlc: "1600000000000:0000:nodeId",
     };
 
-    const result = Schema.decodeEither(OutboxTransactionSchema)(rawTransaction);
+    const result = Schema.decodeUnknownEither(OutboxTransactionSchema)(rawTransaction);
     expect(Either.isRight(result)).toBe(true);
     if (Either.isRight(result)) {
       expect(result.right.type).toBe("update_preferences");

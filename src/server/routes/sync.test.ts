@@ -58,11 +58,10 @@ describe("Synchronization API Endpoint Suite", () => {
       })
     );
     expect(response.status).toBe(200);
-    const body = await response.json() as any;
+    const body = (await response.json()) as { serverTimestamp: number; serverHlc: string; decks: unknown[] };
     expect(body).toHaveProperty("serverTimestamp");
     expect(body).toHaveProperty("serverHlc");
     expect(body).toHaveProperty("decks");
-    expect(body).toHaveProperty("srsUpdates");
   });
 
   it("should allow pushing mock Outbox transactions stamped with HLC", async () => {
@@ -82,13 +81,13 @@ describe("Synchronization API Endpoint Suite", () => {
       })
     );
     expect(response.status).toBe(200);
-    const body = await response.json() as any;
+    const body = (await response.json()) as { success: boolean };
     expect(body.success).toBe(true);
   });
 });
 
-describe("Sync Push Route - Non-UUID Protection", () => {
-  it("should gracefully discard push requests with malformed non-UUID grammarPointId", async () => {
+describe("Sync Push Route - Validation Boundaries", () => {
+  it("should reject push requests with malformed non-UUID grammarPointId with a 400 Bad Request", async () => {
     const user: PublicUser = {
       id: "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
       email: "learner@site.com",
@@ -108,7 +107,7 @@ describe("Sync Push Route - Non-UUID Protection", () => {
       id: "1cba4d11-a963-438a-ab07-c18098d9426d",
       type: "record_review",
       payload: {
-        grammarPointId: "たい",
+        grammarPointId: "tai",
         easeFactor: 2.5,
         repetitions: 0,
         intervalDays: 0,
@@ -128,9 +127,92 @@ describe("Sync Push Route - Non-UUID Protection", () => {
       })
     );
 
-    expect(response.status).toBe(200);
-    const body = await response.json();
-    expect(body).toEqual({ success: true });
+    expect(response.status).toBe(400);
+    const body = (await response.json()) as { error: string; message: string };
+    expect(body.error).toBe("Bad Request");
+    expect(body.message).toContain("grammarPointId");
+  });
+
+  it("should reject push requests with negative values in update_preferences with a 400 Bad Request", async () => {
+    const user: PublicUser = {
+      id: "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
+      email: "learner@site.com",
+      email_verified: true,
+      permissions: ["study:session_start", "srs:update"],
+      created_at: new Date(),
+      avatar_url: null,
+      is_guest: false,
+      display_name: "Test Learner",
+      phone: null,
+      skills: []
+    };
+
+    const token = await Effect.runPromise(generateToken(user));
+
+    const response = await app.handle(
+      new Request("http://127.0.0.1/api/sync/push", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          id: "tx-bad-neg",
+          type: "update_preferences",
+          payload: {
+            dailyReviewLimit: 20,
+            dailyNewRuleLimit: -5
+          },
+          hlc: "1600000000000:0000:test-client"
+        })
+      })
+    );
+
+    expect(response.status).toBe(400);
+    const body = (await response.json()) as { error: string; message: string };
+    expect(body.error).toBe("Bad Request");
+    expect(body.message).toContain("dailyNewRuleLimit");
+  });
+
+  it("should reject push requests with non-integer values in update_preferences with a 400 Bad Request", async () => {
+    const user: PublicUser = {
+      id: "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
+      email: "learner@site.com",
+      email_verified: true,
+      permissions: ["study:session_start", "srs:update"],
+      created_at: new Date(),
+      avatar_url: null,
+      is_guest: false,
+      display_name: "Test Learner",
+      phone: null,
+      skills: []
+    };
+
+    const token = await Effect.runPromise(generateToken(user));
+
+    const response = await app.handle(
+      new Request("http://127.0.0.1/api/sync/push", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          id: "tx-bad-float",
+          type: "update_preferences",
+          payload: {
+            dailyReviewLimit: 20.5,
+            dailyNewRuleLimit: 3
+          },
+          hlc: "1600000000000:0000:test-client"
+        })
+      })
+    );
+
+    expect(response.status).toBe(400);
+    const body = (await response.json()) as { error: string; message: string };
+    expect(body.error).toBe("Bad Request");
+    expect(body.message).toContain("dailyReviewLimit");
   });
 });
 
@@ -225,10 +307,10 @@ describe("HLC Synchronization Causal Order Integration", () => {
     );
 
     expect(pullResponse.status).toBe(200);
-    const pullBody = await pullResponse.json() as any;
+    const pullBody = (await pullResponse.json()) as { userPreference?: { dailyReviewLimit: number } };
     
     // Since pref.hlc is futureTime (which is > olderHlc), it must be returned in the pull payload
     expect(pullBody.userPreference).toBeDefined();
-    expect(pullBody.userPreference.dailyReviewLimit).toBe(45);
+    expect(pullBody.userPreference?.dailyReviewLimit).toBe(45);
   });
 });

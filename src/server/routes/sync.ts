@@ -6,18 +6,10 @@ import { validateToken } from "../../lib/server/JwtService.ts";
 import { InvalidCredentialsError, AuthDatabaseError } from "../../features/auth/Errors.ts";
 import { initHlc, receiveHlc, packHlc } from "../../lib/shared/hlc.ts";
 import type { UserId, SrsCardId, GrammarPointId } from "../../types/index.ts";
-
-interface RecordReviewPayload {
-  readonly grammarPointId?: string;
-  readonly grammar_point_id?: string;
-  readonly easeFactor?: number;
-  readonly ease_factor?: number;
-  readonly repetitions: number;
-  readonly intervalDays?: number;
-  readonly interval_days?: number;
-  readonly nextReview?: string;
-  readonly next_review?: string;
-}
+import { OutboxTransactionSchema } from "../../lib/shared/sync-schemas.ts";
+import { Schema } from "effect";
+import { TreeFormatter } from "effect/ParseResult";
+import { AuthError } from "../../lib/shared/auth.ts";
 
 export const syncRoutes = new Elysia({ prefix: "/api/sync" })
   .use(effectPlugin)
@@ -176,6 +168,16 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
       const pushEffect = Effect.gen(function* () {
         yield* Effect.logInfo(`[Sync:Push] Processing transaction. txId=${body.id}, type=${body.type}`);
 
+        const decodedTx = yield* Schema.decodeUnknown(OutboxTransactionSchema)(body).pipe(
+          Effect.mapError(
+            (parseError) =>
+              new AuthError({
+                _tag: "BadRequest",
+                message: `Invalid outbox transaction payload: ${TreeFormatter.formatError(parseError)}`,
+              })
+          )
+        );
+
         const authHeader = headers["authorization"];
         yield* Effect.logInfo(`[Sync:Push] Received Authorization header: "${authHeader}"`);
 
@@ -191,32 +193,20 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
         yield* Effect.logInfo(`[Sync:Push] Authorized session for subscriber: ${user.email} (ID: ${user.id})`);
 
         // Clock Convergence: Merge server wall clock with client's incoming HLC
-        const clientHlc = body.hlc;
+        const clientHlc = decodedTx.hlc;
         const serverBase = initHlc("server", Date.now());
         const converged = receiveHlc(serverBase, clientHlc, Date.now());
         const convergedPacked = packHlc(converged);
 
         yield* Effect.logInfo(`[Sync:Push] HLC converged: client=${clientHlc} -> converged=${convergedPacked}`);
 
-        if (body.type === "record_review") {
-          const payload = body.payload as RecordReviewPayload;
-          const grammarPointId = payload.grammarPointId ?? payload.grammar_point_id;
-          const easeFactor = payload.easeFactor ?? payload.ease_factor;
+        if (decodedTx.type === "record_review") {
+          const payload = decodedTx.payload;
+          const grammarPointId = payload.grammarPointId;
+          const easeFactor = payload.easeFactor;
           const repetitions = payload.repetitions;
-          const intervalDays = payload.intervalDays ?? payload.interval_days;
-          const nextReview = payload.nextReview ?? payload.next_review;
-
-          if (!grammarPointId || !nextReview) {
-            yield* Effect.logError("[Sync:Push] Bad request: Card review transaction payload is missing parameters");
-            return yield* Effect.fail(new Error("Missing parameters in review payload"));
-          }
-
-          // Validate that the grammarPointId is a valid UUID to prevent PostgreSQL casting crashes
-          const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-          if (!UUID_REGEX.test(grammarPointId)) {
-            yield* Effect.logWarning(`[Sync:Push] grammarPointId="${grammarPointId}" is not a valid UUID. Discarding review to clear outbox queue.`);
-            return { success: true };
-          }
+          const intervalDays = payload.intervalDays;
+          const nextReview = payload.nextReview;
 
           yield* Effect.logInfo(`[Sync:Push] Recording review grammarPointId=${grammarPointId}. easeFactor=${easeFactor}, reps=${repetitions}, nextReview=${nextReview}`);
 
@@ -263,15 +253,10 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
             catch: (cause) => new AuthDatabaseError({ cause })
           });
           yield* Effect.logInfo(`[Sync:Push] Review recorded for grammarPointId=${grammarPointId}`);
-        } else if (body.type === "update_preferences") {
-          const payload = body.payload as { dailyReviewLimit?: number; dailyNewRuleLimit?: number };
+        } else if (decodedTx.type === "update_preferences") {
+          const payload = decodedTx.payload;
           const dailyReviewLimit = payload.dailyReviewLimit;
           const dailyNewRuleLimit = payload.dailyNewRuleLimit;
-
-          if (dailyReviewLimit === undefined || dailyNewRuleLimit === undefined) {
-            yield* Effect.logError("[Sync:Push] Bad request: update_preferences transaction payload is missing parameters");
-            return yield* Effect.fail(new Error("Missing parameters in update_preferences payload"));
-          }
 
           yield* Effect.logInfo(`[Sync:Push] Updating preferences for user_id=${user.id}. dailyReviewLimit=${dailyReviewLimit}, dailyNewRuleLimit=${dailyNewRuleLimit}`);
 
@@ -298,12 +283,12 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
             catch: (cause) => new AuthDatabaseError({ cause })
           });
           yield* Effect.logInfo(`[Sync:Push] Preferences updated successfully for user_id=${user.id}`);
-        } else if (body.type === "toggle_skin") {
-          yield* Effect.logInfo(`[Sync:Push] Processing skin toggle. payload=${JSON.stringify(body.payload)}`);
-        } else if (body.type === "unlock_deck") {
-          yield* Effect.logInfo(`[Sync:Push] Processing deck unlock. payload=${JSON.stringify(body.payload)}`);
+        } else if (decodedTx.type === "toggle_skin") {
+          yield* Effect.logInfo(`[Sync:Push] Processing skin toggle. payload=${JSON.stringify(decodedTx.payload)}`);
+        } else if (decodedTx.type === "unlock_deck") {
+          yield* Effect.logInfo(`[Sync:Push] Processing deck unlock. payload=${JSON.stringify(decodedTx.payload)}`);
         } else {
-          yield* Effect.logWarning(`[Sync:Push] Unrecognized transaction type: ${body.type}`);
+          yield* Effect.logWarning(`[Sync:Push] Unrecognized transaction type: ${(decodedTx as any).type}`);
         }
 
         return { success: true };
@@ -318,6 +303,10 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
             `[Sync:Push] Push request failed: ${errorMessage}`
           )
         );
+        if (error && typeof error === "object" && "_tag" in error && error._tag === "BadRequest") {
+          set.status = 400;
+          return { error: "Bad Request", message: (error as { readonly message: string }).message };
+        }
         if (error instanceof InvalidCredentialsError || (error && typeof error === "object" && "_tag" in error && (error._tag === "Unauthorized" || error._tag === "Forbidden" || (error as { _tag?: string })._tag === "AuthError"))) {
           set.status = 401;
           return { error: "Unauthorized" };
