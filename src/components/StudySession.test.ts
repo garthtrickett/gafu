@@ -95,13 +95,24 @@ describe("StudySession Component State Logic", () => {
     expect(controller.model.explanationVisible).toBe(false);
   });
 
-  it("should reset explanationVisible to false when SUBMIT_GRADE is proposed", async () => {
+    it("should reset explanationVisible to false when SUBMIT_GRADE is proposed", async () => {
     const controller = (element as any).controller;
     controller.propose({ type: "TOGGLE_EXPLANATION" });
     await new Promise((resolve) => setTimeout(resolve, 15));
     expect(controller.model.explanationVisible).toBe(true);
 
     controller.propose({ type: "SUBMIT_GRADE", grammarPointId: "gp-123", isCorrect: true });
+    await new Promise((resolve) => setTimeout(resolve, 15));
+    expect(controller.model.explanationVisible).toBe(false);
+  });
+
+  it("should reset explanationVisible to false when FORCE_MASTER is proposed", async () => {
+    const controller = (element as any).controller;
+    controller.propose({ type: "TOGGLE_EXPLANATION" });
+    await new Promise((resolve) => setTimeout(resolve, 15));
+    expect(controller.model.explanationVisible).toBe(true);
+
+    controller.propose({ type: "FORCE_MASTER", grammarPointId: "gp-123" });
     await new Promise((resolve) => setTimeout(resolve, 15));
     expect(controller.model.explanationVisible).toBe(false);
   });

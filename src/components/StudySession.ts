@@ -73,7 +73,8 @@ export interface StudySessionModel {
 export type StudySessionAction =
   | { type: "PLAY_AUDIO"; audioUrl: string }
   | { type: "SUBMIT_GRADE"; grammarPointId: string; isCorrect: boolean }
-  | { type: "TOGGLE_EXPLANATION" };
+  | { type: "TOGGLE_EXPLANATION" }
+  | { type: "FORCE_MASTER"; grammarPointId: string };
 
 const initialModel: StudySessionModel = {
   audioPlaying: false,
@@ -87,6 +88,7 @@ const update = (model: StudySessionModel, action: StudySessionAction): StudySess
         ...model,
         audioPlaying: true,
       };
+        case "FORCE_MASTER":
     case "SUBMIT_GRADE":
       return {
         ...model,
@@ -162,6 +164,54 @@ export class StudySession extends LitElement {
           self.audioInstance.play().catch((e: unknown) => {
             console.warn("[StudySession] Failed to play pronunciation audio:", e);
           });
+        });
+      }
+
+            if (action.type === "FORCE_MASTER") {
+        const { grammarPointId } = action;
+        
+        const currentProgress = grammarPointStore.state.peek().find(p => p.id === grammarPointId) || {
+          id: grammarPointId,
+          easeFactor: 2.5,
+          repetitions: 0,
+          intervalDays: 0,
+          nextReview: new Date().toISOString()
+        };
+
+        const nextReviewDate = new Date();
+        nextReviewDate.setDate(nextReviewDate.getDate() + 21);
+
+        const forcedMetrics = {
+          easeFactor: currentProgress.easeFactor || 2.5,
+          repetitions: 3,
+          intervalDays: 21,
+          nextReview: nextReviewDate.toISOString(),
+        };
+
+        yield* clientLog("info", `[StudySession] Force mastered grammarPointId=${grammarPointId}:`, forcedMetrics);
+
+        yield* grammarPointStore.put({
+          id: grammarPointId,
+          easeFactor: forcedMetrics.easeFactor,
+          repetitions: forcedMetrics.repetitions,
+          intervalDays: forcedMetrics.intervalDays,
+          nextReview: forcedMetrics.nextReview,
+        });
+
+        yield* enqueueTransaction("record_review", {
+          grammarPointId,
+          easeFactor: forcedMetrics.easeFactor,
+          repetitions: forcedMetrics.repetitions,
+          intervalDays: forcedMetrics.intervalDays,
+          nextReview: forcedMetrics.nextReview,
+        });
+
+        yield* Effect.sync(() => {
+          activeSessionStore.next();
+          const nextCard = activeSessionStore.currentCard.value;
+          if (nextCard && typeof nextCard.audioUrl === "string") {
+            _propose({ type: "PLAY_AUDIO", audioUrl: nextCard.audioUrl });
+          }
         });
       }
 
@@ -349,8 +399,8 @@ export class StudySession extends LitElement {
               : ""}
           </div>
 
-          <!-- Single-click verification buttons -->
-          <div class="pt-4 border-t border-zinc-900 flex justify-center">
+                    <!-- Single-click verification buttons -->
+          <div class="pt-4 border-t border-zinc-900 flex flex-col gap-4 w-full">
             <div class="grid grid-cols-2 gap-4 w-full">
               <button
                 @click=${() => this.controller.propose({ type: "SUBMIT_GRADE", grammarPointId: currentCard.grammarPointId, isCorrect: false })}
@@ -365,6 +415,12 @@ export class StudySession extends LitElement {
                 Correct
               </button>
             </div>
+            <button
+              @click=${() => this.controller.propose({ type: "FORCE_MASTER", grammarPointId: currentCard.grammarPointId })}
+              class="w-full py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 hover:text-white font-medium rounded-lg transition-colors text-xs cursor-pointer border border-zinc-700 flex items-center justify-center gap-1.5"
+            >
+              🎓 Mark as Mastered
+            </button>
           </div>
         </div>
       </div>
