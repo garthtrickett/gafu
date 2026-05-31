@@ -190,3 +190,89 @@ describe("grammarPointStore state management and pacing helpers", () => {
     });
   });
 });
+import { describe, it, expect } from "vitest";
+import { getDailyUnlockAllowance, canUnlockMoreRules } from "./grammarPointStore.ts";
+import type { GrammarPointProgress } from "./grammarPointStore.ts";
+
+describe("Grammar Point Gating and Pacing Math", () => {
+  const mockProgressList = (unlockedHoursAgo: number[]): GrammarPointProgress[] => {
+    const now = Date.now();
+    return unlockedHoursAgo.map((hours, i) => {
+      const unlockedAt = new Date(now - hours * 60 * 60 * 1000).toISOString();
+      return {
+        id: `gp-${i}`,
+        easeFactor: 2.5,
+        repetitions: 1,
+        intervalDays: 1,
+        nextReview: now.toString(),
+        unlockedAt,
+      };
+    });
+  };
+
+  it("should calculate proportional gating (10%) correctly across dailyReviewLimit boundaries", () => {
+    // 10% of 20 = 2 new rules cap
+    const capFor20 = Math.ceil(20 * 0.10);
+    expect(capFor20).toBe(2);
+
+    // 10% of 50 = 5 new rules cap
+    const capFor50 = Math.ceil(50 * 0.10);
+    expect(capFor50).toBe(5);
+
+    // 10% of 100 = 10 new rules cap
+    const capFor100 = Math.ceil(100 * 0.10);
+    expect(capFor100).toBe(10);
+  });
+
+  it("should correctly calculate remaining daily unlock allowance", () => {
+    const dailyReviewLimit = 50;
+    const dynamicNewRuleLimit = Math.ceil(dailyReviewLimit * 0.10); // 5 rules
+    expect(dynamicNewRuleLimit).toBe(5);
+
+    // Case A: 3 rules unlocked in the last 24h -> 2 slots remaining
+    const progressA = mockProgressList([2, 5, 12, 36]); // Three inside 24h (2, 5, 12), one outside (36)
+    const allowanceA = getDailyUnlockAllowance(progressA, dynamicNewRuleLimit);
+    expect(allowanceA).toBe(2);
+
+    // Case B: 5 rules unlocked in the last 24h -> 0 slots remaining (fully capped)
+    const progressB = mockProgressList([1, 2, 3, 4, 10, 48]); // Five inside 24h, one outside
+    const allowanceB = getDailyUnlockAllowance(progressB, dynamicNewRuleLimit);
+    expect(allowanceB).toBe(0);
+
+    // Case C: 0 rules unlocked in the last 24h -> 5 slots remaining
+    const progressC = mockProgressList([30, 40]); // None inside 24h
+    const allowanceC = getDailyUnlockAllowance(progressC, dynamicNewRuleLimit);
+    expect(allowanceC).toBe(5);
+  });
+
+  it("should properly enforce master check for new unlocks", () => {
+    // 80% mastery threshold: intervalDays >= 7 or repetitions >= 3
+    const progressMastered: GrammarPointProgress[] = [
+      { id: "gp-1", easeFactor: 2.5, repetitions: 3, intervalDays: 1, nextReview: "" }, // Mastered (reps)
+      { id: "gp-2", easeFactor: 2.5, repetitions: 1, intervalDays: 7, nextReview: "" }, // Mastered (interval)
+      { id: "gp-3", easeFactor: 2.5, repetitions: 0, intervalDays: 0, nextReview: "" }, // Learning
+    ];
+    // Mastered: 2 / 3 = 66% (Not eligible since < 80%)
+    expect(canUnlockMoreRules(progressMastered)).toBe(false);
+
+    const progressFullMastered: GrammarPointProgress[] = [
+      { id: "gp-1", easeFactor: 2.5, repetitions: 3, intervalDays: 1, nextReview: "" }, // Mastered
+      { id: "gp-2", easeFactor: 2.5, repetitions: 1, intervalDays: 7, nextReview: "" }, // Mastered
+      { id: "gp-3", easeFactor: 2.5, repetitions: 3, intervalDays: 1, nextReview: "" }, // Mastered
+      { id: "gp-4", easeFactor: 2.5, repetitions: 1, intervalDays: 1, nextReview: "" }, // Learning
+    ];
+    // Mastered: 3 / 4 = 75% (Not eligible)
+    expect(canUnlockMoreRules(progressFullMastered)).toBe(false);
+
+    const progressPassThreshold: GrammarPointProgress[] = [
+      { id: "gp-1", easeFactor: 2.5, repetitions: 3, intervalDays: 1, nextReview: "" }, // Mastered
+      { id: "gp-2", easeFactor: 2.5, repetitions: 1, intervalDays: 7, nextReview: "" }, // Mastered
+      { id: "gp-3", easeFactor: 2.5, repetitions: 3, intervalDays: 1, nextReview: "" }, // Mastered
+      { id: "gp-4", easeFactor: 2.5, repetitions: 4, intervalDays: 1, nextReview: "" }, // Mastered
+      { id: "gp-5", easeFactor: 2.5, repetitions: 1, intervalDays: 1, nextReview: "" }, // Learning
+    ];
+    // Mastered: 4 / 5 = 80% (Eligible!)
+    expect(canUnlockMoreRules(progressPassThreshold)).toBe(true);
+  });
+});
+

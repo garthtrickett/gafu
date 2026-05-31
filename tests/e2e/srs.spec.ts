@@ -30,8 +30,16 @@ test.describe("SRS Pacing, Daily Cap, and Mastery Gating E2E Flow", () => {
     console.warn("[E2E srs.spec.ts] Test database seeding complete.");
   });
 
-  test.beforeEach(async () => {
+    test.beforeEach(async () => {
     testUser = await createVerifiedSubscriber();
+    // Seed default testing preferences to match original test assertions
+    await db.insertInto("user_preference").values({
+      user_id: testUser.userId,
+      daily_review_limit: 20,
+      daily_new_rule_limit: 3,
+      created_at: new Date(),
+      updated_at: new Date()
+    }).execute();
   });
 
   test.afterEach(async () => {
@@ -132,8 +140,63 @@ test.describe("SRS Pacing, Daily Cap, and Mastery Gating E2E Flow", () => {
     // 4. View active queue
     await page.locator("button", { hasText: "View Active Queue" }).click();
 
-    // 5. Verify the 30 due items are split: 20 in Due Today target and 10 in Snoozed Backlog
+        // 5. Verify the 30 due items are split: 20 in Due Today target and 10 in Snoozed Backlog
     await expect(page.locator("text=Due Today - Daily Target (20 rules)")).toBeVisible();
     await expect(page.locator("text=Snoozed Backlog (10 rules)")).toBeVisible();
+  });
+
+  test("should dynamically expand active queue and shrink backlog when preferences are updated", async ({ page }) => {
+    if (!testUser) {
+      throw new Error("testUser is undefined");
+    }
+    const currentUser = testUser;
+
+    // 1. Retrieve N5 grammar points to mock the progress records
+    const grammarPoints = await db
+      .selectFrom("grammar_point")
+      .select("id")
+      .limit(30)
+      .execute();
+
+    expect(grammarPoints.length).toBeGreaterThanOrEqual(25);
+
+    // 2. Pre-seed the database with 30 due srs_card records for this user (all due in the past)
+    const pastDate = new Date(Date.now() - 3600000);
+    const srsCards = grammarPoints.map((gp) => ({
+      id: crypto.randomUUID() as SrsCardId,
+      user_id: currentUser.userId,
+      grammar_point_id: gp.id,
+      ease_factor: 2.5,
+      repetitions: 1,
+      interval_days: 1,
+      next_review: pastDate,
+      created_at: new Date(),
+      updated_at: new Date(),
+    }));
+
+    await db.deleteFrom("srs_card").where("user_id", "=", currentUser.userId).execute();
+    await db.insertInto("srs_card").values(srsCards).execute();
+
+    // 3. Log in
+    await page.goto("/login");
+    await page.locator("#email").fill(testUser.email);
+    await page.locator("#password").fill(testUser.password);
+    await page.locator('button[type="submit"]').click();
+    await expect(page).toHaveURL("/");
+
+    // 4. Open active queue to see initial partition (20 target, 10 backlog)
+    await page.locator("button", { hasText: "View Active Queue" }).click();
+    await expect(page.locator("text=Due Today - Daily Target (20 rules)")).toBeVisible();
+    await expect(page.locator("text=Snoozed Backlog (10 rules)")).toBeVisible();
+
+    // 5. Update preferred review limit to 50 via UI input field
+    const reviewInput = page.locator("input[type='number']").first();
+    await reviewInput.click();
+    await reviewInput.fill("50");
+    await reviewInput.press("Enter");
+
+    // 6. Verify the lists dynamically expand and adjust: all 30 should now be inside target, backlog should disappear
+    await expect(page.locator("text=Due Today - Daily Target (30 rules)")).toBeVisible();
+    await expect(page.locator("text=Snoozed Backlog")).not.toBeVisible();
   });
 });
