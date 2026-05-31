@@ -38,12 +38,32 @@ export const generateExportPayload = () =>
     
     const now = new Date();
 
-    // 1. Filter active rules where nextReview <= now, sort by oldest first, and slice top 15
+    const preferences = yield* Effect.promise(() => import("./userPreferencesStore.ts"));
+    const dailyReviewLimit = preferences.userPreferencesStore.dailyReviewLimit.value;
+    const dailyNewRuleLimit = preferences.userPreferencesStore.dailyNewRuleLimit.value;
+
+    const eligible = canUnlockMoreRules(localProgress);
+    let allowance = 0;
+    let nextIntroductions: typeof catalog = [];
+    
+    if (eligible) {
+      allowance = getDailyUnlockAllowance(localProgress, dailyNewRuleLimit);
+      if (allowance > 0) {
+        yield* clientLog("info", `[SessionSync] User is eligible for new rules. Remaining allowance today: ${allowance}`);
+        const activeIds = new Set(localProgress.map((p) => p.id));
+        const unstudied = catalog.filter((c) => !activeIds.has(c.id));
+        nextIntroductions = unstudied.slice(0, allowance);
+      }
+    }
+
+    const dueReviewsTargetCount = Math.max(0, dailyReviewLimit - nextIntroductions.length);
+
+    // 1. Filter active rules where nextReview <= now, sort by oldest first, and slice up to dueReviewsTargetCount
     const activeDueProgress = localProgress
       .filter((p) => new Date(p.nextReview).getTime() <= now.getTime())
       .sort((a, b) => new Date(a.nextReview).getTime() - new Date(b.nextReview).getTime());
 
-    const activeDueSliced = activeDueProgress.slice(0, 15);
+    const activeDueSliced = activeDueProgress.slice(0, dueReviewsTargetCount);
     
     // Map progress indicators dynamically matching against the local catalog store
     const queue: ExportedGrammarProgress[] = activeDueSliced.map((p) => {
@@ -56,53 +76,41 @@ export const generateExportPayload = () =>
       };
     });
 
-    // 2. Evaluate unlock eligibility. If allowed, look ahead in the catalog and append up to the daily unlock allowance (max 3) of unstudied rules
-    const eligible = canUnlockMoreRules(localProgress);
-    if (eligible) {
-      const allowance = getDailyUnlockAllowance(localProgress, 3);
-      if (allowance > 0) {
-        yield* clientLog("info", `[SessionSync] User is eligible for new rules. Remaining allowance today: ${allowance}`);
-        const activeIds = new Set(localProgress.map((p) => p.id));
-        const unstudied = catalog.filter((c) => !activeIds.has(c.id));
-        
-        const nextIntroductions = unstudied.slice(0, allowance);
-        if (nextIntroductions.length > 0) {
-          yield* clientLog("info", `[SessionSync] Unlocking ${nextIntroductions.length} new grammar points.`);
-          
-          const newProgressRecords = nextIntroductions.map((item) => ({
-            id: item.id,
-            easeFactor: 2.5,
-            repetitions: 0,
-            intervalDays: 0,
-            nextReview: now.toISOString(),
-            unlockedAt: now.toISOString(),
-          }));
-          
-          // Save these new rules to grammarPointStore immediately so they count toward today's limit
-          yield* grammarPointStore.putAll(newProgressRecords);
-          
-          for (const item of nextIntroductions) {
-            queue.push({
-              grammar_point_id: item.id,
-              formal_name: item.formal_name,
-              repetitions: 0,
-              ease_factor: 2.5,
-            });
-          }
-        }
-      } else {
-        yield* clientLog("info", "[SessionSync] Daily unlock allowance exhausted (3 rules maximum per 24 hours). No new rules will be introduced today.");
+    // 2. Process and save new introductions if eligible
+    if (eligible && nextIntroductions.length > 0) {
+      yield* clientLog("info", `[SessionSync] Unlocking ${nextIntroductions.length} new grammar points.`);
+      
+      const newProgressRecords = nextIntroductions.map((item) => ({
+        id: item.id,
+        easeFactor: 2.5,
+        repetitions: 0,
+        intervalDays: 0,
+        nextReview: now.toISOString(),
+        unlockedAt: now.toISOString(),
+      }));
+      
+      // Save these new rules to grammarPointStore immediately so they count toward today's limit
+      yield* grammarPointStore.putAll(newProgressRecords);
+      
+      for (const item of nextIntroductions) {
+        queue.push({
+          grammar_point_id: item.id,
+          formal_name: item.formal_name,
+          repetitions: 0,
+          ease_factor: 2.5,
+        });
       }
-    } else {
+    } else if (eligible && allowance === 0) {
+      yield* clientLog("info", `[SessionSync] Daily unlock allowance exhausted (${dailyNewRuleLimit} rules maximum per 24 hours). No new rules will be introduced today.`);
+    } else if (!eligible) {
       yield* clientLog("info", "[SessionSync] User is not eligible for new rules because less than 80% of active learning rules are mastered.");
     }
-    
 
     const finalQueue = queue;
     const queueLength = finalQueue.length;
 
     const promptInstructions = `You are a professional, native Japanese language tutor and structural linguist. Your task is to act as an offline-first Sentence Generator.
-Use the N5/N4 grammar queue and the 'vocabulary_pool' below to generate exactly 30 unique review cards (exactly 1 unique card for each of the next 30 due cards from the grammar points in the queue).
+Use the N5/N4 grammar queue and the 'vocabulary_pool' below to generate exactly ${dailyReviewLimit} unique review cards (exactly 1 unique card for each of the next ${dailyReviewLimit} due cards from the grammar points in the queue).
 
 CRITICAL CONSTRAINTS:
 1. You must ONLY use Japanese nouns, verbs, adjectives, and adverbs listed in the 'vocabulary_pool'. Do NOT use any outside vocabulary under any circumstances.
@@ -132,6 +140,34 @@ CRITICAL CONSTRAINTS:
     }
   ]
 }`;
+
+    // Fallback if the local database has not been initialized with reviews yet and catalog is empty
+    if (queue.length === 0 && catalog.length === 0) {
+      queue.push(
+        { grammar_point_id: "e0eebc99-9c0b-4ef8-bb6d-6bb9bd380e55", formal_name: "だ", repetitions: 0, ease_factor: 2.5 },
+        { grammar_point_id: "00eebc99-9c0b-4ef8-bb6d-6bb9bd381a11", formal_name: "は", repetitions: 0, ease_factor: 2.5 },
+        { grammar_point_id: "11eebc99-9c0b-4ef8-bb6d-6bb9bd381b22", formal_name: "も", repetitions: 0, ease_factor: 2.5 },
+        { grammar_point_id: "22eebc99-9c0b-4ef8-bb6d-6bb9bd381c33", formal_name: "に", repetitions: 0, ease_factor: 2.5 },
+        { grammar_point_id: "33eebc99-9c0b-4ef8-bb6d-6bb9bd381d44", formal_name: "で", repetitions: 0, ease_factor: 2.5 },
+        { grammar_point_id: "44eebc99-9c0b-4ef8-bb6d-6bb9bd381e55", formal_name: "を", repetitions: 0, ease_factor: 2.5 },
+        { grammar_point_id: "55eebc99-9c0b-4ef8-bb6d-6bb9bd381f66", formal_name: "が", repetitions: 0, ease_factor: 2.5 },
+        { grammar_point_id: "66eebc99-9c0b-4ef8-bb6d-6bb9bd382a11", formal_name: "から", repetitions: 0, ease_factor: 2.5 },
+        { grammar_point_id: "77eebc99-9c0b-4ef8-bb6d-6bb9bd382b22", formal_name: "まで", repetitions: 0, ease_factor: 2.5 },
+        { grammar_point_id: "88eebc99-9c0b-4ef8-bb6d-6bb9bd382c33", formal_name: "と", repetitions: 0, ease_factor: 2.5 },
+        { grammar_point_id: "99eebc99-9c0b-4ef8-bb6d-6bb9bd382d44", formal_name: "よ", repetitions: 0, ease_factor: 2.5 },
+        { grammar_point_id: "aaeebc99-9c0b-4ef8-bb6d-6bb9bd382e55", formal_name: "ね", repetitions: 0, ease_factor: 2.5 },
+        { grammar_point_id: "bbeebc99-9c0b-4ef8-bb6d-6bb9bd382f66", formal_name: "～んです", repetitions: 0, ease_factor: 2.5 },
+        { grammar_point_id: "cceebc99-9c0b-4ef8-bb6d-6bb9bd383a11", formal_name: "の", repetitions: 0, ease_factor: 2.5 },
+        { grammar_point_id: "ddeebc99-9c0b-4ef8-bb6d-6bb9bd383b22", formal_name: "けど", repetitions: 0, ease_factor: 2.5 },
+        { grammar_point_id: "11eebc99-9c0b-4ef8-bb6d-6bb9bd389a11", formal_name: "って", repetitions: 0, ease_factor: 2.5 },
+        { grammar_point_id: "01eebc99-9c0b-4ef8-bb6d-6bb9bd383d44", formal_name: "とか", repetitions: 0, ease_factor: 2.5 },
+        { grammar_point_id: "03eebc99-9c0b-4ef8-bb6d-6bb9bd383f66", formal_name: "とく", repetitions: 0, ease_factor: 2.5 },
+        { grammar_point_id: "04eebc99-9c0b-4ef8-bb6d-6bb9bd384a11", formal_name: "なきゃ", repetitions: 0, ease_factor: 2.5 },
+        { grammar_point_id: "05eebc99-9c0b-4ef8-bb6d-6bb9bd384b22", formal_name: "みたい", repetitions: 0, ease_factor: 2.5 },
+        { grammar_point_id: "06eebc99-9c0b-4ef8-bb6d-6bb9bd384c33", formal_name: "これ", repetitions: 0, ease_factor: 2.5 },
+        { grammar_point_id: "07eebc99-9c0b-4ef8-bb6d-6bb9bd384d44", formal_name: "それ", repetitions: 0, ease_factor: 2.5 }
+      );
+    }
 
     const payload: ExportPayload = {
       instructions: promptInstructions,

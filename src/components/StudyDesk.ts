@@ -2,6 +2,7 @@ import { LitElement, html } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import { effect } from "@preact/signals-core";
 import { grammarPointStore, grammarPointCatalogStore } from "../lib/client/stores/grammarPointStore.ts";
+import { userPreferencesStore } from "../lib/client/stores/userPreferencesStore.ts";
 import { logout } from "../lib/client/stores/authStore.ts";
 import { generateExportPayload, importSessionPayload } from "../lib/client/stores/sessionSyncStore.ts";
 import { clientLog } from "../lib/client/clientLog.ts";
@@ -31,9 +32,13 @@ export class StudyDesk extends LitElement {
     runClientUnscoped(grammarPointStore.load());
     runClientUnscoped(grammarPointCatalogStore.load());
     
-    this._disposeEffect = effect(() => {
+        this._disposeEffect = effect(() => {
       const count = grammarPointStore.state.value.length;
       const catalogCount = grammarPointCatalogStore.state.value.length;
+      // Subscribe to preference signals
+      void userPreferencesStore.dailyReviewLimit.value;
+      void userPreferencesStore.dailyNewRuleLimit.value;
+
       runClientUnscoped(clientLog("info", `[StudyDesk] Store updated - progress count: ${count}, catalog count: ${catalogCount}`));
       this.requestUpdate();
     });
@@ -88,22 +93,39 @@ export class StudyDesk extends LitElement {
     );
   };
 
-  private toggleQueue = () => {
+    private toggleQueue = () => {
     this.showQueue = !this.showQueue;
+  };
+
+  private handlePreferenceUpdate = (e: Event, type: "review" | "newRule") => {
+    const val = parseInt((e.target as HTMLInputElement).value, 10);
+    if (isNaN(val) || val < 0) return;
+
+    const currentReview = userPreferencesStore.dailyReviewLimit.peek();
+    const currentNew = userPreferencesStore.dailyNewRuleLimit.peek();
+
+    runClientUnscoped(
+      userPreferencesStore.updateLimits(
+        type === "review" ? val : currentReview,
+        type === "newRule" ? val : currentNew
+      )
+    );
   };
 
   override render() {
     const now = new Date();
     const catalog = grammarPointCatalogStore.state.value;
     
-    // Find and sort active progress items where nextReview is in the past (oldest first)
+        // Find and sort active progress items where nextReview is in the past (oldest first)
     const allDueItems = grammarPointStore.state.value
       .filter(p => new Date(p.nextReview).getTime() <= now.getTime())
       .sort((a, b) => new Date(a.nextReview).getTime() - new Date(b.nextReview).getTime());
 
-    // Slice reviews to enforce a clean daily active cap of 20 and group the rest into backlog
-    const dailyTargetItems = allDueItems.slice(0, 20);
-    const backlogItems = allDueItems.slice(20);
+    const reviewLimit = userPreferencesStore.dailyReviewLimit.value;
+
+    // Slice reviews to enforce a clean dynamic daily active cap and group the rest into backlog
+    const dailyTargetItems = allDueItems.slice(0, reviewLimit);
+    const backlogItems = allDueItems.slice(reviewLimit);
 
     const mappedDailyTarget = dailyTargetItems.map(p => {
       const catalogItem = catalog.find(c => c.id === p.id);
@@ -198,18 +220,41 @@ export class StudyDesk extends LitElement {
             </div>
           </div>
 
-          <!-- Study Progress / Stats Card -->
+                    <!-- Study Progress / Stats Card -->
           <div class="p-6 bg-zinc-950 border border-zinc-800 rounded-lg shadow-sm space-y-4 flex flex-col justify-between">
             <div>
-              <h2 class="text-lg font-semibold text-zinc-200">Study Progress</h2>
+              <div class="flex items-center justify-between">
+                <h2 class="text-lg font-semibold text-zinc-200">Study Progress</h2>
+              </div>
+
+              <div class="mt-4 p-3 bg-zinc-900/40 border border-zinc-900 rounded-lg space-y-3">
+                <span class="text-2xs font-bold text-zinc-500 uppercase tracking-widest">Study Configuration</span>
+                <div class="grid grid-cols-2 gap-4">
+                  <div class="space-y-1">
+                    <label class="text-[10px] font-medium text-zinc-400 uppercase">Review Cap</label>
+                    <input 
+                      type="number" 
+                      .value=${userPreferencesStore.dailyReviewLimit.value}
+                      @change=${(e: Event) => this.handlePreferenceUpdate(e, "review")}
+                      class="w-full px-2 py-1 bg-zinc-950 border border-zinc-800 rounded text-xs text-green-400 focus:outline-none focus:border-green-600"
+                    />
+                  </div>
+                  <div class="space-y-1">
+                    <label class="text-[10px] font-medium text-zinc-400 uppercase">New Rules</label>
+                    <input 
+                      type="number" 
+                      .value=${userPreferencesStore.dailyNewRuleLimit.value}
+                      @change=${(e: Event) => this.handlePreferenceUpdate(e, "newRule")}
+                      class="w-full px-2 py-1 bg-zinc-950 border border-zinc-800 rounded text-xs text-blue-400 focus:outline-none focus:border-blue-600"
+                    />
+                  </div>
+                </div>
+              </div>
+
               <div class="space-y-3 text-sm text-zinc-400 mt-4">
                 <div class="flex justify-between border-b border-zinc-900 pb-2">
-                  <span>Total Studied Rules</span>
-                  <span class="text-zinc-200 font-semibold">Conversational Catalogue</span>
-                </div>
-                <div class="flex justify-between border-b border-zinc-900 pb-2">
                   <span>Sync Outbox Queue</span>
-                  <span class="text-zinc-200">Local-first enabled</span>
+                  <span class="text-zinc-200 text-xs">Local-first enabled</span>
                 </div>
               </div>
 
