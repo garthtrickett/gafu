@@ -190,9 +190,6 @@ describe("grammarPointStore state management and pacing helpers", () => {
     });
   });
 });
-import { describe, it, expect } from "vitest";
-import { getDailyUnlockAllowance, canUnlockMoreRules } from "./grammarPointStore.ts";
-import type { GrammarPointProgress } from "./grammarPointStore.ts";
 
 describe("Grammar Point Gating and Pacing Math", () => {
   const mockProgressList = (unlockedHoursAgo: number[]): GrammarPointProgress[] => {

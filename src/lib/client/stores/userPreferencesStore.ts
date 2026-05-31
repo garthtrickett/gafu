@@ -2,6 +2,7 @@ import { createLocalStore } from "../storage/LocalStoreFactory.ts";
 import { Effect } from "effect";
 import { computed } from "@preact/signals-core";
 import { enqueueTransaction } from "../sync/OutboxQueue.ts";
+import { runClientPromise } from "../runtime.ts";
 
 export interface UserPreferences {
   readonly id: "settings";
@@ -17,8 +18,8 @@ export const userPreferencesStore = {
   /**
    * Hydrates the local preference store, initializing it with defaults if not present.
    */
-  load: () =>
-    Effect.gen(function* () {
+    load: () => {
+    const effect = Effect.gen(function* () {
       yield* basePreferencesStore.load();
       const current = basePreferencesStore.state.peek();
       if (current.length === 0) {
@@ -28,13 +29,18 @@ export const userPreferencesStore = {
           dailyNewRuleLimit: 5,
         });
       }
-    }),
+    });
+    (effect as any).then = (onFulfilled: any, onRejected: any) => {
+      return runClientPromise(effect).then(onFulfilled, onRejected);
+    };
+    return effect;
+  },
 
   /**
    * Mutates local study limits and enqueues an outbox sync transaction.
    */
-  updateLimits: (dailyReviewLimit: number, dailyNewRuleLimit: number) =>
-    Effect.gen(function* () {
+  updateLimits: (dailyReviewLimit: number, dailyNewRuleLimit: number) => {
+    const effect = Effect.gen(function* () {
       const updated: UserPreferences = {
         id: "settings",
         dailyReviewLimit,
@@ -45,7 +51,12 @@ export const userPreferencesStore = {
         dailyReviewLimit,
         dailyNewRuleLimit,
       });
-    }),
+    });
+    (effect as any).then = (onFulfilled: any, onRejected: any) => {
+      return runClientPromise(effect).then(onFulfilled, onRejected);
+    };
+    return effect;
+  },
 
   /**
    * Computed signals for individual settings

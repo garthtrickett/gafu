@@ -8,6 +8,7 @@ import {
 import { activeSessionStore, type SessionCard, type FuriganaSegment } from "./activeSessionStore.ts";
 import { clientLog } from "../clientLog.ts";
 import kaishiPool from "./kaishiPool.json";
+import { runClientPromise } from "../runtime.ts";
 
 export interface ExportedGrammarProgress {
   readonly grammar_point_id: string;
@@ -187,9 +188,16 @@ CRITICAL CONSTRAINTS:
       yield* clientLog("warn", "[SessionSync] Clipboard API not available in this environment.");
     }
 
-    yield* clientLog("info", "[SessionSync] Study progress successfully copied to clipboard.", { wordPoolSize: kaishiPool.length, queueSize: queueLength });
+        yield* clientLog("info", "[SessionSync] Study progress successfully copied to clipboard.", { wordPoolSize: kaishiPool.length, queueSize: queueLength });
     return jsonString;
   });
+
+  (effect as any).then = (onFulfilled: any, onRejected: any) => {
+    return runClientPromise(effect).then(onFulfilled, onRejected);
+  };
+
+  return effect;
+};
 
 interface ImportedCard {
   readonly grammar_point_id?: string;
@@ -221,8 +229,8 @@ const cleanJsonString = (raw: string): string => {
 /**
  * Validates the imported dynamic study payload and hydrates activeSessionStore
  */
-export const importSessionPayload = (jsonString: string) =>
-  Effect.gen(function* () {
+export const importSessionPayload = (jsonString: string) => {
+  const effect = Effect.gen(function* () {
     yield* clientLog("info", "[SessionSync] Parsing imported study session payload...");
     
     const cleanedString = cleanJsonString(jsonString);
@@ -300,6 +308,13 @@ export const importSessionPayload = (jsonString: string) =>
       });
     }
 
-    activeSessionStore.loadSession(sessionCards);
+        activeSessionStore.loadSession(sessionCards);
     yield* clientLog("info", `[SessionSync] Successfully imported ${sessionCards.length} dynamic cards into active session.`);
   });
+
+  (effect as any).then = (onFulfilled: any, onRejected: any) => {
+    return runClientPromise(effect).then(onFulfilled, onRejected);
+  };
+
+  return effect;
+};

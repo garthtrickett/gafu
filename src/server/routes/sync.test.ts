@@ -68,10 +68,6 @@ describe("Synchronization API Endpoint Suite", () => {
     expect(body.success).toBe(true);
   });
 });
-import { describe, it, expect } from "vitest";
-import { app } from "../index";
-import { generateToken } from "../../lib/server/JwtService";
-import type { PublicUser } from "../../lib/shared/schemas";
 
 describe("Sync Push Route - Non-UUID Protection", () => {
   it("should gracefully discard push requests with malformed non-UUID grammarPointId", async () => {
@@ -88,7 +84,7 @@ describe("Sync Push Route - Non-UUID Protection", () => {
       skills: []
     };
 
-    const token = await generateToken(user);
+    const token = generateToken(user);
 
     const payload = {
       id: "1cba4d11-a963-438a-ab07-c18098d9426d",

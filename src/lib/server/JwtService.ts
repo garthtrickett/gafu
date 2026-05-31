@@ -5,6 +5,7 @@ import { config } from "./Config";
 import { AuthError } from "../shared/auth";
 import type { PublicUser } from "../shared/schemas";
 import { PublicUserSchema } from "../shared/schemas";
+import { serverRuntime } from "./server-runtime";
 
 export class JwtGenerationError extends Data.TaggedError("JwtGenerationError")<{
   readonly cause: unknown;
@@ -16,8 +17,8 @@ export class JwtValidationError extends Data.TaggedError("JwtValidationError")<{
 
 const secretKey = new TextEncoder().encode(config.jwt.secret);
 
-export const generateToken = (user: PublicUser, options?: { expiresIn?: TimeSpan }) =>
-  Effect.gen(function* () {
+export const generateToken = (user: PublicUser, options?: { expiresIn?: TimeSpan }) => {
+  const effect = Effect.gen(function* () {
     const payload = yield* Schema.encode(PublicUserSchema)(user).pipe(
       Effect.mapError((cause) => new JwtGenerationError({ cause })),
     );
@@ -39,6 +40,13 @@ export const generateToken = (user: PublicUser, options?: { expiresIn?: TimeSpan
       catch: (cause) => new JwtGenerationError({ cause }),
     });
   });
+
+  (effect as any).then = (onFulfilled: any, onRejected: any) => {
+    return serverRuntime.runPromise(effect).then(onFulfilled, onRejected);
+  };
+
+  return effect;
+};
 
 export const validateToken = (token: string) =>
   Effect.gen(function* () {

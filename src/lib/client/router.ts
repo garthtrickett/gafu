@@ -2,8 +2,6 @@ import { Effect } from "effect";
 import { html, type TemplateResult } from "lit-html";
 import { clientLog } from "./clientLog.ts";
 import { LocationService } from "./LocationService.ts";
-import { runClientUnscoped } from "./runtime.ts";
-import { login, signup } from "./stores/authStore.ts";
 import "../../components/StudySession.ts";
 import "../../components/AiGenerator.ts";
 import "../../components/StudyDesk.ts";

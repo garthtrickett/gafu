@@ -151,7 +151,7 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
             `[Sync:Pull] Pull request failed: ${errorMessage}`
           )
         );
-        if (error instanceof InvalidCredentialsError) {
+                if (error instanceof InvalidCredentialsError || (error && typeof error === "object" && "_tag" in error && (error._tag === "Unauthorized" || error._tag === "Forbidden"))) {
           set.status = 401;
           return { error: "Unauthorized" };
         }
@@ -302,7 +302,7 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
             `[Sync:Push] Push request failed: ${errorMessage}`
           )
         );
-        if (error instanceof InvalidCredentialsError) {
+                if (error instanceof InvalidCredentialsError || (error && typeof error === "object" && "_tag" in error && (error._tag === "Unauthorized" || error._tag === "Forbidden"))) {
           set.status = 401;
           return { error: "Unauthorized" };
         }

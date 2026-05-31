@@ -29,7 +29,7 @@ export class LoginView extends LitElement {
     this._disposeEffect?.();
   }
 
-  private handleSubmit(e: Event) {
+    private handleSubmit = (e: Event) => {
     e.preventDefault();
     const form = e.target as HTMLFormElement;
     const email = (form.elements.namedItem("email") as HTMLInputElement).value;

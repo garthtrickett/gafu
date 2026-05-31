@@ -29,7 +29,7 @@ export class SignupView extends LitElement {
     this._disposeEffect?.();
   }
 
-  private handleSubmit(e: Event) {
+  private handleSubmit = (e: Event) => {
     e.preventDefault();
     const form = e.target as HTMLFormElement;
     const email = (form.elements.namedItem("email") as HTMLInputElement).value;
@@ -42,7 +42,7 @@ export class SignupView extends LitElement {
           if (err instanceof Error) {
             msg = err.message;
           } else if (err !== null && typeof err === "object" && "error" in err) {
-            const errorObj = err as { error: unknown };
+            const errorObj = err;
             msg = String(errorObj.error);
           } else {
             msg = String(err);

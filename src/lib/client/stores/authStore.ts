@@ -72,7 +72,7 @@ export const initAuth = () =>
         yield* executeDeltaPull().pipe(
           Effect.catchAll((err) => clientLog("error", "[AuthStore:initAuth] Immediate delta pull failed", err))
         );
-      } else {
+            } else {
         yield* clientLog("error", `[AuthStore] Failed to decode user profile: ${dataResult.left.message}`);
       }
     } else {
@@ -81,8 +81,15 @@ export const initAuth = () =>
     }
   });
 
-export const login = (email: string, password: string) =>
-  Effect.gen(function* () {
+  (effect as any).then = (onFulfilled: any, onRejected: any) => {
+    return runClientPromise(effect).then(onFulfilled, onRejected);
+  };
+
+  return effect;
+};
+
+export const login = (email: string, password: string) => {
+  const effect = Effect.gen(function* () {
     loginErrorState.value = null;
     yield* clientLog("info", `[AuthStore] Dispatching login request: ${email}`);
 
@@ -127,14 +134,21 @@ export const login = (email: string, password: string) =>
     );
 
     yield* clientLog("debug", "[AuthStore:login] Dynamically importing router...");
-    const { navigate } = yield* Effect.promise(() => import("../router.ts"));
+        const { navigate } = yield* Effect.promise(() => import("../router.ts"));
     yield* clientLog("debug", "[AuthStore:login] Router imported. Triggering navigation to '/'...");
     yield* navigate("/");
     yield* clientLog("debug", "[AuthStore:login] Navigation effect triggered successfully.");
   });
 
-export const signup = (email: string, password: string) =>
-  Effect.gen(function* () {
+  (effect as any).then = (onFulfilled: any, onRejected: any) => {
+    return runClientPromise(effect).then(onFulfilled, onRejected);
+  };
+
+  return effect;
+};
+
+export const signup = (email: string, password: string) => {
+  const effect = Effect.gen(function* () {
     signupErrorState.value = null;
     yield* clientLog("info", `[AuthStore] Dispatching signup request: ${email}`);
 
@@ -166,13 +180,20 @@ export const signup = (email: string, password: string) =>
       catch: (e) => new Error(`Failed to parse signup response: ${String(e)}`),
     });
 
-    const { navigate } = yield* Effect.promise(() => import("../router.ts"));
+        const { navigate } = yield* Effect.promise(() => import("../router.ts"));
     yield* clientLog("debug", "[AuthStore:signup] Router imported. Triggering navigation to '/login'...");
     yield* navigate("/login");
     yield* clientLog("debug", "[AuthStore:signup] Navigation to '/login' effect triggered successfully.");
 
     return data;
   });
+
+  (effect as any).then = (onFulfilled: any, onRejected: any) => {
+    return runClientPromise(effect).then(onFulfilled, onRejected);
+  };
+
+  return effect;
+};
 
 export const logout = () => {
   tokenState.value = null;
