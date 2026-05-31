@@ -20,7 +20,7 @@ export const userPreferencesStore = {
     const effect = Effect.gen(function* () {
       yield* basePreferencesStore.load();
       const current = basePreferencesStore.state.peek();
-            if (current.length === 0) {
+      if (current.length === 0) {
         yield* basePreferencesStore.put({
           id: "settings",
           dailyReviewLimit: 20,
@@ -40,13 +40,17 @@ export const userPreferencesStore = {
     return effect;
   },
 
-    updateLimits: (dailyReviewLimit: number, dailyNewRuleLimit: number, enforceMasteryGates: boolean = true) => {
+  updateLimits: (dailyReviewLimit: number, dailyNewRuleLimit: number, enforceMasteryGates: boolean = true) => {
     const effect = Effect.gen(function* () {
+      const { hlcStore } = yield* Effect.promise(() => import("./hlcStore.ts"));
+      const currentHlc = yield* hlcStore.tick();
+
       const updated: UserPreferences = {
         id: "settings",
         dailyReviewLimit,
         dailyNewRuleLimit,
         enforceMasteryGates,
+        hlc: currentHlc,
       };
       yield* basePreferencesStore.put(updated);
       yield* enqueueTransaction("update_preferences", {
@@ -63,7 +67,7 @@ export const userPreferencesStore = {
     return record ? record.dailyReviewLimit : 20;
   }),
 
-    dailyNewRuleLimit: computed(() => {
+  dailyNewRuleLimit: computed(() => {
     const record = basePreferencesStore.state.value.find((p) => p.id === "settings");
     return record ? record.dailyNewRuleLimit : 3;
   }),

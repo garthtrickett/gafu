@@ -78,12 +78,12 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
           hlc: d.hlc
         }));
 
-        const srsUpdatesResult = srsCards.map(c => ({
+                const srsUpdatesResult = srsCards.map(c => ({
           id: c.id,
           grammarPointId: c.grammar_point_id,
           easeFactor: c.ease_factor,
           repetitions: c.repetitions,
-          interval_days: c.interval_days,
+          intervalDays: c.interval_days,
           nextReview: c.next_review.toISOString(),
           hlc: c.hlc
         }));
