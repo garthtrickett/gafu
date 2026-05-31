@@ -6,6 +6,7 @@ import type { default as DeckTable } from './Deck';
 import type { default as GrammarPointTable } from './GrammarPoint';
 import type { default as PlatformAdminTable } from './PlatformAdmin';
 import type { default as SrsCardTable } from './SrsCard';
+import type { default as UserPreferenceTable } from './UserPreference';
 
 export default interface PublicSchema {
   user: UserTable;
@@ -17,4 +18,6 @@ export default interface PublicSchema {
   platform_admin: PlatformAdminTable;
 
   srs_card: SrsCardTable;
+
+  user_preference: UserPreferenceTable;
 }

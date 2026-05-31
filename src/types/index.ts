@@ -6,3 +6,4 @@ export type { default as PlatformAdminTable, PlatformAdmin, NewPlatformAdmin, Pl
 export type { default as DeckTable, Deck, NewDeck, DeckUpdate, DeckId } from "./generated/public/Deck";
 export type { default as SrsCardTable, SrsCard, NewSrsCard, SrsCardUpdate, SrsCardId } from "./generated/public/SrsCard";
 export type { default as GrammarPointTable, GrammarPoint, NewGrammarPoint, GrammarPointUpdate, GrammarPointId } from "./generated/public/GrammarPoint";
+export type { default as UserPreferenceTable, UserPreference, NewUserPreference, UserPreferenceUpdate } from "./generated/public/UserPreference";

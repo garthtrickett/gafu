@@ -93,12 +93,39 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
           nextReview: c.next_review.toISOString()
         }));
 
-        const grammarPointsResult = grammarPoints.map(gp => ({
+                const grammarPointsResult = grammarPoints.map(gp => ({
           id: gp.id,
           formal_name: gp.formal_name,
           base_meaning: gp.base_meaning,
           difficulty_level: gp.difficulty_level
         }));
+
+        // Retrieve user preferences (or initialize defaults on-the-fly)
+        yield* Effect.logInfo(`[Sync:Pull] Fetching user preferences for user_id=${user.id}`);
+        let userPreference = yield* Effect.tryPromise({
+          try: () => db.selectFrom("user_preference")
+            .selectAll()
+            .where("user_id", "=", user.id as UserId)
+            .executeTakeFirst(),
+          catch: (cause) => new AuthDatabaseError({ cause })
+        });
+
+        if (!userPreference) {
+          yield* Effect.logInfo(`[Sync:Pull] Seed default preferences for user_id=${user.id}`);
+          userPreference = yield* Effect.tryPromise({
+            try: () => db.insertInto("user_preference")
+              .values({
+                user_id: user.id as UserId,
+                daily_review_limit: 50,
+                daily_new_rule_limit: 5,
+                created_at: new Date(),
+                updated_at: new Date()
+              })
+              .returningAll()
+              .executeTakeFirstOrThrow(),
+            catch: (cause) => new AuthDatabaseError({ cause })
+          });
+        }
 
         const serverTimestamp = Date.now();
         yield* Effect.logInfo(`[Sync:Pull] Complete. generatedServerTimestamp=${serverTimestamp}`);
@@ -107,7 +134,11 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
           serverTimestamp,
           decks: decksResult,
           srsUpdates: srsUpdatesResult,
-          grammarPoints: grammarPointsResult
+          grammarPoints: grammarPointsResult,
+          userPreference: {
+            dailyReviewLimit: userPreference.daily_review_limit,
+            dailyNewRuleLimit: userPreference.daily_new_rule_limit
+          }
         };
       });
 
@@ -155,7 +186,7 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
         const user = yield* validateToken(token);
         yield* Effect.logInfo(`[Sync:Push] Authorized session for subscriber: ${user.email} (ID: ${user.id})`);
 
-        if (body.type === "record_review") {
+                if (body.type === "record_review") {
           const payload = body.payload as RecordReviewPayload;
           const grammarPointId = payload.grammarPointId ?? payload.grammar_point_id;
           const easeFactor = payload.easeFactor ?? payload.ease_factor;
@@ -168,7 +199,7 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
             return yield* Effect.fail(new Error("Missing parameters in review payload"));
           }
 
-                    yield* Effect.logInfo(`[Sync:Push] Recording review grammarPointId=${grammarPointId}. easeFactor=${easeFactor}, reps=${repetitions}, nextReview=${nextReview}`);
+          yield* Effect.logInfo(`[Sync:Push] Recording review grammarPointId=${grammarPointId}. easeFactor=${easeFactor}, reps=${repetitions}, nextReview=${nextReview}`);
 
           // Verify grammar_point exists first to prevent foreign key violations from legacy/obsolete IDs
           const gpExists = yield* Effect.tryPromise({ 
@@ -211,6 +242,39 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
             catch: (cause) => new AuthDatabaseError({ cause })
           });
           yield* Effect.logInfo(`[Sync:Push] Review recorded for grammarPointId=${grammarPointId}`);
+        } else if (body.type === "update_preferences") {
+          const payload = body.payload as { dailyReviewLimit?: number; dailyNewRuleLimit?: number };
+          const dailyReviewLimit = payload.dailyReviewLimit;
+          const dailyNewRuleLimit = payload.dailyNewRuleLimit;
+
+          if (dailyReviewLimit === undefined || dailyNewRuleLimit === undefined) {
+            yield* Effect.logError("[Sync:Push] Bad request: update_preferences transaction payload is missing parameters");
+            return yield* Effect.fail(new Error("Missing parameters in update_preferences payload"));
+          }
+
+          yield* Effect.logInfo(`[Sync:Push] Updating preferences for user_id=${user.id}. dailyReviewLimit=${dailyReviewLimit}, dailyNewRuleLimit=${dailyNewRuleLimit}`);
+
+          yield* Effect.tryPromise({ 
+            try: () => db.insertInto("user_preference")
+              .values({
+                user_id: user.id as UserId,
+                daily_review_limit: dailyReviewLimit,
+                daily_new_rule_limit: dailyNewRuleLimit,
+                created_at: new Date(),
+                updated_at: new Date()
+              })
+              .onConflict((oc) => oc
+                .column("user_id")
+                .doUpdateSet({
+                  daily_review_limit: dailyReviewLimit,
+                  daily_new_rule_limit: dailyNewRuleLimit,
+                  updated_at: new Date()
+                })
+              )
+              .execute(),
+            catch: (cause) => new AuthDatabaseError({ cause })
+          });
+          yield* Effect.logInfo(`[Sync:Push] Preferences updated successfully for user_id=${user.id}`);
         } else if (body.type === "toggle_skin") {
           yield* Effect.logInfo(`[Sync:Push] Processing skin toggle. payload=${JSON.stringify(body.payload)}`);
         } else if (body.type === "unlock_deck") {
