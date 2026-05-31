@@ -2,7 +2,6 @@ import { createLocalStore } from "../storage/LocalStoreFactory.ts";
 import { Effect } from "effect";
 import { computed } from "@preact/signals-core";
 import { enqueueTransaction } from "../sync/OutboxQueue.ts";
-import { makeThenable } from "../runtime.ts";
 
 export interface UserPreferences {
   readonly id: "settings";
@@ -18,7 +17,7 @@ export const userPreferencesStore = {
   /**
    * Hydrates the local preference store, initializing it with defaults if not present.
    */
-    load: () => {
+      load: () => {
     const effect = Effect.gen(function* () {
       yield* basePreferencesStore.load();
       const current = basePreferencesStore.state.peek();
@@ -30,13 +29,13 @@ export const userPreferencesStore = {
         });
       }
     });
-    return makeThenable(effect);
+    return effect;
   },
 
   /**
    * Mutates local study limits and enqueues an outbox sync transaction.
    */
-  updateLimits: (dailyReviewLimit: number, dailyNewRuleLimit: number) => {
+    updateLimits: (dailyReviewLimit: number, dailyNewRuleLimit: number) => {
     const effect = Effect.gen(function* () {
       const updated: UserPreferences = {
         id: "settings",
@@ -49,7 +48,7 @@ export const userPreferencesStore = {
         dailyNewRuleLimit,
       });
     });
-    return makeThenable(effect);
+    return effect;
   },
 
   /**

@@ -8,7 +8,6 @@ import {
 import { activeSessionStore, type SessionCard, type FuriganaSegment } from "./activeSessionStore.ts";
 import { clientLog } from "../clientLog.ts";
 import kaishiPool from "./kaishiPool.json";
-import { makeThenable } from "../runtime.ts";
 
 export interface ExportedGrammarProgress {
   readonly grammar_point_id: string;
@@ -179,7 +178,7 @@ CRITICAL CONSTRAINTS:
 
     const jsonString = JSON.stringify(payload, null, 2);
     
-    // Write the compiled payload string directly to the user's system clipboard if API is available
+        // Write the compiled payload string directly to the user's system clipboard if API is available
     if (typeof navigator !== "undefined" && navigator.clipboard) {
       yield* Effect.tryPromise({
         try: () => navigator.clipboard.writeText(jsonString),
@@ -193,7 +192,7 @@ CRITICAL CONSTRAINTS:
     return jsonString;
   });
 
-  return makeThenable(effect);
+  return effect;
 };
 
 interface ImportedCard {
@@ -307,9 +306,9 @@ export const importSessionPayload = (jsonString: string) => {
       });
     }
 
-    activeSessionStore.loadSession(sessionCards);
+        activeSessionStore.loadSession(sessionCards);
     yield* clientLog("info", `[SessionSync] Successfully imported ${sessionCards.length} dynamic cards into active session.`);
   });
 
-  return makeThenable(effect);
+  return effect;
 };

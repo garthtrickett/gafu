@@ -1,7 +1,7 @@
 import { signal, computed } from "@preact/signals-core";
 import { Effect } from "effect";
 import { clientLog } from "../clientLog.ts";
-import { runClientPromise, makeThenable } from "../runtime.ts";
+import { runClientPromise } from "../runtime.ts";
 
 export interface UserProfile {
   readonly id: string;
@@ -75,13 +75,13 @@ export const initAuth = () => {
       } else {
         yield* clientLog("error", `[AuthStore] Failed to decode user profile: ${dataResult.left.message}`);
       }
-    } else {
+        } else {
       yield* clientLog("warn", `[AuthStore] Restored token is expired or invalid (HTTP ${response.status}). Purging cache.`);
       logout();
     }
   });
 
-  return makeThenable(effect);
+  return effect;
 };
 
 export const login = (email: string, password: string) => {
@@ -130,13 +130,13 @@ export const login = (email: string, password: string) => {
     );
 
     yield* clientLog("debug", "[AuthStore:login] Dynamically importing router...");
-    const { navigate } = yield* Effect.promise(() => import("../router.ts"));
+        const { navigate } = yield* Effect.promise(() => import("../router.ts"));
     yield* clientLog("debug", "[AuthStore:login] Router imported. Triggering navigation to '/'...");
     yield* navigate("/");
     yield* clientLog("debug", "[AuthStore:login] Navigation effect triggered successfully.");
   });
 
-  return makeThenable(effect);
+  return effect;
 };
 
 export const signup = (email: string, password: string) => {
@@ -172,7 +172,7 @@ export const signup = (email: string, password: string) => {
       catch: (e) => new Error(`Failed to parse signup response: ${String(e)}`),
     });
 
-    const { navigate } = yield* Effect.promise(() => import("../router.ts"));
+        const { navigate } = yield* Effect.promise(() => import("../router.ts"));
     yield* clientLog("debug", "[AuthStore:signup] Router imported. Triggering navigation to '/login'...");
     yield* navigate("/login");
     yield* clientLog("debug", "[AuthStore:signup] Navigation to '/login' effect triggered successfully.");
@@ -180,7 +180,7 @@ export const signup = (email: string, password: string) => {
     return data;
   });
 
-  return makeThenable(effect);
+  return effect;
 };
 
 export const logout = () => {
