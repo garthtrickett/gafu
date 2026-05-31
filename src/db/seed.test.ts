@@ -23,7 +23,14 @@ describe("Database Seeder", () => {
     // All 250+ grammar points should exist in the catalog
     expect(Number(gpCountResult.count)).toBeGreaterThanOrEqual(250);
 
-    // Exactly 10 srs cards should be registered to prevent Day 1 cognitive fatigue
+        // Exactly 10 srs cards should be registered to prevent Day 1 cognitive fatigue
     expect(Number(srsCountResult.count)).toBe(10);
+
+    // Verify baseline HLC values exist on seeded records
+    const sampleGp = await db.selectFrom("grammar_point").select("hlc").limit(1).executeTakeFirstOrThrow();
+    expect(sampleGp.hlc).toBe("0000000000000:0000:initial");
+
+    const sampleSrs = await db.selectFrom("srs_card").select("hlc").limit(1).executeTakeFirstOrThrow();
+    expect(sampleSrs.hlc).toBe("0000000000000:0000:initial");
   });
 });

@@ -26,7 +26,9 @@ export default interface SrsCardTable {
 
   updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
 
-  grammar_point_id: ColumnType<GrammarPointId, GrammarPointId, GrammarPointId>;
+    grammar_point_id: ColumnType<GrammarPointId, GrammarPointId, GrammarPointId>;
+
+  hlc: ColumnType<string, string | undefined, string>;
 }
 
 export type SrsCard = Selectable<SrsCardTable>;
