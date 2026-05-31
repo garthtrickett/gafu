@@ -25,6 +25,10 @@ export const clientLog = (
     }
 
     const forwardEffect = Effect.gen(function* () {
+      if (import.meta.env.VITE_SILENT_CLIENT_LOGGING === "true") {
+        return;
+      }
+
       const payload = {
         level,
         timestamp: new Date().toISOString(),

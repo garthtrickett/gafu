@@ -42,12 +42,14 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
         const user = yield* validateToken(token);
         yield* Effect.logInfo(`[Sync:Pull] Authorized session for subscriber: ${user.email} (ID: ${user.id})`);
 
+        const op = since === "0000000000000:0000:initial" ? ">=" : ">";
+
         // Retrieve decks updated lexicographically after the client's since HLC
         yield* Effect.logInfo(`[Sync:Pull] Fetching decks updated after HLC: ${since}`);
         const decks = yield* Effect.tryPromise({
           try: () => db.selectFrom("deck")
             .selectAll()
-            .where("hlc", ">", since)
+            .where("hlc", op, since)
             .execute(),
           catch: (cause) => new AuthDatabaseError({ cause })
         });
@@ -59,7 +61,7 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
           try: () => db.selectFrom("srs_card")
             .selectAll()
             .where("user_id", "=", user.id as UserId)
-            .where("hlc", ">", since)
+            .where("hlc", op, since)
             .execute(),
           catch: (cause) => new AuthDatabaseError({ cause })
         });
@@ -70,7 +72,7 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
         const grammarPoints = yield* Effect.tryPromise({
           try: () => db.selectFrom("grammar_point")
             .selectAll()
-            .where("hlc", ">", since)
+            .where("hlc", op, since)
             .execute(),
           catch: (cause) => new AuthDatabaseError({ cause })
         });
@@ -127,7 +129,7 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
           });
         }
 
-        const showPreference = userPreference && userPreference.hlc > since;
+        const showPreference = userPreference && (op === ">=" ? userPreference.hlc >= since : userPreference.hlc > since);
         const serverTimestamp = Date.now();
         yield* Effect.logInfo(`[Sync:Pull] Complete. generatedServerTimestamp=${serverTimestamp}`);
 

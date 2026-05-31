@@ -56,7 +56,8 @@ export default defineConfig({
         env: {
       DATABASE_URL: TEST_DB_URL,
       PORT: "3001",
-      BACKEND_PORT: "42070"
+      BACKEND_PORT: "42070",
+      VITE_SILENT_CLIENT_LOGGING: "true"
     }
   },
 });
