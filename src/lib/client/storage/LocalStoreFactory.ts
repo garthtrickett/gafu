@@ -2,7 +2,7 @@ import { signal, type Signal } from "@preact/signals-core";
 import { createStore, get, set, del } from "idb-keyval";
 import { Effect } from "effect";
 import { clientLog } from "../clientLog";
-import { runClientPromise, makeThenable } from "../runtime";
+import { makeThenable } from "../runtime";
 
 const DB_NAME = "bedrock-lang-storage-v1";
 const STORE_NAME = "collections";

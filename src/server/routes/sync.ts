@@ -110,14 +110,14 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
           catch: (cause) => new AuthDatabaseError({ cause })
         });
 
-        if (!userPreference) {
+                if (!userPreference) {
           yield* Effect.logInfo(`[Sync:Pull] Seed default preferences for user_id=${user.id}`);
           userPreference = yield* Effect.tryPromise({
             try: () => db.insertInto("user_preference")
               .values({
                 user_id: user.id as UserId,
-                daily_review_limit: 50,
-                daily_new_rule_limit: 5,
+                daily_review_limit: 20,
+                daily_new_rule_limit: 3,
                 created_at: new Date(),
                 updated_at: new Date()
               })

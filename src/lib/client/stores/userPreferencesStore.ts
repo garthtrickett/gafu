@@ -2,7 +2,7 @@ import { createLocalStore } from "../storage/LocalStoreFactory.ts";
 import { Effect } from "effect";
 import { computed } from "@preact/signals-core";
 import { enqueueTransaction } from "../sync/OutboxQueue.ts";
-import { runClientPromise, makeThenable } from "../runtime.ts";
+import { makeThenable } from "../runtime.ts";
 
 export interface UserPreferences {
   readonly id: "settings";
@@ -18,15 +18,15 @@ export const userPreferencesStore = {
   /**
    * Hydrates the local preference store, initializing it with defaults if not present.
    */
-  load: () => {
+    load: () => {
     const effect = Effect.gen(function* () {
       yield* basePreferencesStore.load();
       const current = basePreferencesStore.state.peek();
       if (current.length === 0) {
         yield* basePreferencesStore.put({
           id: "settings",
-          dailyReviewLimit: 50,
-          dailyNewRuleLimit: 5,
+          dailyReviewLimit: 20,
+          dailyNewRuleLimit: 3,
         });
       }
     });
@@ -55,13 +55,13 @@ export const userPreferencesStore = {
   /**
    * Computed signals for individual settings
    */
-  dailyReviewLimit: computed(() => {
+    dailyReviewLimit: computed(() => {
     const record = basePreferencesStore.state.value.find((p) => p.id === "settings");
-    return record ? record.dailyReviewLimit : 50;
+    return record ? record.dailyReviewLimit : 20;
   }),
 
   dailyNewRuleLimit: computed(() => {
     const record = basePreferencesStore.state.value.find((p) => p.id === "settings");
-    return record ? record.dailyNewRuleLimit : 5;
+    return record ? record.dailyNewRuleLimit : 3;
   }),
 };

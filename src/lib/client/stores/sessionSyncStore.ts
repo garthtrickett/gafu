@@ -8,7 +8,7 @@ import {
 import { activeSessionStore, type SessionCard, type FuriganaSegment } from "./activeSessionStore.ts";
 import { clientLog } from "../clientLog.ts";
 import kaishiPool from "./kaishiPool.json";
-import { runClientPromise, makeThenable } from "../runtime.ts";
+import { makeThenable } from "../runtime.ts";
 
 export interface ExportedGrammarProgress {
   readonly grammar_point_id: string;

@@ -6,8 +6,8 @@ export async function up(db: Kysely<Database>) {
     .createTable("user_preference")
     .ifNotExists()
     .addColumn("user_id", "uuid", (c) => c.primaryKey().references("user.id").onDelete("cascade"))
-    .addColumn("daily_review_limit", "integer", (c) => c.notNull().defaultTo(50))
-    .addColumn("daily_new_rule_limit", "integer", (c) => c.notNull().defaultTo(5))
+        .addColumn("daily_review_limit", "integer", (c) => c.notNull().defaultTo(20))
+    .addColumn("daily_new_rule_limit", "integer", (c) => c.notNull().defaultTo(3))
     .addColumn("created_at", "timestamp", (c) => c.notNull().defaultTo(sql`now()`))
     .addColumn("updated_at", "timestamp", (c) => c.notNull().defaultTo(sql`now()`))
     .execute();
