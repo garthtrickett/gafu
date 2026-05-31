@@ -32,10 +32,25 @@ export const calculateSrsUpdate = (
     } else {
       intervalDays = Math.ceil(intervalDays * easeFactor);
     }
-    easeFactor = Math.max(1.3, easeFactor + 0.15);
+
+    // Tweak 3: Introduce Review "Fuzz" for intervals >= 5
+    if (intervalDays >= 5) {
+      const fuzzRange = 0.05; // +/- 5%
+      const fuzzFactor = 1 + (Math.random() * (fuzzRange * 2) - fuzzRange);
+      intervalDays = Math.max(1, Math.round(intervalDays * fuzzFactor));
+    }
+
+    // Tweak 2: Mitigate "Ease Hell" with progressive recovery
+    const easeBonus = repetitions >= 3 ? 0.25 : 0.15;
+    easeFactor = Math.max(1.3, easeFactor + easeBonus);
   } else {
+    // Tweak 1: Soften Lapses on Mature Cards
+    if (intervalDays >= 7) {
+      intervalDays = Math.max(3, Math.ceil(intervalDays * 0.20));
+    } else {
+      intervalDays = 1;
+    }
     repetitions = 0;
-    intervalDays = 1;
     easeFactor = Math.max(1.3, easeFactor - 0.2);
   }
 
@@ -48,7 +63,7 @@ export const calculateSrsUpdate = (
     intervalDays,
     nextReview: nextReview.toISOString(),
   };
-};
+};;
 
 export interface StudySessionModel {
   readonly audioPlaying: boolean;
