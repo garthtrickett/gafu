@@ -2,7 +2,7 @@ import { createLocalStore } from "../storage/LocalStoreFactory.ts";
 import { Effect } from "effect";
 import { computed } from "@preact/signals-core";
 import { enqueueTransaction } from "../sync/OutboxQueue.ts";
-import { runClientPromise } from "../runtime.ts";
+import { runClientPromise, makeThenable } from "../runtime.ts";
 
 export interface UserPreferences {
   readonly id: "settings";
@@ -18,7 +18,7 @@ export const userPreferencesStore = {
   /**
    * Hydrates the local preference store, initializing it with defaults if not present.
    */
-    load: () => {
+  load: () => {
     const effect = Effect.gen(function* () {
       yield* basePreferencesStore.load();
       const current = basePreferencesStore.state.peek();
@@ -30,10 +30,7 @@ export const userPreferencesStore = {
         });
       }
     });
-    (effect as any).then = (onFulfilled: any, onRejected: any) => {
-      return runClientPromise(effect).then(onFulfilled, onRejected);
-    };
-    return effect;
+    return makeThenable(effect);
   },
 
   /**
@@ -52,10 +49,7 @@ export const userPreferencesStore = {
         dailyNewRuleLimit,
       });
     });
-    (effect as any).then = (onFulfilled: any, onRejected: any) => {
-      return runClientPromise(effect).then(onFulfilled, onRejected);
-    };
-    return effect;
+    return makeThenable(effect);
   },
 
   /**

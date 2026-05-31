@@ -17,6 +17,26 @@ export class JwtValidationError extends Data.TaggedError("JwtValidationError")<{
 
 const secretKey = new TextEncoder().encode(config.jwt.secret);
 
+interface SafePromiseLike<T> {
+  then<TResult1 = T, TResult2 = never>(
+    onfulfilled?: ((value: T) => TResult1 | PromiseLike<TResult1>) | null,
+    onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null
+  ): PromiseLike<TResult1 | TResult2>;
+}
+
+const makeServerThenable = <A, E, R extends never>(
+  effect: Effect.Effect<A, E, R>
+): Effect.Effect<A, E, R> & SafePromiseLike<A> => {
+  const thenable = effect as unknown as Effect.Effect<A, E, R> & SafePromiseLike<A>;
+  thenable.then = <TResult1 = A, TResult2 = never>(
+    onFulfilled?: ((value: A) => TResult1 | PromiseLike<TResult1>) | null,
+    onRejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null
+  ): PromiseLike<TResult1 | TResult2> => {
+    return serverRuntime.runPromise(effect).then(onFulfilled, onRejected);
+  };
+  return thenable;
+};
+
 export const generateToken = (user: PublicUser, options?: { expiresIn?: TimeSpan }) => {
   const effect = Effect.gen(function* () {
     const payload = yield* Schema.encode(PublicUserSchema)(user).pipe(
@@ -41,11 +61,7 @@ export const generateToken = (user: PublicUser, options?: { expiresIn?: TimeSpan
     });
   });
 
-  (effect as any).then = (onFulfilled: any, onRejected: any) => {
-    return serverRuntime.runPromise(effect).then(onFulfilled, onRejected);
-  };
-
-  return effect;
+  return makeServerThenable(effect);
 };
 
 export const validateToken = (token: string) =>

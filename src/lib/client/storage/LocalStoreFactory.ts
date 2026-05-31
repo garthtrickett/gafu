@@ -2,7 +2,7 @@ import { signal, type Signal } from "@preact/signals-core";
 import { createStore, get, set, del } from "idb-keyval";
 import { Effect } from "effect";
 import { clientLog } from "../clientLog";
-import { runClientPromise } from "../runtime";
+import { runClientPromise, makeThenable } from "../runtime";
 
 const DB_NAME = "bedrock-lang-storage-v1";
 const STORE_NAME = "collections";
@@ -112,13 +112,6 @@ export function createLocalStore<T extends Identifiable>(
       });
       state.value = [];
     });
-
-    const makeThenable = <A, E, R>(effect: Effect.Effect<A, E, R>) => {
-    (effect as any).then = (onFulfilled: any, onRejected: any) => {
-      return runClientPromise(effect).then(onFulfilled, onRejected);
-    };
-    return effect;
-  };
 
   return {
     state,

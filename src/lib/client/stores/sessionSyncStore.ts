@@ -8,7 +8,7 @@ import {
 import { activeSessionStore, type SessionCard, type FuriganaSegment } from "./activeSessionStore.ts";
 import { clientLog } from "../clientLog.ts";
 import kaishiPool from "./kaishiPool.json";
-import { runClientPromise } from "../runtime.ts";
+import { runClientPromise, makeThenable } from "../runtime.ts";
 
 export interface ExportedGrammarProgress {
   readonly grammar_point_id: string;
@@ -26,8 +26,8 @@ export interface ExportPayload {
 /**
  * Collects N5/N4 grammar states from IndexedDB and copies a lightweight payload to the clipboard
  */
-export const generateExportPayload = () =>
-  Effect.gen(function* () {
+export const generateExportPayload = () => {
+  const effect = Effect.gen(function* () {
     yield* clientLog("info", "[SessionSync] Compiling study progress payload...");
     
     // Ensure both stores are loaded and updated
@@ -188,15 +188,11 @@ CRITICAL CONSTRAINTS:
       yield* clientLog("warn", "[SessionSync] Clipboard API not available in this environment.");
     }
 
-        yield* clientLog("info", "[SessionSync] Study progress successfully copied to clipboard.", { wordPoolSize: kaishiPool.length, queueSize: queueLength });
+    yield* clientLog("info", "[SessionSync] Study progress successfully copied to clipboard.", { wordPoolSize: kaishiPool.length, queueSize: queueLength });
     return jsonString;
   });
 
-  (effect as any).then = (onFulfilled: any, onRejected: any) => {
-    return runClientPromise(effect).then(onFulfilled, onRejected);
-  };
-
-  return effect;
+  return makeThenable(effect);
 };
 
 interface ImportedCard {
@@ -259,7 +255,7 @@ export const importSessionPayload = (jsonString: string) => {
         return yield* Effect.fail(new Error("Invalid card schema: each card requires 'grammar_point_id', 'english_context', and 'japanese_sentence'."));
       }
       
-            const gpId = card.grammar_point_id;
+      const gpId = card.grammar_point_id;
 
       // Validate that the grammar_point_id is a valid UUID to prevent downstream outbox sync failures
       const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -308,13 +304,9 @@ export const importSessionPayload = (jsonString: string) => {
       });
     }
 
-        activeSessionStore.loadSession(sessionCards);
+    activeSessionStore.loadSession(sessionCards);
     yield* clientLog("info", `[SessionSync] Successfully imported ${sessionCards.length} dynamic cards into active session.`);
   });
 
-  (effect as any).then = (onFulfilled: any, onRejected: any) => {
-    return runClientPromise(effect).then(onFulfilled, onRejected);
-  };
-
-  return effect;
+  return makeThenable(effect);
 };
