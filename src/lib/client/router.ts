@@ -7,6 +7,8 @@ import { login, signup } from "./stores/authStore.ts";
 import "../../components/StudySession.ts";
 import "../../components/AiGenerator.ts";
 import "../../components/StudyDesk.ts";
+import "../../components/LoginView.ts";
+import "../../components/SignupView.ts";
 
 const NotFoundView = (): ViewResult => ({
   template: html`
@@ -40,144 +42,14 @@ const homeView = (): ViewResult => {
 };
 
 const loginView = (): ViewResult => {
-  const handleSubmit = (e: Event) => {
-    e.preventDefault();
-    const form = e.target as HTMLFormElement;
-    const email = (form.elements.namedItem('email') as HTMLInputElement).value;
-    const password = (form.elements.namedItem('password') as HTMLInputElement).value;
-
-    runClientUnscoped(
-      login(email, password).pipe(
-        Effect.catchAll((err: unknown) => {
-          const msg = err instanceof Error ? err.message : String(err);
-          return clientLog("error", `[LoginView] Login operation failed: ${msg}`, { email, err });
-        })
-      )
-    );
-  };
-
   return {
-    template: html`
-      <div class="flex min-h-[60vh] items-center justify-center px-4">
-        <div class="w-full max-w-md space-y-6 bg-zinc-950 border border-zinc-800 p-8 rounded-lg shadow-md">
-          <div class="space-y-2 text-center">
-            <h1 class="text-2xl font-bold tracking-tight text-white">Welcome Back</h1>
-            <p class="text-sm text-zinc-400">Enter your credentials to access your language desk.</p>
-          </div>
-          
-          <form @submit=${handleSubmit} class="space-y-4">
-            <div class="space-y-1">
-              <label for="email" class="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Email Address</label>
-              <input 
-                id="email" 
-                name="email" 
-                type="email" 
-                required 
-                placeholder="you@example.com" 
-                class="w-full px-3 py-2 bg-zinc-900 border border-zinc-800 rounded text-zinc-100 focus:outline-none focus:border-zinc-600 text-sm"
-              />
-            </div>
-            <div class="space-y-1">
-              <label for="password" class="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Password</label>
-              <input 
-                id="password" 
-                name="password" 
-                type="password" 
-                required 
-                placeholder="••••••••" 
-                class="w-full px-3 py-2 bg-zinc-900 border border-zinc-800 rounded text-zinc-100 focus:outline-none focus:border-zinc-600 text-sm"
-              />
-            </div>
-            <button 
-              type="submit" 
-              class="w-full py-2 bg-zinc-100 hover:bg-white text-zinc-900 font-medium rounded text-sm transition-colors"
-            >
-              Sign In
-            </button>
-          </form>
-
-          <div class="text-center text-sm">
-            <span class="text-zinc-400">Need an account?</span>
-            <a href="/signup" class="font-medium text-zinc-250 hover:text-white transition-colors ml-1">Sign up</a>
-          </div>
-        </div>
-      </div>
-    `
+    template: html`<login-view></login-view>`
   };
 };
 
 const signupView = (): ViewResult => {
-  const handleSubmit = (e: Event) => {
-    e.preventDefault();
-    const form = e.target as HTMLFormElement;
-    const email = (form.elements.namedItem('email') as HTMLInputElement).value;
-    const password = (form.elements.namedItem('password') as HTMLInputElement).value;
-
-    runClientUnscoped(
-      signup(email, password).pipe(
-        Effect.catchAll((err: unknown) => {
-          let msg = "Unknown signup error";
-          if (err instanceof Error) {
-            msg = err.message;
-          } else if (err !== null && typeof err === "object" && "error" in err) {
-            const errorObj = err;
-            msg = String(errorObj.error);
-          } else {
-            msg = String(err);
-          }
-          return clientLog("error", `[SignupView] Signup operation failed: ${msg}`, { email, err });
-        })
-      )
-    );
-  };
-
   return {
-    template: html`
-      <div class="flex min-h-[60vh] items-center justify-center px-4">
-        <div class="w-full max-w-md space-y-6 bg-zinc-950 border border-zinc-800 p-8 rounded-lg shadow-md">
-          <div class="space-y-2 text-center">
-            <h1 class="text-2xl font-bold tracking-tight text-white">Create Account</h1>
-            <p class="text-sm text-zinc-400">Get started with offline-first learning.</p>
-          </div>
-          
-          <form @submit=${handleSubmit} class="space-y-4">
-            <div class="space-y-1">
-              <label for="email" class="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Email Address</label>
-              <input 
-                id="email" 
-                name="email" 
-                type="email" 
-                required 
-                placeholder="you@example.com" 
-                class="w-full px-3 py-2 bg-zinc-900 border border-zinc-800 rounded text-zinc-100 focus:outline-none focus:border-zinc-600 text-sm"
-              />
-            </div>
-            <div class="space-y-1">
-              <label for="password" class="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Password</label>
-              <input 
-                id="password" 
-                name="password" 
-                type="password" 
-                required 
-                placeholder="••••••••" 
-                class="w-full px-3 py-2 bg-zinc-900 border border-zinc-800 rounded text-zinc-100 focus:outline-none focus:border-zinc-600 text-sm"
-              />
-            </div>
-            <button 
-              type="submit" 
-              class="w-full py-2 bg-zinc-100 hover:bg-white text-zinc-900 font-medium rounded text-sm transition-colors"
-            >
-              Sign Up
-            </button>
-          </form>
-
-          <div class="text-center text-sm">
-            <span class="text-zinc-400">Already registered?</span>
-            <a href="/login" class="font-medium text-zinc-250 hover:text-white transition-colors ml-1">Log in</a>
-          </div>
-        </div>
-      </div>
-    `
+    template: html`<signup-view></signup-view>`
   };
 };
 

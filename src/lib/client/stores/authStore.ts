@@ -22,6 +22,10 @@ export const tokenState = signal<string | null>(getSanitizedToken());
 
 export const userState = signal<UserProfile | null>(null);
 
+export const loginErrorState = signal<string | null>(null);
+
+export const signupErrorState = signal<string | null>(null);
+
 export const isAuthenticated = computed(() => tokenState.value !== null);
 
 export const initAuth = () =>
@@ -79,6 +83,7 @@ export const initAuth = () =>
 
 export const login = (email: string, password: string) =>
   Effect.gen(function* () {
+    loginErrorState.value = null;
     yield* clientLog("info", `[AuthStore] Dispatching login request: ${email}`);
 
     const response = yield* Effect.tryPromise({
@@ -93,11 +98,12 @@ export const login = (email: string, password: string) =>
 
     yield* clientLog("debug", `[AuthStore:login] Login HTTP response status: ${response.status}`);
 
-    if (!response.ok) {
+        if (!response.ok) {
       const errorResponse = yield* Effect.tryPromise({
         try: () => response.json() as Promise<{ error: string }>,
         catch: () => ({ error: "Unknown network error" }),
       });
+      loginErrorState.value = errorResponse.error;
       yield* clientLog("error", `[AuthStore:login] Login rejected by server: ${errorResponse.error}`);
       return yield* Effect.fail(new Error(errorResponse.error));
     }
@@ -129,6 +135,7 @@ export const login = (email: string, password: string) =>
 
 export const signup = (email: string, password: string) =>
   Effect.gen(function* () {
+    signupErrorState.value = null;
     yield* clientLog("info", `[AuthStore] Dispatching signup request: ${email}`);
 
     const response = yield* Effect.tryPromise({
@@ -143,11 +150,12 @@ export const signup = (email: string, password: string) =>
 
     yield* clientLog("debug", `[AuthStore:signup] Signup HTTP response status: ${response.status}`);
 
-    if (!response.ok) {
+        if (!response.ok) {
       const errorResponse = yield* Effect.tryPromise({
         try: () => response.json() as Promise<{ error: string }>,
         catch: () => ({ error: "Signup process failed" }),
       });
+      signupErrorState.value = errorResponse.error;
       yield* clientLog("error", `[AuthStore:signup] Signup rejected by server: ${errorResponse.error}`);
       return yield* Effect.fail(new Error(errorResponse.error));
     }

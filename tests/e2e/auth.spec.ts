@@ -1,6 +1,20 @@
 import { test, expect } from "./utils/base-test";
 
 test.describe("Authentication and Onboarding Flow", () => {
+  test("should show a visual representation of login failure", async ({ page }) => {
+    // 1. Navigate to the login route
+    await page.goto("/login");
+
+    // 2. Submit invalid credentials
+    await page.locator("#email").fill("nonexistent-learner@test.com");
+    await page.locator("#password").fill("WrongPassword123!");
+    await page.locator('button[type="submit"]').click();
+
+    // 3. Verify the error feedback is rendered visually
+    const errorAlert = page.locator("login-view >> text=Invalid credentials");
+    await expect(errorAlert).toBeVisible();
+  });
+
   test("should allow a new user to sign up and then log in", async ({ page }) => {
     const email = `test-user-${Date.now()}@test.com`;
     const password = "Password123!";
