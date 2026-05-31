@@ -268,8 +268,41 @@ describe("Grammar Point Gating and Pacing Math", () => {
       { id: "gp-4", easeFactor: 2.5, repetitions: 4, intervalDays: 1, nextReview: "" }, // Mastered
       { id: "gp-5", easeFactor: 2.5, repetitions: 1, intervalDays: 1, nextReview: "" }, // Learning
     ];
-    // Mastered: 4 / 5 = 80% (Eligible!)
+        // Mastered: 4 / 5 = 80% (Eligible!)
     expect(canUnlockMoreRules(progressPassThreshold)).toBe(true);
+  });
+});
+
+describe("grammarPointStore computed mastery metrics", () => {
+  beforeEach(async () => {
+    await runClientPromise(grammarPointStore.clear());
+  });
+
+  it("should return 100% mastery rate when active learning queue is empty", () => {
+    expect(grammarPointStore.activeMasteryRate.value).toBe(100);
+    expect(grammarPointStore.unmasteredActiveRules.value).toHaveLength(0);
+  });
+
+  it("should calculate correct mastery rate and list unmastered active rules, ignoring graduated rules", async () => {
+    await runClientPromise(
+      grammarPointStore.putAll([
+        { id: "gp-1", easeFactor: 2.5, repetitions: 3, intervalDays: 1, nextReview: "" }, // mastered (reps)
+        { id: "gp-2", easeFactor: 2.5, repetitions: 1, intervalDays: 7, nextReview: "" }, // mastered (interval)
+        { id: "gp-3", easeFactor: 2.5, repetitions: 1, intervalDays: 2, nextReview: "" }, // unmastered
+        { id: "gp-4", easeFactor: 2.5, repetitions: 0, intervalDays: 0, nextReview: "" }, // unmastered
+        { id: "gp-5", easeFactor: 2.5, repetitions: 1, intervalDays: 30, nextReview: "" }, // graduated (ignored)
+      ])
+    );
+
+    // Active learning rules: gp-1, gp-2, gp-3, gp-4 (total: 4)
+    // Mastered among active: gp-1, gp-2 (total: 2)
+    // Mastery rate: 2/4 = 50%
+    expect(grammarPointStore.activeMasteryRate.value).toBe(50);
+
+    // Unmastered active rules: gp-3, gp-4
+    const unmastered = grammarPointStore.unmasteredActiveRules.value;
+    expect(unmastered).toHaveLength(2);
+    expect(unmastered.map(u => u.id).sort()).toEqual(["gp-3", "gp-4"].sort());
   });
 });
 

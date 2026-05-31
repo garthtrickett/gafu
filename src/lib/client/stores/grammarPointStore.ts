@@ -78,9 +78,29 @@ export const grammarPointStore = {
     return catalog.filter(c => !progressIds.has(c.id));
   }),
 
-  unlockedLast24HoursCount: computed(() => {
+    unlockedLast24HoursCount: computed(() => {
     const progress = baseGrammarPointStore.state.value;
     const limit = userPreferencesStore.dailyNewRuleLimit.value;
     return getDailyUnlockAllowance(progress, limit);
+  }),
+
+  activeMasteryRate: computed(() => {
+    const progress = baseGrammarPointStore.state.value;
+    const learningRules = progress.filter(p => p.intervalDays < 21);
+    if (learningRules.length === 0) {
+      return 100;
+    }
+    const masteredCount = learningRules.filter(
+      p => p.repetitions >= 3 || p.intervalDays >= 7
+    ).length;
+    return Math.round((masteredCount / learningRules.length) * 100);
+  }),
+
+  unmasteredActiveRules: computed(() => {
+    const progress = baseGrammarPointStore.state.value;
+    const learningRules = progress.filter(p => p.intervalDays < 21);
+    return learningRules.filter(
+      p => !(p.repetitions >= 3 || p.intervalDays >= 7)
+    );
   }),
 };
