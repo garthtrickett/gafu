@@ -25,8 +25,12 @@ const bootstrapApp = Effect.gen(function* () {
   yield* clientLog("info", "[Main] Hydrating Grammar Point progress storage from IndexedDB...");
   yield* grammarPointStore.load();
 
-  yield* clientLog("info", "[Main] Hydrating Grammar Point global catalog storage from IndexedDB...");
+    yield* clientLog("info", "[Main] Hydrating Grammar Point global catalog storage from IndexedDB...");
   yield* grammarPointCatalogStore.load();
+
+  yield* clientLog("info", "[Main] Hydrating User Preferences storage from IndexedDB...");
+  const { userPreferencesStore } = yield* Effect.promise(() => import("./lib/client/stores/userPreferencesStore.ts"));
+  yield* userPreferencesStore.load();
 
   // Attempt session restoration
   const { initAuth } = yield* Effect.promise(() => import("./lib/client/stores/authStore.ts"));

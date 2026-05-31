@@ -31,6 +31,10 @@ interface DeltaResponse {
     readonly base_meaning: string;
     readonly difficulty_level: string;
   }>;
+  readonly userPreference?: {
+    readonly dailyReviewLimit: number;
+    readonly dailyNewRuleLimit: number;
+  };
 }
 
 const getStoredPullTimestamp = (): Promise<number> => {
@@ -63,10 +67,11 @@ export const executeDeltaPull = () =>
       catch: (e) => e,
     });
 
-    // Dynamic store imports to prevent circular dependencies
+        // Dynamic store imports to prevent circular dependencies
     const { deckStore } = yield* Effect.promise(() => import("../stores/deckStore"));
     const { srsStore } = yield* Effect.promise(() => import("../stores/srsStore"));
     const { grammarPointStore, grammarPointCatalogStore } = yield* Effect.promise(() => import("../stores/grammarPointStore"));
+    const { userPreferencesStore } = yield* Effect.promise(() => import("../stores/userPreferencesStore"));
 
         // Self-healing: If our local stores are completely empty but we have a non-zero lastPull timestamp,
     // it's highly likely the server database was wiped/reset. Let's force a full sync (since=0).
@@ -116,8 +121,8 @@ export const executeDeltaPull = () =>
       `[DeltaPull] Received pull payload - Decks: ${decksLen}, SRS updates: ${srsUpdatesLen}, Grammar Points: ${gpLen}, serverTimestamp: ${delta?.serverTimestamp}`
     );
 
-    // Process and dispatch updates to local stores if payload contains updates
-    if (decksLen > 0 || srsUpdatesLen > 0 || gpLen > 0) {
+        // Process and dispatch updates to local stores if payload contains updates
+    if (decksLen > 0 || srsUpdatesLen > 0 || gpLen > 0 || delta.userPreference) {
       yield* clientLog("info", `[DeltaPull] Applying updates: ${decksLen} decks, ${srsUpdatesLen} SRS metrics, ${gpLen} catalog items.`);
       
       if (decksLen > 0 && deckStore) {
@@ -153,6 +158,14 @@ export const executeDeltaPull = () =>
           intervalDays: u.intervalDays,
           nextReview: u.nextReview
         })));
+      }
+
+      if (delta.userPreference && userPreferencesStore) {
+        yield* userPreferencesStore.put({
+          id: "settings",
+          dailyReviewLimit: delta.userPreference.dailyReviewLimit,
+          dailyNewRuleLimit: delta.userPreference.dailyNewRuleLimit
+        });
       }
     }
 

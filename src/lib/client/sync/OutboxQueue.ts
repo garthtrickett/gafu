@@ -11,7 +11,7 @@ const OUTBOX_KEYS_LIST = "outbox_pending_keys";
 
 export interface OutboxTransaction {
   readonly id: string;
-  readonly type: "record_review" | "toggle_skin" | "unlock_deck";
+  readonly type: "record_review" | "toggle_skin" | "unlock_deck" | "update_preferences";
   readonly payload: unknown;
   readonly timestamp: number;
 }
