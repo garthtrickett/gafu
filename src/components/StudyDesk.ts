@@ -27,7 +27,7 @@ export class StudyDesk extends LitElement {
     return this;
   }
 
-  override connectedCallback() {
+    override connectedCallback() {
     super.connectedCallback();
     runClientUnscoped(grammarPointStore.load());
     runClientUnscoped(grammarPointCatalogStore.load());
@@ -38,6 +38,9 @@ export class StudyDesk extends LitElement {
       // Subscribe to preference signals
       void userPreferencesStore.dailyReviewLimit.value;
       void userPreferencesStore.dailyNewRuleLimit.value;
+      void userPreferencesStore.enforceMasteryGates.value;
+      void grammarPointStore.activeMasteryRate.value;
+      void grammarPointStore.unmasteredActiveRules.value;
 
       runClientUnscoped(clientLog("info", `[StudyDesk] Store updated - progress count: ${count}, catalog count: ${catalogCount}`));
       this.requestUpdate();
@@ -49,7 +52,7 @@ export class StudyDesk extends LitElement {
     this._disposeEffect?.();
   }
 
-  private triggerExport = (e: Event) => {
+    private triggerExport = (e: Event) => {
     const btn = e.target as HTMLButtonElement;
     const originalText = btn.textContent || "";
     btn.textContent = "⏱️ Compiling...";
@@ -68,6 +71,30 @@ export class StudyDesk extends LitElement {
           btn.textContent = "❌ Failed to Copy";
           btn.disabled = false;
           return clientLog("error", "Export failed", err);
+        })
+      )
+    );
+  };
+
+  private triggerCramExport = (e: Event) => {
+    const btn = e.target as HTMLButtonElement;
+    const originalText = btn.textContent || "";
+    btn.textContent = "⏱️ Compiling Cram...";
+    btn.disabled = true;
+
+    runClientUnscoped(
+      generateExportPayload({ isCram: true }).pipe(
+        Effect.andThen(() => Effect.sync(() => {
+          btn.textContent = "✅ Cram Copied!";
+          setTimeout(() => {
+            btn.textContent = originalText;
+            btn.disabled = false;
+          }, 2000);
+        })),
+        Effect.catchAll((err) => {
+          btn.textContent = "❌ Failed to Copy";
+          btn.disabled = false;
+          return clientLog("error", "Cram export failed", err);
         })
       )
     );
@@ -97,19 +124,39 @@ export class StudyDesk extends LitElement {
     this.showQueue = !this.showQueue;
   };
 
-    private handlePreferenceUpdate = (e: Event, type: "review" | "newRule") => {
+      private handlePreferenceUpdate = (e: Event, type: "review" | "newRule") => {
     const val = parseInt((e.target as HTMLInputElement).value, 10);
     if (isNaN(val) || val < 0) return;
 
     const currentReview = userPreferencesStore.dailyReviewLimit.peek();
     const currentNew = userPreferencesStore.dailyNewRuleLimit.peek();
+    const currentGate = userPreferencesStore.enforceMasteryGates.peek();
 
     runClientUnscoped(
       Effect.gen(function* () {
         yield* clientLog("info", `[StudyDesk] Updating preferences: type=${type}, newValue=${val}`);
         yield* userPreferencesStore.updateLimits(
           type === "review" ? val : currentReview,
-          type === "newRule" ? val : currentNew
+          type === "newRule" ? val : currentNew,
+          currentGate
+        );
+        yield* clientLog("info", "[StudyDesk] Preferences updated successfully.");
+      })
+    );
+  };
+
+  private handleGateToggleUpdate = (e: Event) => {
+    const checked = (e.target as HTMLInputElement).checked;
+    const currentReview = userPreferencesStore.dailyReviewLimit.peek();
+    const currentNew = userPreferencesStore.dailyNewRuleLimit.peek();
+
+    runClientUnscoped(
+      Effect.gen(function* () {
+        yield* clientLog("info", `[StudyDesk] Updating preferences: enforceMasteryGates=${checked}`);
+        yield* userPreferencesStore.updateLimits(
+          currentReview,
+          currentNew,
+          checked
         );
         yield* clientLog("info", "[StudyDesk] Preferences updated successfully.");
       })
@@ -125,11 +172,16 @@ export class StudyDesk extends LitElement {
       .filter(p => new Date(p.nextReview).getTime() <= now.getTime())
       .sort((a, b) => new Date(a.nextReview).getTime() - new Date(b.nextReview).getTime());
 
-    const reviewLimit = userPreferencesStore.dailyReviewLimit.value;
+        const reviewLimit = userPreferencesStore.dailyReviewLimit.value;
 
     // Slice reviews to enforce a clean dynamic daily active cap and group the rest into backlog
     const dailyTargetItems = allDueItems.slice(0, reviewLimit);
     const backlogItems = allDueItems.slice(reviewLimit);
+
+    const enforceGates = userPreferencesStore.enforceMasteryGates.value;
+    const masteryRate = grammarPointStore.activeMasteryRate.value;
+    const showMasteryGateWarning = enforceGates && masteryRate < 80 && grammarPointStore.activeLearningRules.value.length > 0;
+    const hasBacklog = backlogItems.length > 0;
 
     const mappedDailyTarget = dailyTargetItems.map(p => {
       const catalogItem = catalog.find(c => c.id === p.id);
@@ -169,20 +221,73 @@ export class StudyDesk extends LitElement {
       finalBacklog = [];
     }
 
-    return html`
+        return html`
       <div class="max-w-4xl mx-auto space-y-6">
         <div class="flex items-center justify-between border-b border-zinc-800 pb-4">
           <div>
             <h1 class="text-2xl font-bold">Language Study Desk</h1>
             <p class="text-sm text-zinc-400">Review your active decks and vocabulary cycles.</p>
           </div>
-          <button 
+                    <button 
             @click=${logout}
             class="px-4 py-2 bg-zinc-850 hover:bg-zinc-800 text-zinc-200 hover:text-white rounded text-sm font-medium border border-zinc-800 transition-colors cursor-pointer"
           >
             Logout
           </button>
         </div>
+
+        ${showMasteryGateWarning ? html`
+          <div class='p-5 bg-yellow-500/10 border border-yellow-500/20 rounded-lg space-y-3 animate-fade-in' id='mastery-gate-alert'>
+            <div class='flex items-center justify-between'>
+              <div class='flex items-center gap-3.5'>
+                <span class='text-2xl'>🔒</span>
+                <div>
+                  <h3 class='text-sm font-bold text-yellow-500'>Mastery Gate Active</h3>
+                  <p class='text-xs text-zinc-400'>You must reach an 80% mastery rate of active learning rules to unlock new material.</p>
+                </div>
+              </div>
+              <div class='text-right'>
+                <span class='text-xl font-bold text-yellow-500' id='mastery-rate-pct'>${masteryRate}%</span>
+                <span class='text-3xs text-zinc-500 block uppercase tracking-wider font-semibold'>Mastery Rate</span>
+              </div>
+            </div>
+
+            <div class='w-full bg-zinc-900 h-1.5 rounded-full overflow-hidden'>
+              <div class='bg-yellow-500 h-full transition-all duration-300' style='width: ${masteryRate}%'></div>
+            </div>
+
+            <div class='space-y-1.5 pt-1'>
+              <span class='text-[10px] font-bold text-zinc-500 uppercase tracking-wider block'>Unmastered Rules Blocking Progress:</span>
+              <div class='flex flex-wrap gap-1.5' id='unmastered-blocking-list'>
+                ${grammarPointStore.unmasteredActiveRules.value.map(rule => {
+                  const catalogItem = grammarPointCatalogStore.state.value.find(c => c.id === rule.id);
+                  return html`
+                    <span class='px-2 py-0.5 bg-zinc-900 text-yellow-500 border border-yellow-500/10 text-xs font-semibold rounded'>${catalogItem ? catalogItem.formal_name : "は"}</span>
+                  `;
+                })}
+              </div>
+            </div>
+
+            <div class='pt-2.5 border-t border-zinc-900/40 flex items-center justify-between gap-4'>
+              <p class='text-2xs text-zinc-400 leading-relaxed'>
+                💡 <strong>Stuck?</strong> Copy a specialized Cram Payload to generate highly focused practice sentences targeting your troublesome unmastered rules.
+              </p>
+              <button 
+                @click=${this.triggerCramExport}
+                class='px-3.5 py-1.5 bg-yellow-500 hover:bg-yellow-600 text-zinc-950 font-bold rounded text-2xs transition-colors cursor-pointer shrink-0'
+                id='btn-cram-export'
+              >
+                📋 Copy Cram Payload
+              </button>
+            </div>
+          </div>
+        ` : ""}
+
+        ${showMasteryGateWarning && hasBacklog ? html`
+          <div class='p-3 bg-blue-500/10 border border-blue-500/20 text-blue-400 rounded-lg text-xs leading-normal animate-fade-in' id='backlog-advice-hint'>
+            💡 <strong>Backlog Alert</strong>: You have ${backlogItems.length} reviews snoozed in your backlog! Try increasing your <strong>Review Cap</strong> in the configuration panel below to bring them into your due queue and master them.
+          </div>
+        ` : ""}
 
         <div class="grid gap-6 md:grid-cols-2">
           <!-- Setup Wizard Deck Card (Manual Handshake Compiler) -->
@@ -243,7 +348,7 @@ export class StudyDesk extends LitElement {
                       class="w-full px-2 py-1 bg-zinc-950 border border-zinc-800 rounded text-xs text-green-400 focus:outline-none focus:border-green-600"
                     />
                   </div>
-                  <div class="space-y-1">
+                                    <div class="space-y-1">
                     <label class="text-[10px] font-medium text-zinc-400 uppercase">New Rules</label>
                     <input 
                       type="number" 
@@ -252,6 +357,17 @@ export class StudyDesk extends LitElement {
                       class="w-full px-2 py-1 bg-zinc-950 border border-zinc-800 rounded text-xs text-blue-400 focus:outline-none focus:border-blue-600"
                     />
                   </div>
+                </div>
+
+                <div class="flex items-center justify-between pt-2.5 border-t border-zinc-900/60">
+                  <label for="enforce-gates-toggle" class="text-xs font-medium text-zinc-400">Enforce Mastery Gates</label>
+                  <input 
+                    id="enforce-gates-toggle"
+                    type="checkbox"
+                    .checked=${userPreferencesStore.enforceMasteryGates.value}
+                    @change=${this.handleGateToggleUpdate}
+                    class="h-4 w-4 bg-zinc-950 border-zinc-800 rounded focus:ring-green-500 text-green-500 cursor-pointer"
+                  />
                 </div>
               </div>
 
