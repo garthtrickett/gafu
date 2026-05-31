@@ -194,9 +194,16 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
           const intervalDays = payload.intervalDays ?? payload.interval_days;
           const nextReview = payload.nextReview ?? payload.next_review;
 
-          if (!grammarPointId || !nextReview) {
+                    if (!grammarPointId || !nextReview) {
             yield* Effect.logError("[Sync:Push] Bad request: Card review transaction payload is missing parameters");
             return yield* Effect.fail(new Error("Missing parameters in review payload"));
+          }
+
+          // Validate that the grammarPointId is a valid UUID to prevent PostgreSQL casting crashes
+          const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+          if (!UUID_REGEX.test(grammarPointId)) {
+            yield* Effect.logWarning(`[Sync:Push] grammarPointId="${grammarPointId}" is not a valid UUID. Discarding review to clear outbox queue.`);
+            return { success: true };
           }
 
           yield* Effect.logInfo(`[Sync:Push] Recording review grammarPointId=${grammarPointId}. easeFactor=${easeFactor}, reps=${repetitions}, nextReview=${nextReview}`);

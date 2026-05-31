@@ -251,7 +251,14 @@ export const importSessionPayload = (jsonString: string) =>
         return yield* Effect.fail(new Error("Invalid card schema: each card requires 'grammar_point_id', 'english_context', and 'japanese_sentence'."));
       }
       
-      const gpId = card.grammar_point_id;
+            const gpId = card.grammar_point_id;
+
+      // Validate that the grammar_point_id is a valid UUID to prevent downstream outbox sync failures
+      const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!UUID_REGEX.test(gpId)) {
+        yield* clientLog("warn", `[SessionSync] Skipping card with non-UUID grammar_point_id: "${gpId}"`);
+        continue;
+      }
 
       // GATING & ACTIVATION: If an imported card belongs to a previously locked grammar point,
       // initialize its local progress and notify the sync system of activation.

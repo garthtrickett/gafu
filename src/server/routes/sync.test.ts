@@ -68,3 +68,55 @@ describe("Synchronization API Endpoint Suite", () => {
     expect(body.success).toBe(true);
   });
 });
+import { describe, it, expect } from "vitest";
+import { app } from "../index";
+import { generateToken } from "../../lib/server/JwtService";
+import type { PublicUser } from "../../lib/shared/schemas";
+
+describe("Sync Push Route - Non-UUID Protection", () => {
+  it("should gracefully discard push requests with malformed non-UUID grammarPointId", async () => {
+    const user: PublicUser = {
+      id: "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
+      email: "learner@site.com",
+      email_verified: true,
+      permissions: ["study:session_start", "srs:update"],
+      created_at: new Date(),
+      avatar_url: null,
+      is_guest: false,
+      display_name: "Test Learner",
+      phone: null,
+      skills: []
+    };
+
+    const token = await generateToken(user);
+
+    const payload = {
+      id: "1cba4d11-a963-438a-ab07-c18098d9426d",
+      type: "record_review",
+      payload: {
+        grammarPointId: "たい",
+        easeFactor: 2.5,
+        repetitions: 0,
+        intervalDays: 0,
+        nextReview: new Date().toISOString()
+      },
+      timestamp: Date.now()
+    };
+
+    const response = await app.handle(
+      new Request("http://127.0.0.1/api/sync/push", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify(payload)
+      })
+    );
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body).toEqual({ success: true });
+  });
+});
+
