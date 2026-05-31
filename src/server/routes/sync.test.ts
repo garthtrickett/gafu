@@ -308,8 +308,13 @@ describe("HLC Synchronization Causal Order Integration", () => {
       })
     );
 
-    expect(pullResponse.status).toBe(200);
-    const pullBody = (await pullResponse.json()) as { userPreference?: { dailyReviewLimit: number } };
+        expect(pullResponse.status).toBe(200);
+    const pullBody = (await pullResponse.json()) as {
+      userPreference?: {
+        dailyReviewLimit: number;
+        enforceMasteryGates: boolean;
+      };
+    };
     
         // Since pref.hlc is futureTime (which is > olderHlc), it must be returned in the pull payload
     expect(pullBody.userPreference).toBeDefined();

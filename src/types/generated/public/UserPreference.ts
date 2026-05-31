@@ -10,15 +10,15 @@ export default interface UserPreferenceTable {
 
   daily_review_limit: ColumnType<number, number | undefined, number>;
 
-    daily_new_rule_limit: ColumnType<number, number | undefined, number>;
-
-  enforce_mastery_gates: ColumnType<boolean, boolean | undefined, boolean>;
+  daily_new_rule_limit: ColumnType<number, number | undefined, number>;
 
   created_at: ColumnType<Date, Date | string | undefined, Date | string>;
 
   updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
 
   hlc: ColumnType<string, string | undefined, string>;
+
+  enforce_mastery_gates: ColumnType<boolean, boolean | undefined, boolean>;
 }
 
 export type UserPreference = Selectable<UserPreferenceTable>;
