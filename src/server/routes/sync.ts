@@ -168,12 +168,12 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
       const pushEffect = Effect.gen(function* () {
         yield* Effect.logInfo(`[Sync:Push] Processing transaction. txId=${body.id}, type=${body.type}`);
 
-        const decodedTx = yield* Schema.decodeUnknown(OutboxTransactionSchema)(body).pipe(
+                const decodedTx = yield* Schema.decodeUnknown(OutboxTransactionSchema)(body).pipe(
           Effect.mapError(
             (parseError) =>
               new AuthError({
                 _tag: "BadRequest",
-                message: `Invalid outbox transaction payload: ${TreeFormatter.formatError(parseError)}`,
+                message: `Invalid outbox transaction payload: ${TreeFormatter.formatErrorSync(parseError)}`,
               })
           )
         );
@@ -285,10 +285,10 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
           yield* Effect.logInfo(`[Sync:Push] Preferences updated successfully for user_id=${user.id}`);
         } else if (decodedTx.type === "toggle_skin") {
           yield* Effect.logInfo(`[Sync:Push] Processing skin toggle. payload=${JSON.stringify(decodedTx.payload)}`);
-        } else if (decodedTx.type === "unlock_deck") {
+                } else if (decodedTx.type === "unlock_deck") {
           yield* Effect.logInfo(`[Sync:Push] Processing deck unlock. payload=${JSON.stringify(decodedTx.payload)}`);
         } else {
-          yield* Effect.logWarning(`[Sync:Push] Unrecognized transaction type: ${(decodedTx as any).type}`);
+          yield* Effect.logWarning(`[Sync:Push] Unrecognized transaction type: ${(decodedTx as { readonly type: string }).type}`);
         }
 
         return { success: true };

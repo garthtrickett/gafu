@@ -26,20 +26,23 @@ export const RecordReviewPayloadSchema = Schema.transform(
     nextReview: Schema.String,
   }),
   {
-    decode: (input) => {
-      const grammarPointId = "grammarPointId" in input ? input.grammarPointId : input.grammar_point_id;
-      const easeFactor = "easeFactor" in input ? input.easeFactor : input.ease_factor;
-      const repetitions = input.repetitions;
-      const intervalDays = "intervalDays" in input ? input.intervalDays : input.interval_days;
-      const nextReview = "nextReview" in input ? input.nextReview : input.next_review;
-
+        decode: (input) => {
+      if ("grammar_point_id" in input) {
+        return {
+          grammarPointId: input.grammar_point_id,
+          easeFactor: input.ease_factor,
+          repetitions: input.repetitions,
+          intervalDays: input.interval_days,
+          nextReview: input.next_review,
+        };
+      }
       return {
-        grammarPointId,
-        easeFactor,
-        repetitions,
-        intervalDays,
-        nextReview,
-      } as any;
+        grammarPointId: input.grammarPointId,
+        easeFactor: input.easeFactor,
+        repetitions: input.repetitions,
+        intervalDays: input.intervalDays,
+        nextReview: input.nextReview,
+      };
     },
     encode: (normalized) => ({
       grammarPointId: normalized.grammarPointId,
@@ -47,7 +50,7 @@ export const RecordReviewPayloadSchema = Schema.transform(
       repetitions: normalized.repetitions,
       intervalDays: normalized.intervalDays,
       nextReview: normalized.nextReview,
-    }) as any,
+    }),
   }
 );
 
