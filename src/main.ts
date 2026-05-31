@@ -15,7 +15,13 @@ import "./components/layouts/app-shell.ts";
 const bootstrapApp = Effect.gen(function* () {
   yield* clientLog("info", "[Main] Initiating application bootstrap sequence...");
 
-    // Hydrate local data storage collections from IndexedDB
+  // Hydrate local HLC state first to ensure clock validity during early mutations
+  yield* clientLog("info", "[Main] Hydrating local HLC state from IndexedDB...");
+  const { hlcStore } = yield* Effect.promise(() => import("./lib/client/stores/hlcStore.ts"));
+  yield* hlcStore.load();
+  yield* clientLog("debug", `[Main] HLC state hydrated: hlc=${hlcStore.getPacked()}`);
+
+  // Hydrate local data storage collections from IndexedDB
   yield* clientLog("info", "[Main] Hydrating local deck storage from IndexedDB...");
   yield* deckStore.load();
   yield* clientLog("debug", `[Main] Decks hydrated: count=${deckStore.state.value.length}`);

@@ -7,15 +7,17 @@ import { runClientUnscoped } from "../runtime";
 const DB_NAME = "bedrock-lang-sync-v1";
 const STORE_NAME = "metadata";
 const syncMetadataStore = createStore(DB_NAME, STORE_NAME);
-const LAST_PULL_KEY = "last_pull_timestamp";
+const LAST_PULL_KEY = "last_pull_hlc";
 
 interface DeltaResponse {
   readonly serverTimestamp: number;
+  readonly serverHlc: string;
   readonly decks: Array<{
     readonly id: string;
     readonly name: string;
     readonly category: string;
     readonly content: unknown;
+    readonly hlc: string;
   }>;
   readonly srsUpdates: Array<{
     readonly id: string;
@@ -24,25 +26,39 @@ interface DeltaResponse {
     readonly repetitions: number;
     readonly intervalDays: number;
     readonly nextReview: string;
+    readonly hlc: string;
   }>;
   readonly grammarPoints: Array<{
     readonly id: string;
     readonly formal_name: string;
     readonly base_meaning: string;
     readonly difficulty_level: string;
+    readonly hlc: string;
   }>;
   readonly userPreference?: {
     readonly dailyReviewLimit: number;
     readonly dailyNewRuleLimit: number;
+    readonly hlc: string;
   };
 }
 
-const getStoredPullTimestamp = (): Promise<number> => {
-  return get<number>(LAST_PULL_KEY, syncMetadataStore).then((ts) => ts || 0);
+const getStoredPullHlc = (): Promise<string> => {
+  return get<string>(LAST_PULL_KEY, syncMetadataStore).then((hlc) => hlc || "0000000000000:0000:initial");
 };
 
-const savePullTimestamp = (ts: number): Promise<void> => {
-  return set(LAST_PULL_KEY, ts, syncMetadataStore);
+const savePullHlc = (hlc: string): Promise<void> => {
+  return set(LAST_PULL_KEY, hlc, syncMetadataStore);
+};
+
+const filterCausal = <T extends { id: string; hlc?: string }>(
+  incoming: T[],
+  existingList: readonly { id: string; hlc?: string }[]
+): T[] => {
+  return incoming.filter((inc) => {
+    const ext = existingList.find((e) => e.id === inc.id);
+    if (!ext || !ext.hlc || !inc.hlc) return true;
+    return inc.hlc > ext.hlc;
+  });
 };
 
 export const executeDeltaPull = () =>
@@ -58,32 +74,29 @@ export const executeDeltaPull = () =>
     yield* clientLog("debug", `[DeltaPull] Retrieved token from localStorage: "${token}"`);
 
     if (!token || token === "null" || token === "undefined" || token.trim() === "") {
-      yield* clientLog("debug", "[DeltaPull] No valid active session found (token is falsy/empty/null/undefined). Skipping pull cycle.");
+      yield* clientLog("debug", "[DeltaPull] No valid active session found. Skipping pull cycle.");
       return;
     }
 
     let lastPull = yield* Effect.tryPromise({
-      try: () => getStoredPullTimestamp(),
+      try: () => getStoredPullHlc(),
       catch: (e) => e,
     });
 
-        // Dynamic store imports to prevent circular dependencies
     const { deckStore } = yield* Effect.promise(() => import("../stores/deckStore"));
     const { srsStore } = yield* Effect.promise(() => import("../stores/srsStore"));
     const { grammarPointStore, grammarPointCatalogStore } = yield* Effect.promise(() => import("../stores/grammarPointStore"));
     const { userPreferencesStore } = yield* Effect.promise(() => import("../stores/userPreferencesStore"));
 
-        // Self-healing: If our local stores are completely empty but we have a non-zero lastPull timestamp,
-    // it's highly likely the server database was wiped/reset. Let's force a full sync (since=0).
     const deckCount = deckStore?.state?.peek()?.length ?? 0;
     const gpCount = grammarPointStore?.state?.peek()?.length ?? 0;
     const catalogCount = grammarPointCatalogStore?.state?.peek()?.length ?? 0;
     
     yield* clientLog("info", `[DeltaPull] Local state inspection - deckCount: ${deckCount}, gpCount: ${gpCount}, catalogCount: ${catalogCount}, lastPull: ${lastPull}`);
     
-    if (lastPull > 0 && deckCount === 0 && gpCount === 0 && catalogCount === 0) {
-      yield* clientLog("warn", "[DeltaPull] Local stores are empty but lastPull is non-zero. Forcing full sync (since=0) to heal from server reset.");
-      lastPull = 0;
+    if (lastPull !== "0000000000000:0000:initial" && deckCount === 0 && gpCount === 0 && catalogCount === 0) {
+      yield* clientLog("warn", "[DeltaPull] Local stores are empty but lastPull is non-initial. Forcing full sync (since=initial) to heal from server reset.");
+      lastPull = "0000000000000:0000:initial";
     }
 
     yield* clientLog("info", `[DeltaPull] Executing pull request (Since: ${lastPull})...`);
@@ -107,7 +120,7 @@ export const executeDeltaPull = () =>
       return yield* Effect.fail(new Error(`Server returned HTTP ${response.status}`));
     }
 
-        const delta = (yield* Effect.tryPromise({
+    const delta = (yield* Effect.tryPromise({
       try: () => response.json() as Promise<DeltaResponse>,
       catch: (e) => new Error(`Invalid JSON received from pull: ${String(e)}`),
     }));
@@ -118,63 +131,91 @@ export const executeDeltaPull = () =>
 
     yield* clientLog(
       "info",
-      `[DeltaPull] Received pull payload - Decks: ${decksLen}, SRS updates: ${srsUpdatesLen}, Grammar Points: ${gpLen}, serverTimestamp: ${delta?.serverTimestamp}`
+      `[DeltaPull] Received pull payload - Decks: ${decksLen}, SRS updates: ${srsUpdatesLen}, Grammar Points: ${gpLen}, serverHlc: ${delta?.serverHlc}`
     );
 
-        // Process and dispatch updates to local stores if payload contains updates
     if (decksLen > 0 || srsUpdatesLen > 0 || gpLen > 0 || delta.userPreference) {
       yield* clientLog("info", `[DeltaPull] Applying updates: ${decksLen} decks, ${srsUpdatesLen} SRS metrics, ${gpLen} catalog items.`);
       
       if (decksLen > 0 && deckStore) {
-        yield* deckStore.putAll(delta.decks);
+        const existingDecks = deckStore.state.peek();
+        const filteredDecks = filterCausal(delta.decks, existingDecks);
+        if (filteredDecks.length > 0) {
+          yield* deckStore.putAll(filteredDecks);
+        }
       }
       
       if (gpLen > 0 && grammarPointCatalogStore && delta.grammarPoints) {
-        yield* grammarPointCatalogStore.putAll(delta.grammarPoints.map(gp => ({
+        const existingCatalog = grammarPointCatalogStore.state.peek();
+        const mappedGps = delta.grammarPoints.map(gp => ({
           id: gp.id,
           formal_name: gp.formal_name,
           base_meaning: gp.base_meaning,
-          difficulty_level: gp.difficulty_level
-        })));
+          difficulty_level: gp.difficulty_level,
+          hlc: gp.hlc
+        }));
+        const filteredGps = filterCausal(mappedGps, existingCatalog);
+        if (filteredGps.length > 0) {
+          yield* grammarPointCatalogStore.putAll(filteredGps);
+        }
       }
 
       if (srsUpdatesLen > 0 && srsStore && grammarPointStore) {
-        // Hydrate srsStore
-        yield* srsStore.putAll(delta.srsUpdates.map(u => ({
+        const existingSrs = srsStore.state.peek();
+        const mappedSrs = delta.srsUpdates.map(u => ({
           id: u.id,
           front: "",
           back: "",
           easeFactor: u.easeFactor,
           repetitions: u.repetitions,
           intervalDays: u.intervalDays,
-          nextReview: u.nextReview
-        })));
+          nextReview: u.nextReview,
+          hlc: u.hlc
+        }));
+        const filteredSrs = filterCausal(mappedSrs, existingSrs);
+        if (filteredSrs.length > 0) {
+          yield* srsStore.putAll(filteredSrs);
+        }
 
-        // Hydrate grammarPointStore mapped by grammarPointId
-        yield* grammarPointStore.putAll(delta.srsUpdates.map(u => ({
+        const existingProgress = grammarPointStore.state.peek();
+        const mappedProgress = delta.srsUpdates.map(u => ({
           id: u.grammarPointId,
           easeFactor: u.easeFactor,
           repetitions: u.repetitions,
           intervalDays: u.intervalDays,
-          nextReview: u.nextReview
-        })));
+          nextReview: u.nextReview,
+          hlc: u.hlc
+        }));
+        const filteredProgress = filterCausal(mappedProgress, existingProgress);
+        if (filteredProgress.length > 0) {
+          yield* grammarPointStore.putAll(filteredProgress);
+        }
       }
 
       if (delta.userPreference && userPreferencesStore) {
-        yield* userPreferencesStore.put({
-          id: "settings",
-          dailyReviewLimit: delta.userPreference.dailyReviewLimit,
-          dailyNewRuleLimit: delta.userPreference.dailyNewRuleLimit
-        });
+        const existingPref = userPreferencesStore.state.peek().find(p => p.id === "settings");
+        if (!existingPref || !existingPref.hlc || !delta.userPreference.hlc || delta.userPreference.hlc > existingPref.hlc) {
+          yield* userPreferencesStore.put({
+            id: "settings",
+            dailyReviewLimit: delta.userPreference.dailyReviewLimit,
+            dailyNewRuleLimit: delta.userPreference.dailyNewRuleLimit,
+            hlc: delta.userPreference.hlc
+          });
+        }
       }
     }
 
-        yield* Effect.tryPromise({
-      try: () => savePullTimestamp(delta?.serverTimestamp ?? Date.now()),
+    if (delta.serverHlc) {
+      const { hlcStore } = yield* Effect.promise(() => import("../stores/hlcStore"));
+      yield* hlcStore.updateWithRemote(delta.serverHlc);
+    }
+
+    yield* Effect.tryPromise({
+      try: () => savePullHlc(delta?.serverHlc ?? lastPull),
       catch: (e) => e,
     });
 
-    yield* clientLog("debug", `[DeltaPull] Pull cycle complete. Next checkpoint: ${delta.serverTimestamp}`);
+    yield* clientLog("debug", `[DeltaPull] Pull cycle complete. Next checkpoint HLC: ${delta?.serverHlc ?? lastPull}`);
   });
 
 export const startDeltaPullEngine = () => {

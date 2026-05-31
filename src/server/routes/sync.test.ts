@@ -3,6 +3,7 @@ import { Effect } from "effect";
 import { app } from "../index.ts";
 import { generateToken } from "../../lib/server/JwtService.ts";
 import { db } from "../../db/client.ts";
+import { packHlc, unpackHlc, initHlc } from "../../lib/shared/hlc.ts";
 import type { PublicUser } from "../../lib/shared/schemas.ts";
 import type { UserId } from "../../types/index.ts";
 
@@ -43,14 +44,14 @@ describe("Synchronization API Endpoint Suite", () => {
 
   it("should abort pulls missing Authorization headers", async () => {
     const response = await app.handle(
-      new Request("http://localhost/api/sync/pull?since=0")
+      new Request("http://localhost/api/sync/pull?since=0000000000000:0000:initial")
     );
     expect(response.status).toBe(401);
   });
 
-  it("should allow pulling updates with a valid security token", async () => {
+  it("should allow pulling updates with a valid security token and HLC string", async () => {
     const response = await app.handle(
-      new Request("http://localhost/api/sync/pull?since=0", {
+      new Request("http://localhost/api/sync/pull?since=0000000000000:0000:initial", {
         headers: {
           Authorization: `Bearer ${token}`
         }
@@ -59,11 +60,12 @@ describe("Synchronization API Endpoint Suite", () => {
     expect(response.status).toBe(200);
     const body = await response.json() as any;
     expect(body).toHaveProperty("serverTimestamp");
+    expect(body).toHaveProperty("serverHlc");
     expect(body).toHaveProperty("decks");
     expect(body).toHaveProperty("srsUpdates");
   });
 
-  it("should allow pushing mock Outbox transactions", async () => {
+  it("should allow pushing mock Outbox transactions stamped with HLC", async () => {
     const response = await app.handle(
       new Request("http://localhost/api/sync/push", {
         method: "POST",
@@ -75,7 +77,7 @@ describe("Synchronization API Endpoint Suite", () => {
           id: "tx-12345",
           type: "toggle_skin",
           payload: { skinId: "dark-mode" },
-          timestamp: Date.now()
+          hlc: "1600000000000:0000:test-client"
         })
       })
     );
@@ -112,7 +114,7 @@ describe("Sync Push Route - Non-UUID Protection", () => {
         intervalDays: 0,
         nextReview: new Date().toISOString()
       },
-      timestamp: Date.now()
+      hlc: "1600000000000:0000:test-client"
     };
 
     const response = await app.handle(
@@ -129,5 +131,104 @@ describe("Sync Push Route - Non-UUID Protection", () => {
     expect(response.status).toBe(200);
     const body = await response.json();
     expect(body).toEqual({ success: true });
+  });
+});
+
+describe("HLC Synchronization Causal Order Integration", () => {
+  let token: string;
+  let testUser: PublicUser;
+
+  beforeAll(async () => {
+    testUser = {
+      id: "88888888-8888-8888-8888-888888888888" as UserId,
+      email: "hlc-tester@site.com",
+      email_verified: true,
+      permissions: [],
+      created_at: new Date(),
+      avatar_url: null,
+      is_guest: false,
+      display_name: "HLCTester",
+      phone: null,
+      skills: []
+    };
+
+    await db.insertInto("user").values({
+      id: testUser.id as UserId,
+      email: testUser.email,
+      password_hash: "mock_hash_hlc",
+      email_verified: true,
+      created_at: new Date(),
+      updated_at: new Date()
+    }).execute();
+
+    token = await Effect.runPromise(generateToken(testUser));
+  });
+
+  afterAll(async () => {
+    await db.deleteFrom("user").where("id", "=", testUser.id as UserId).execute();
+  });
+
+  it("should tick server clock forward when client pushes an ahead HLC, and return it in subsequent pulls", async () => {
+    // 1. Generate an ahead HLC (2 hours in the future)
+    const futureTime = Date.now() + 2 * 60 * 60 * 1000;
+    const clientAheadHlc = packHlc({
+      physical: futureTime,
+      counter: 5,
+      nodeId: "drifted-client"
+    });
+
+    // 2. Push a preference update stamped with the future HLC
+    const pushResponse = await app.handle(
+      new Request("http://localhost/api/sync/push", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          id: "tx-future-123",
+          type: "update_preferences",
+          payload: {
+            dailyReviewLimit: 45,
+            dailyNewRuleLimit: 8
+          },
+          hlc: clientAheadHlc
+        })
+      })
+    );
+
+    expect(pushResponse.status).toBe(200);
+
+    // 3. Query user preference from database and verify the persisted HLC is ahead and bumped by 1
+    const pref = await db.selectFrom("user_preference")
+      .selectAll()
+      .where("user_id", "=", testUser.id as UserId)
+      .executeTakeFirstOrThrow();
+
+    const unpackedPrefHlc = unpackHlc(pref.hlc);
+    expect(unpackedPrefHlc.physical).toBe(futureTime);
+    expect(unpackedPrefHlc.counter).toBe(6); // should be remote.counter + 1 = 6
+
+    // 4. Execute a pull using a slightly older HLC than the clientAheadHlc
+    const olderHlc = packHlc({
+      physical: futureTime - 1000,
+      counter: 0,
+      nodeId: "other-node"
+    });
+
+    const pullResponse = await app.handle(
+      new Request(`http://localhost/api/sync/pull?since=${olderHlc}`, {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      })
+    );
+
+    expect(pullResponse.status).toBe(200);
+    const pullBody = await pullResponse.json() as any;
+    
+    // Since pref.hlc is futureTime (which is > olderHlc), it must be returned in the pull payload
+    expect(pullBody.userPreference).toBeDefined();
+    expect(pullBody.userPreference.dailyReviewLimit).toBe(45);
   });
 });

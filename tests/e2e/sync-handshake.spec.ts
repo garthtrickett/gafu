@@ -22,7 +22,7 @@ test.describe("Manual Handshake Study Session Loop", () => {
     const copyBtn = page.locator("button", { hasText: "Copy Progress Payload" });
     await expect(copyBtn).toBeVisible();
 
-    // 3. Inject a valid study session payload into the textarea
+    // 3. Inject a valid study session payload equipped with HLC fields into the textarea
     const mockSessionPayload = {
       session_id: "test-session-123",
       cards: [
@@ -36,7 +36,8 @@ test.describe("Manual Handshake Study Session Loop", () => {
             { kanji: "テスト" },
             { kanji: "です" }
           ],
-          audio_url: null
+          audio_url: null,
+          hlc: "0000000000000:0000:initial"
         }
       ]
     };

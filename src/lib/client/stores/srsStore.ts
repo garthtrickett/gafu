@@ -9,6 +9,7 @@ export interface SrsCardClient {
   readonly repetitions: number;
   readonly intervalDays: number;
   readonly nextReview: string;
+  readonly hlc?: string;
 }
 
 export const srsStore = createLocalStore<SrsCardClient>("srs", (a, b) => 

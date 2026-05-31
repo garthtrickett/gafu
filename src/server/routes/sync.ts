@@ -4,6 +4,7 @@ import { effectPlugin } from "../middleware/effect-plugin.ts";
 import { db } from "../../db/client.ts";
 import { validateToken } from "../../lib/server/JwtService.ts";
 import { InvalidCredentialsError, AuthDatabaseError } from "../../features/auth/Errors.ts";
+import { initHlc, receiveHlc, packHlc } from "../../lib/shared/hlc.ts";
 import type { UserId, SrsCardId, GrammarPointId } from "../../types/index.ts";
 
 interface RecordReviewPayload {
@@ -24,8 +25,8 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
     "/pull",
     async ({ query, headers, set, runEffect }) => {
       const pullEffect = Effect.gen(function* () {
-        const since = query.since ? Number(query.since) : 0;
-        yield* Effect.logInfo(`[Sync:Pull] Executing pull requests. sinceTimestamp=${since}`);
+        const since = query.since || "0000000000000:0000:initial";
+        yield* Effect.logInfo(`[Sync:Pull] Executing pull requests. sinceHlc=${since}`);
 
         const authHeader = headers["authorization"];
         yield* Effect.logInfo(`[Sync:Pull] Received Authorization header: "${authHeader}"`);
@@ -41,37 +42,35 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
         const user = yield* validateToken(token);
         yield* Effect.logInfo(`[Sync:Pull] Authorized session for subscriber: ${user.email} (ID: ${user.id})`);
 
-        const sinceDate = new Date(since);
-
-        // Retrieve decks updated since the client's last checkpoint date
-        yield* Effect.logInfo(`[Sync:Pull] Fetching decks updated after ${sinceDate.toISOString()}`);
+        // Retrieve decks updated lexicographically after the client's since HLC
+        yield* Effect.logInfo(`[Sync:Pull] Fetching decks updated after HLC: ${since}`);
         const decks = yield* Effect.tryPromise({
           try: () => db.selectFrom("deck")
             .selectAll()
-            .where("updated_at", ">", sinceDate)
+            .where("hlc", ">", since)
             .execute(),
           catch: (cause) => new AuthDatabaseError({ cause })
         });
         yield* Effect.logInfo(`[Sync:Pull] Retrieved ${decks.length} matching decks from database`);
 
-        // Retrieve SRS cards updated since client last pulled matching this user
-        yield* Effect.logInfo(`[Sync:Pull] Fetching user SRS updates updated after ${sinceDate.toISOString()}`);
+        // Retrieve SRS cards updated lexicographically after client since HLC
+        yield* Effect.logInfo(`[Sync:Pull] Fetching user SRS updates updated after HLC: ${since}`);
         const srsCards = yield* Effect.tryPromise({
           try: () => db.selectFrom("srs_card")
             .selectAll()
             .where("user_id", "=", user.id as UserId)
-            .where("updated_at", ">", sinceDate)
+            .where("hlc", ">", since)
             .execute(),
           catch: (cause) => new AuthDatabaseError({ cause })
         });
         yield* Effect.logInfo(`[Sync:Pull] Retrieved ${srsCards.length} matching SRS reviews from database`);
 
-        // Retrieve global grammar points catalog updated since last pull
-        yield* Effect.logInfo(`[Sync:Pull] Fetching global grammar points updated after ${sinceDate.toISOString()}`);
+        // Retrieve global grammar points catalog updated lexicographically after client since HLC
+        yield* Effect.logInfo(`[Sync:Pull] Fetching global grammar points updated after HLC: ${since}`);
         const grammarPoints = yield* Effect.tryPromise({
           try: () => db.selectFrom("grammar_point")
             .selectAll()
-            .where("updated_at", ">", sinceDate)
+            .where("hlc", ">", since)
             .execute(),
           catch: (cause) => new AuthDatabaseError({ cause })
         });
@@ -119,7 +118,8 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
                 daily_review_limit: 20,
                 daily_new_rule_limit: 3,
                 created_at: new Date(),
-                updated_at: new Date()
+                updated_at: new Date(),
+                hlc: "0000000000000:0000:initial"
               })
               .returningAll()
               .executeTakeFirstOrThrow(),
@@ -127,18 +127,20 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
           });
         }
 
+        const showPreference = userPreference && userPreference.hlc > since;
         const serverTimestamp = Date.now();
         yield* Effect.logInfo(`[Sync:Pull] Complete. generatedServerTimestamp=${serverTimestamp}`);
 
         return {
           serverTimestamp,
+          serverHlc: packHlc(initHlc("server", serverTimestamp)),
           decks: decksResult,
           srsUpdates: srsUpdatesResult,
           grammarPoints: grammarPointsResult,
-          userPreference: {
+          userPreference: showPreference ? {
             dailyReviewLimit: userPreference.daily_review_limit,
             dailyNewRuleLimit: userPreference.daily_new_rule_limit
-          }
+          } : undefined
         };
       });
 
@@ -185,6 +187,14 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
 
         const user = yield* validateToken(token);
         yield* Effect.logInfo(`[Sync:Push] Authorized session for subscriber: ${user.email} (ID: ${user.id})`);
+
+        // Clock Convergence: Merge server wall clock with client's incoming HLC
+        const clientHlc = body.hlc;
+        const serverBase = initHlc("server", Date.now());
+        const converged = receiveHlc(serverBase, clientHlc, Date.now());
+        const convergedPacked = packHlc(converged);
+
+        yield* Effect.logInfo(`[Sync:Push] HLC converged: client=${clientHlc} -> converged=${convergedPacked}`);
 
         if (body.type === "record_review") {
           const payload = body.payload as RecordReviewPayload;
@@ -233,7 +243,8 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
                 interval_days: intervalDays,
                 next_review: new Date(nextReview),
                 created_at: new Date(),
-                updated_at: new Date()
+                updated_at: new Date(),
+                hlc: convergedPacked
               })
               .onConflict((oc) => oc
                 .columns(["user_id", "grammar_point_id"])
@@ -242,7 +253,8 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
                   repetitions: repetitions,
                   interval_days: intervalDays,
                   next_review: new Date(nextReview),
-                  updated_at: new Date()
+                  updated_at: new Date(),
+                  hlc: convergedPacked
                 })
               )
               .execute(),
@@ -268,14 +280,16 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
                 daily_review_limit: dailyReviewLimit,
                 daily_new_rule_limit: dailyNewRuleLimit,
                 created_at: new Date(),
-                updated_at: new Date()
+                updated_at: new Date(),
+                hlc: convergedPacked
               })
               .onConflict((oc) => oc
                 .column("user_id")
                 .doUpdateSet({
                   daily_review_limit: dailyReviewLimit,
                   daily_new_rule_limit: dailyNewRuleLimit,
-                  updated_at: new Date()
+                  updated_at: new Date(),
+                  hlc: convergedPacked
                 })
               )
               .execute(),
@@ -316,7 +330,7 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
         id: t.String(),
         type: t.String(),
         payload: t.Any(),
-        timestamp: t.Number()
+        hlc: t.String()
       })
     }
   );

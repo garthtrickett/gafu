@@ -7,6 +7,7 @@ export interface UserPreferences {
   readonly id: "settings";
   readonly dailyReviewLimit: number;
   readonly dailyNewRuleLimit: number;
+  readonly hlc?: string;
 }
 
 const basePreferencesStore = createLocalStore<UserPreferences>("user_preferences");
@@ -14,10 +15,7 @@ const basePreferencesStore = createLocalStore<UserPreferences>("user_preferences
 export const userPreferencesStore = {
   ...basePreferencesStore,
 
-  /**
-   * Hydrates the local preference store, initializing it with defaults if not present.
-   */
-      load: () => {
+  load: () => {
     const effect = Effect.gen(function* () {
       yield* basePreferencesStore.load();
       const current = basePreferencesStore.state.peek();
@@ -32,10 +30,7 @@ export const userPreferencesStore = {
     return effect;
   },
 
-  /**
-   * Mutates local study limits and enqueues an outbox sync transaction.
-   */
-    updateLimits: (dailyReviewLimit: number, dailyNewRuleLimit: number) => {
+  updateLimits: (dailyReviewLimit: number, dailyNewRuleLimit: number) => {
     const effect = Effect.gen(function* () {
       const updated: UserPreferences = {
         id: "settings",
@@ -51,10 +46,7 @@ export const userPreferencesStore = {
     return effect;
   },
 
-  /**
-   * Computed signals for individual settings
-   */
-    dailyReviewLimit: computed(() => {
+  dailyReviewLimit: computed(() => {
     const record = basePreferencesStore.state.value.find((p) => p.id === "settings");
     return record ? record.dailyReviewLimit : 20;
   }),

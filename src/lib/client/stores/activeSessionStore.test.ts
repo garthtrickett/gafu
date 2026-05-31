@@ -102,7 +102,6 @@ describe("activeSessionStore & weaveSessionCards unit tests", () => {
     activeSessionStore.loadSession(cards);
     expect(activeSessionStore.state.value).toHaveLength(15);
 
-    // Verify we cannot advance beyond the first batch (15 items)
     for (let i = 0; i < 15; i++) {
       expect(activeSessionStore.isFinished.value).toBe(false);
       activeSessionStore.next();
@@ -111,12 +110,11 @@ describe("activeSessionStore & weaveSessionCards unit tests", () => {
     expect(activeSessionStore.isFinished.value).toBe(true);
     expect(activeSessionStore.hasMoreBatches.value).toBe(true);
 
-    // Transition to the next batch
     activeSessionStore.startNextBatch();
 
     expect(activeSessionStore.batchIndex.value).toBe(1);
     expect(activeSessionStore.currentIndex.value).toBe(0);
-    expect(activeSessionStore.state.value).toHaveLength(5); // Remaining 5 cards
+    expect(activeSessionStore.state.value).toHaveLength(5);
     expect(activeSessionStore.isFinished.value).toBe(false);
     expect(activeSessionStore.hasMoreBatches.value).toBe(false);
   });
@@ -137,40 +135,39 @@ describe("activeSessionStore & weaveSessionCards unit tests", () => {
   });
 
   it("should successfully integrate with importSessionPayload to parse, activate, and weave cards", async () => {
-    // Mock JSON session payload with duplicate cards
     const mockPayload = {
       cards: [
         {
           grammar_point_id: "GP-1",
           english_context: "Some context 1",
           japanese_sentence: "Sentence 1",
-          explanation: "Explanation 1"
+          explanation: "Explanation 1",
+          hlc: "0000000000000:0000:initial"
         },
         {
           grammar_point_id: "GP-1",
           english_context: "Some context 2",
           japanese_sentence: "Sentence 2",
-          explanation: "Explanation 2"
+          explanation: "Explanation 2",
+          hlc: "0000000000000:0000:initial"
         },
         {
           grammar_point_id: "GP-2",
           english_context: "Some context 3",
           japanese_sentence: "Sentence 3",
-          explanation: "Explanation 3"
+          explanation: "Explanation 3",
+          hlc: "0000000000000:0000:initial"
         }
       ]
     };
 
     const jsonString = JSON.stringify(mockPayload);
 
-    // Run importSessionPayload through the client effect runtime
     await runClientPromise(importSessionPayload(jsonString));
 
-    // After import, the masterList should have the cards weaved
     const masterList = activeSessionStore.masterList.value;
     expect(masterList).toHaveLength(3);
 
-    // Verify GP-1 cards are not consecutive since GP-2 is interleaved between them
     expect(masterList[0]?.grammarPointId).not.toBe(masterList[1]?.grammarPointId);
     expect(masterList[1]?.grammarPointId).not.toBe(masterList[2]?.grammarPointId);
   });

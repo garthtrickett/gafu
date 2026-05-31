@@ -5,6 +5,7 @@ interface Deck {
   readonly name: string;
   readonly category: string;
   readonly content: unknown;
+  readonly hlc?: string;
 }
 
 export const deckStore = createLocalStore<Deck>("decks");

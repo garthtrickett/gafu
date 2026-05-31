@@ -18,7 +18,7 @@ export default interface DeckTable {
 
   created_at: ColumnType<Date, Date | string | undefined, Date | string>;
 
-    updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
+  updated_at: ColumnType<Date, Date | string | undefined, Date | string>;
 
   hlc: ColumnType<string, string | undefined, string>;
 }

@@ -13,7 +13,7 @@ export interface OutboxTransaction {
   readonly id: string;
   readonly type: "record_review" | "toggle_skin" | "unlock_deck" | "update_preferences";
   readonly payload: unknown;
-  readonly timestamp: number;
+  readonly hlc: string;
 }
 
 const transactionQueue = Effect.runSync(Queue.unbounded<string>());
@@ -31,12 +31,15 @@ export const enqueueTransaction = (
   payload: unknown
 ) =>
   Effect.gen(function* () {
+    const { hlcStore } = yield* Effect.promise(() => import("../stores/hlcStore.ts"));
+    const currentHlc = yield* hlcStore.tick();
+
     const txId = crypto.randomUUID();
     const transaction: OutboxTransaction = {
       id: txId,
       type,
       payload,
-      timestamp: Date.now(),
+      hlc: currentHlc,
     };
 
     yield* Effect.tryPromise({
@@ -55,7 +58,7 @@ export const enqueueTransaction = (
       catch: (e) => e,
     });
 
-    yield* clientLog("debug", `[Outbox] Enqueued transaction ${txId} (${type})`);
+    yield* clientLog("debug", `[Outbox] Enqueued transaction ${txId} (${type}) stamped with HLC ${currentHlc}`);
     yield* Queue.offer(transactionQueue, txId);
   });
 
@@ -68,7 +71,7 @@ const flushTransaction = (txId: string) =>
 
     if (!transaction) return;
 
-        const token = localStorage.getItem("jwt");
+    const token = localStorage.getItem("jwt");
     yield* clientLog("debug", `[Outbox] Retrieved token from localStorage for flush: "${token}"`);
     if (!token || token === "null" || token === "undefined" || token.trim() === "") {
       yield* clientLog("debug", `[Outbox] No valid active session. Skipping flush for transaction ${txId}.`);
