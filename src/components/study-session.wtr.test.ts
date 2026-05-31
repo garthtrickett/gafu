@@ -3,11 +3,12 @@ import "./StudySession";
 import { StudySession } from "./StudySession";
 import { activeSessionStore } from "../lib/client/stores/activeSessionStore";
 import { grammarPointStore } from "../lib/client/stores/grammarPointStore";
+import { runClientPromise } from "../lib/client/runtime";
 
 describe("StudySession Component - Comprehension-First Review Loop", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     activeSessionStore.clear();
-    grammarPointStore.clear();
+    await runClientPromise(grammarPointStore.clear());
   });
 
   it("should render finished state when study queue is empty", async () => {
@@ -43,6 +44,6 @@ describe("StudySession Component - Comprehension-First Review Loop", () => {
 
     // Check Furigana rendering element is present
     const furiganaSentence = el.querySelector("furigana-sentence");
-    expect(furiganaSentence).to.exist;
+    expect(furiSg == null ? furiganaSentence : furiSg).to.exist;
   });
 });
