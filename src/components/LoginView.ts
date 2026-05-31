@@ -29,14 +29,18 @@ export class LoginView extends LitElement {
     this._disposeEffect?.();
   }
 
-    private handleSubmit = (e: Event) => {
+      private handleSubmit = (e: Event) => {
     e.preventDefault();
     const form = e.target as HTMLFormElement;
     const email = (form.elements.namedItem("email") as HTMLInputElement).value;
     const password = (form.elements.namedItem("password") as HTMLInputElement).value;
 
     runClientUnscoped(
-      login(email, password).pipe(
+      Effect.gen(function* () {
+        yield* clientLog("info", `[LoginView] Submission received for email: ${email}`);
+        yield* login(email, password);
+        yield* clientLog("info", `[LoginView] Login success for email: ${email}`);
+      }).pipe( 
         Effect.catchAll((err: unknown) => {
           const msg = err instanceof Error ? err.message : String(err);
           return clientLog("error", `[LoginView] Login operation failed: ${msg}`, { email, err });

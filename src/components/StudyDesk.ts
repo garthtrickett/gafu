@@ -97,7 +97,7 @@ export class StudyDesk extends LitElement {
     this.showQueue = !this.showQueue;
   };
 
-  private handlePreferenceUpdate = (e: Event, type: "review" | "newRule") => {
+    private handlePreferenceUpdate = (e: Event, type: "review" | "newRule") => {
     const val = parseInt((e.target as HTMLInputElement).value, 10);
     if (isNaN(val) || val < 0) return;
 
@@ -105,10 +105,14 @@ export class StudyDesk extends LitElement {
     const currentNew = userPreferencesStore.dailyNewRuleLimit.peek();
 
     runClientUnscoped(
-      userPreferencesStore.updateLimits(
-        type === "review" ? val : currentReview,
-        type === "newRule" ? val : currentNew
-      )
+      Effect.gen(function* () {
+        yield* clientLog("info", `[StudyDesk] Updating preferences: type=${type}, newValue=${val}`);
+        yield* userPreferencesStore.updateLimits(
+          type === "review" ? val : currentReview,
+          type === "newRule" ? val : currentNew
+        );
+        yield* clientLog("info", "[StudyDesk] Preferences updated successfully.");
+      })
     );
   };
 

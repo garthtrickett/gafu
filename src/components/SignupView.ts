@@ -29,14 +29,18 @@ export class SignupView extends LitElement {
     this._disposeEffect?.();
   }
 
-  private handleSubmit = (e: Event) => {
+    private handleSubmit = (e: Event) => {
     e.preventDefault();
     const form = e.target as HTMLFormElement;
     const email = (form.elements.namedItem("email") as HTMLInputElement).value;
     const password = (form.elements.namedItem("password") as HTMLInputElement).value;
 
     runClientUnscoped(
-      signup(email, password).pipe(
+      Effect.gen(function* () {
+        yield* clientLog("info", `[SignupView] Submission received for email: ${email}`);
+        yield* signup(email, password);
+        yield* clientLog("info", `[SignupView] Signup success for email: ${email}`);
+      }).pipe(
         Effect.catchAll((err: unknown) => {
           let msg = "Unknown signup error";
           if (err instanceof Error) {
