@@ -70,11 +70,12 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
         });
         yield* Effect.logInfo(`[Sync:Pull] Retrieved ${grammarPoints.length} matching grammar points from database`);
 
-        const decksResult = decks.map(d => ({
+                const decksResult = decks.map(d => ({
           id: d.id,
           name: d.name,
           category: d.category,
-          content: d.content
+          content: d.content,
+          hlc: d.hlc
         }));
 
         const srsUpdatesResult = srsCards.map(c => ({
@@ -82,15 +83,17 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
           grammarPointId: c.grammar_point_id,
           easeFactor: c.ease_factor,
           repetitions: c.repetitions,
-          intervalDays: c.interval_days,
-          nextReview: c.next_review.toISOString()
+          interval_days: c.interval_days,
+          nextReview: c.next_review.toISOString(),
+          hlc: c.hlc
         }));
 
         const grammarPointsResult = grammarPoints.map(gp => ({
           id: gp.id,
           formal_name: gp.formal_name,
           base_meaning: gp.base_meaning,
-          difficulty_level: gp.difficulty_level
+          difficulty_level: gp.difficulty_level,
+          hlc: gp.hlc
         }));
 
         // Retrieve user preferences (or initialize defaults on-the-fly)

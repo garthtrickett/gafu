@@ -95,8 +95,8 @@ export const executeDeltaPull = () =>
     
     yield* clientLog("info", `[DeltaPull] Local state inspection - deckCount: ${deckCount}, gpCount: ${gpCount}, catalogCount: ${catalogCount}, lastPull: ${lastPull}`);
     
-    if (lastPull !== "0000000000000:0000:initial" && deckCount === 0 && gpCount === 0 && catalogCount === 0) {
-      yield* clientLog("warn", "[DeltaPull] Local stores are empty but lastPull is non-initial. Forcing full sync (since=initial) to heal from server reset.");
+        if (lastPull !== "0000000000000:0000:initial" && (deckCount === 0 || catalogCount === 0)) {
+      yield* clientLog("warn", "[DeltaPull] Local catalog or decks are empty but lastPull is non-initial. Forcing full sync (since=initial) to heal local state.");
       lastPull = "0000000000000:0000:initial";
     }
 
