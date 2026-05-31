@@ -100,6 +100,83 @@ describe("sessionSyncStore export payload gating integration tests", () => {
     expect(payload.queue.map((q: any) => q.grammar_point_id)).toEqual(["gp-0", "gp-1"]);
 
     const finalProgress = grammarPointStore.state.peek();
+        expect(finalProgress).toHaveLength(2);
+  });
+
+  it("should unlock and append up to 3 new rules for ineligible users if enforceMasteryGates is toggled off", async () => {
+    const catalogItems = Array.from({ length: 5 }, (_, i) => ({
+      id: `gp-${i}`,
+      formal_name: `grammar-${i}`,
+      base_meaning: `meaning-${i}`,
+      difficulty_level: "N5",
+      hlc: "0000000000000:0000:initial"
+    }));
+    await runClientPromise(grammarPointCatalogStore.putAll(catalogItems));
+
+    const past = new Date(Date.now() - 100000).toISOString();
+    await runClientPromise(
+      grammarPointStore.putAll([
+        { id: "gp-0", easeFactor: 2.5, repetitions: 0, intervalDays: 0, nextReview: past, hlc: "0000000000000:0000:initial" },
+        { id: "gp-1", easeFactor: 2.5, repetitions: 0, intervalDays: 0, nextReview: past, hlc: "0000000000000:0000:initial" },
+      ])
+    );
+
+    // Disable mastery gate enforcement
+    const preferences = await import("./userPreferencesStore.ts");
+    await runClientPromise(preferences.userPreferencesStore.updateLimits(20, 3, false));
+
+    const jsonString = await runClientPromise(generateExportPayload());
+    const payload = JSON.parse(jsonString);
+
+    // Verify that new rules were introduced despite < 80% mastery
+    expect(payload.queue).toHaveLength(5);
+    expect(payload.queue.map((q: any) => q.grammar_point_id)).toEqual([
+      "gp-0",
+      "gp-1",
+      "gp-2",
+      "gp-3",
+      "gp-4",
+    ]);
+
+    const finalProgress = grammarPointStore.state.peek();
+    expect(finalProgress).toHaveLength(5);
+  });
+
+  it("should compile a cram payload containing unmastered active rules regardless of due state, with cram instructions", async () => {
+    const catalogItems = Array.from({ length: 5 }, (_, i) => ({
+      id: `gp-${i}`,
+      formal_name: `grammar-${i}`,
+      base_meaning: `meaning-${i}`,
+      difficulty_level: "N5",
+      hlc: "0000000000000:0000:initial"
+    }));
+    await runClientPromise(grammarPointCatalogStore.putAll(catalogItems));
+
+    const future = new Date(Date.now() + 100000).toISOString(); // future -> not due
+    const past = new Date(Date.now() - 100000).toISOString(); // past -> due
+    await runClientPromise(
+      grammarPointStore.putAll([
+        { id: "gp-0", easeFactor: 2.5, repetitions: 0, intervalDays: 0, nextReview: future, hlc: "0000000000000:0000:initial" }, // active, unmastered, NOT due
+        { id: "gp-1", easeFactor: 2.5, repetitions: 3, intervalDays: 10, nextReview: past, hlc: "0000000000000:0000:initial" }, // active, mastered, due
+      ])
+    );
+
+    // Re-enable gate
+    const preferences = await import("./userPreferencesStore.ts");
+    await runClientPromise(preferences.userPreferencesStore.updateLimits(20, 3, true));
+
+    const jsonString = await runClientPromise(generateExportPayload({ isCram: true }));
+    const payload = JSON.parse(jsonString);
+
+    // The cram payload should contain gp-0 (unmastered, despite being in the future), and NOT gp-1 (mastered)
+    expect(payload.queue).toHaveLength(1);
+    expect(payload.queue[0]?.grammar_point_id).toBe("gp-0");
+
+    // Verify instructions contain cram-specific terminology
+    expect(payload.instructions).toContain("CRAM/REINFORCEMENT");
+
+    // Verify no new rules are unlocked
+    const finalProgress = grammarPointStore.state.peek();
     expect(finalProgress).toHaveLength(2);
   });
 });

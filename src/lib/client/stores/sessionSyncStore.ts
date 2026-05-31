@@ -25,9 +25,10 @@ export interface ExportPayload {
 /**
  * Collects N5/N4 grammar states from IndexedDB and copies a lightweight payload to the clipboard
  */
-export const generateExportPayload = () => {
+export const generateExportPayload = (options?: { isCram?: boolean }) => {
   const effect = Effect.gen(function* () {
-    yield* clientLog("info", "[SessionSync] Compiling study progress payload...");
+    const isCram = options?.isCram ?? false;
+    yield* clientLog("info", `[SessionSync] Compiling study progress payload (isCram=${isCram})...`);
     
     // Ensure both stores are loaded and updated
     yield* grammarPointStore.load();
@@ -41,8 +42,10 @@ export const generateExportPayload = () => {
     const preferences = yield* Effect.promise(() => import("./userPreferencesStore.ts"));
     const dailyReviewLimit = preferences.userPreferencesStore.dailyReviewLimit.value;
     const dailyNewRuleLimit = preferences.userPreferencesStore.dailyNewRuleLimit.value;
+    const enforceMasteryGates = preferences.userPreferencesStore.enforceMasteryGates.value;
 
-    const eligible = canUnlockMoreRules(localProgress);
+    // Mastery gate is bypassed if user preference toggle is disabled. Cram sessions never introduce new rules.
+    const eligible = !isCram && (!enforceMasteryGates || canUnlockMoreRules(localProgress));
     let allowance = 0;
     let nextIntroductions: typeof catalog = [];
     
@@ -56,54 +59,76 @@ export const generateExportPayload = () => {
       }
     }
 
-    const dueReviewsTargetCount = Math.max(0, dailyReviewLimit - nextIntroductions.length);
+    let queue: ExportedGrammarProgress[] = [];
 
-    // 1. Filter active rules where nextReview <= now, sort by oldest first, and slice up to dueReviewsTargetCount
-    const activeDueProgress = localProgress
-      .filter((p) => new Date(p.nextReview).getTime() <= now.getTime())
-      .sort((a, b) => new Date(a.nextReview).getTime() - new Date(b.nextReview).getTime());
+    if (isCram) {
+      // Cram Session: select unmastered active learning rules (interval < 21) regardless of due date
+      const unmasteredActive = localProgress
+        .filter((p) => p.intervalDays < 21 && !(p.repetitions >= 3 || p.intervalDays >= 7))
+        .sort((a, b) => new Date(a.nextReview).getTime() - new Date(b.nextReview).getTime());
 
-    const activeDueSliced = activeDueProgress.slice(0, dueReviewsTargetCount);
-    
-    // Map progress indicators dynamically matching against the local catalog store
-    const queue: ExportedGrammarProgress[] = activeDueSliced.map((p) => {
-      const match = catalog.find((c) => c.id === p.id);
-      return {
-        grammar_point_id: p.id,
-        formal_name: match ? match.formal_name : "は",
-        repetitions: p.repetitions,
-        ease_factor: p.easeFactor,
-      };
-    });
+      const unmasteredSliced = unmasteredActive.slice(0, 15);
 
-    // 2. Process and save new introductions if eligible
-    if (eligible && nextIntroductions.length > 0) {
-      yield* clientLog("info", `[SessionSync] Unlocking ${nextIntroductions.length} new grammar points.`);
+      queue = unmasteredSliced.map((p) => {
+        const match = catalog.find((c) => c.id === p.id);
+        return {
+          grammar_point_id: p.id,
+          formal_name: match ? match.formal_name : "は",
+          repetitions: p.repetitions,
+          ease_factor: p.easeFactor,
+        };
+      });
+    } else {
+      // Standard Session
+      const dueReviewsTargetCount = Math.max(0, dailyReviewLimit - nextIntroductions.length);
+
+      // 1. Filter active rules where nextReview <= now, sort by oldest first, and slice up to dueReviewsTargetCount
+      const activeDueProgress = localProgress
+        .filter((p) => new Date(p.nextReview).getTime() <= now.getTime())
+        .sort((a, b) => new Date(a.nextReview).getTime() - new Date(b.nextReview).getTime());
+
+      const activeDueSliced = activeDueProgress.slice(0, dueReviewsTargetCount);
       
-      const newProgressRecords = nextIntroductions.map((item) => ({
-        id: item.id,
-        easeFactor: 2.5,
-        repetitions: 0,
-        intervalDays: 0,
-        nextReview: now.toISOString(),
-        unlockedAt: now.toISOString(),
-      }));
-      
-      // Save these new rules to grammarPointStore immediately so they count toward today's limit
-      yield* grammarPointStore.putAll(newProgressRecords);
-      
-      for (const item of nextIntroductions) {
-        queue.push({
-          grammar_point_id: item.id,
-          formal_name: item.formal_name,
+      // Map progress indicators dynamically matching against the local catalog store
+      queue = activeDueSliced.map((p) => {
+        const match = catalog.find((c) => c.id === p.id);
+        return {
+          grammar_point_id: p.id,
+          formal_name: match ? match.formal_name : "は",
+          repetitions: p.repetitions,
+          ease_factor: p.easeFactor,
+        };
+      });
+
+      // 2. Process and save new introductions if eligible
+      if (eligible && nextIntroductions.length > 0) {
+        yield* clientLog("info", `[SessionSync] Unlocking ${nextIntroductions.length} new grammar points.`);
+        
+        const newProgressRecords = nextIntroductions.map((item) => ({
+          id: item.id,
+          easeFactor: 2.5,
           repetitions: 0,
-          ease_factor: 2.5,
-        });
+          intervalDays: 0,
+          nextReview: now.toISOString(),
+          unlockedAt: now.toISOString(),
+        }));
+        
+        // Save these new rules to grammarPointStore immediately so they count toward today's limit
+        yield* grammarPointStore.putAll(newProgressRecords);
+        
+        for (const item of nextIntroductions) {
+          queue.push({
+            grammar_point_id: item.id,
+            formal_name: item.formal_name,
+            repetitions: 0,
+            ease_factor: 2.5,
+          });
+        }
+      } else if (eligible && allowance === 0) {
+        yield* clientLog("info", `[SessionSync] Daily unlock allowance exhausted (${dailyNewRuleLimit} rules maximum per 24 hours). No new rules will be introduced today.`);
+      } else if (!eligible) {
+        yield* clientLog("info", "[SessionSync] User is not eligible for new rules because less than 80% of active learning rules are mastered.");
       }
-    } else if (eligible && allowance === 0) {
-      yield* clientLog("info", `[SessionSync] Daily unlock allowance exhausted (${dailyNewRuleLimit} rules maximum per 24 hours). No new rules will be introduced today.`);
-    } else if (!eligible) {
-      yield* clientLog("info", "[SessionSync] User is not eligible for new rules because less than 80% of active learning rules are mastered.");
     }
 
     // Fallback if the local database has not been initialized with reviews yet and catalog is empty
@@ -134,12 +159,20 @@ export const generateExportPayload = () => {
       );
     }
 
-    // Cap massive backlogs of due rules to a maximum of 15 items in the exported queue
+        // Cap massive backlogs of due rules to a maximum of 15 items in the exported queue
     const finalQueue = queue.slice(0, 15);
     const queueLength = finalQueue.length;
 
-    const promptInstructions = `You are a professional, native Japanese language tutor and structural linguist. Your task is to act as an offline-first Sentence Generator.
-Use the N5/N4 grammar queue and the 'vocabulary_pool' below to generate exactly ${queueLength} unique review cards (exactly 1 unique card for each of the next ${queueLength} due cards from the grammar points in the queue).
+    const promptInstructions = isCram
+      ? `You are an expert Japanese tutor. Act as an offline-first Sentence Generator for a focused CRAM/REINFORCEMENT study session.
+Use the N5/N4 grammar queue and the 'vocabulary_pool' below to generate exactly ${queueLength} unique review cards (exactly 1 unique card for each of the next ${queueLength} cards in the queue).
+Since this is a CRAM session focusing on active, unmastered grammar rules, prioritize highly practical conversational situations to reinforce these exact concepts.`
+      : `You are a professional, native Japanese language tutor and structural linguist. Your task is to act as an offline-first Sentence Generator.
+Use the N5/N4 grammar queue and the 'vocabulary_pool' below to generate exactly ${queueLength} unique review cards (exactly 1 unique card for each of the next ${queueLength} due cards from the grammar points in the queue).`;
+
+    const promptRest = `
+
+CRITICAL CONSTRAINTS:
 
 CRITICAL CONSTRAINTS:
 1. You must ONLY use Japanese nouns, verbs, adjectives, and adverbs listed in the 'vocabulary_pool'. Do NOT use any outside vocabulary under any circumstances.
@@ -170,8 +203,8 @@ CRITICAL CONSTRAINTS:
   ]
 }`;
 
-    const payload: ExportPayload = {
-      instructions: promptInstructions,
+        const payload: ExportPayload = {
+      instructions: promptInstructions + promptRest,
       queue: finalQueue,
       vocabulary_pool: kaishiPool,
     };
