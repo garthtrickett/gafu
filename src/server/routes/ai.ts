@@ -59,7 +59,7 @@ export const aiRoutes = new Elysia({ prefix: "/api/ai" })
         
         await runEffect(Effect.logError(`[AiRoutes] Generation failed: ${errorMessage}`, { cause }));
 
-                if (error instanceof InvalidCredentialsError || (error && typeof error === "object" && "_tag" in error && (error._tag === "Unauthorized" || error._tag === "Forbidden"))) {
+        if (error instanceof InvalidCredentialsError || (error && typeof error === "object" && "_tag" in error && (error._tag === "Unauthorized" || error._tag === "Forbidden" || (error as { _tag?: string })._tag === "AuthError"))) {
           set.status = 401;
           return { error: "Unauthorized" };
         }

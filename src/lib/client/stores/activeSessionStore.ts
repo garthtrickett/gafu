@@ -124,7 +124,7 @@ export const activeSessionStore = {
     return (batchIndex.value + 1) * BATCH_SIZE < masterList.value.length;
   }),
   
-          loadSession: (cards: readonly SessionCard[]) => {
+  loadSession: (cards: readonly SessionCard[]) => {
     const weaved = weaveSessionCards(cards);
     const limit = userPreferencesStore.dailyReviewLimit.value;
     const cappedCards = weaved.slice(0, limit);

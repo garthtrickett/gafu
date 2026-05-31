@@ -93,7 +93,7 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
           nextReview: c.next_review.toISOString()
         }));
 
-                const grammarPointsResult = grammarPoints.map(gp => ({
+        const grammarPointsResult = grammarPoints.map(gp => ({
           id: gp.id,
           formal_name: gp.formal_name,
           base_meaning: gp.base_meaning,
@@ -110,7 +110,7 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
           catch: (cause) => new AuthDatabaseError({ cause })
         });
 
-                if (!userPreference) {
+        if (!userPreference) {
           yield* Effect.logInfo(`[Sync:Pull] Seed default preferences for user_id=${user.id}`);
           userPreference = yield* Effect.tryPromise({
             try: () => db.insertInto("user_preference")
@@ -151,7 +151,7 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
             `[Sync:Pull] Pull request failed: ${errorMessage}`
           )
         );
-                if (error instanceof InvalidCredentialsError || (error && typeof error === "object" && "_tag" in error && (error._tag === "Unauthorized" || error._tag === "Forbidden"))) {
+        if (error instanceof InvalidCredentialsError || (error && typeof error === "object" && "_tag" in error && (error._tag === "Unauthorized" || error._tag === "Forbidden" || (error as { _tag?: string })._tag === "AuthError"))) {
           set.status = 401;
           return { error: "Unauthorized" };
         }
@@ -186,7 +186,7 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
         const user = yield* validateToken(token);
         yield* Effect.logInfo(`[Sync:Push] Authorized session for subscriber: ${user.email} (ID: ${user.id})`);
 
-                if (body.type === "record_review") {
+        if (body.type === "record_review") {
           const payload = body.payload as RecordReviewPayload;
           const grammarPointId = payload.grammarPointId ?? payload.grammar_point_id;
           const easeFactor = payload.easeFactor ?? payload.ease_factor;
@@ -194,7 +194,7 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
           const intervalDays = payload.intervalDays ?? payload.interval_days;
           const nextReview = payload.nextReview ?? payload.next_review;
 
-                    if (!grammarPointId || !nextReview) {
+          if (!grammarPointId || !nextReview) {
             yield* Effect.logError("[Sync:Push] Bad request: Card review transaction payload is missing parameters");
             return yield* Effect.fail(new Error("Missing parameters in review payload"));
           }
@@ -302,7 +302,7 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
             `[Sync:Push] Push request failed: ${errorMessage}`
           )
         );
-                if (error instanceof InvalidCredentialsError || (error && typeof error === "object" && "_tag" in error && (error._tag === "Unauthorized" || error._tag === "Forbidden"))) {
+        if (error instanceof InvalidCredentialsError || (error && typeof error === "object" && "_tag" in error && (error._tag === "Unauthorized" || error._tag === "Forbidden" || (error as { _tag?: string })._tag === "AuthError"))) {
           set.status = 401;
           return { error: "Unauthorized" };
         }

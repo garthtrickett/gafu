@@ -40,11 +40,16 @@ export const makeThenable = <A, E, R>(
   effect: Effect.Effect<A, E, R>
 ): Effect.Effect<A, E, R> & SafePromiseLike<A> => {
   const thenable = effect as unknown as Effect.Effect<A, E, R> & SafePromiseLike<A>;
-  thenable.then = <TResult1 = A, TResult2 = never>(
-    onFulfilled?: ((value: A) => TResult1 | PromiseLike<TResult1>) | null,
-    onRejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null
-  ): PromiseLike<TResult1 | TResult2> => {
-    return runClientPromise(effect).then(onFulfilled, onRejected);
-  };
+  Object.defineProperty(thenable, "then", {
+    value: function <TResult1 = A, TResult2 = never>(
+      onFulfilled?: ((value: A) => TResult1 | PromiseLike<TResult1>) | null,
+      onRejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null
+    ): PromiseLike<TResult1 | TResult2> {
+      return runClientPromise(effect).then(onFulfilled, onRejected);
+    },
+    writable: true,
+    configurable: true,
+    enumerable: true,
+  });
   return thenable;
 };

@@ -1,7 +1,8 @@
-import { describe, it, expect, beforeAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { Effect } from "effect";
 import { app } from "../index.ts";
 import { generateToken } from "../../lib/server/JwtService.ts";
+import { db } from "../../db/client.ts";
 import type { PublicUser } from "../../lib/shared/schemas.ts";
 import type { UserId } from "../../types/index.ts";
 
@@ -22,7 +23,22 @@ describe("Synchronization API Endpoint Suite", () => {
       phone: null,
       skills: []
     };
+
+    // Insert user to satisfy the foreign key constraint on user_preference
+    await db.insertInto("user").values({
+      id: testUser.id as UserId,
+      email: testUser.email,
+      password_hash: "mock_password_hash",
+      email_verified: true,
+      created_at: new Date(),
+      updated_at: new Date()
+    }).execute();
+
     token = await Effect.runPromise(generateToken(testUser));
+  });
+
+  afterAll(async () => {
+    await db.deleteFrom("user").where("id", "=", testUser.id as UserId).execute();
   });
 
   it("should abort pulls missing Authorization headers", async () => {
@@ -84,7 +100,7 @@ describe("Sync Push Route - Non-UUID Protection", () => {
       skills: []
     };
 
-    const token = generateToken(user);
+    const token = await Effect.runPromise(generateToken(user));
 
     const payload = {
       id: "1cba4d11-a963-438a-ab07-c18098d9426d",
@@ -115,4 +131,3 @@ describe("Sync Push Route - Non-UUID Protection", () => {
     expect(body).toEqual({ success: true });
   });
 });
-

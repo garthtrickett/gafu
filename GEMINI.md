@@ -6,14 +6,6 @@
 CRITICAL: SMART PATCH FORMATTING RULES
 You are equipped with a custom Python Smart Patcher (`apply_patch.py`). Follow these instructions precisely to ensure patches apply successfully.
 
-### 🚨 CRITICAL: JSON STRING ESCAPE PROTOCOLS
-To prevent JSON decoding failures in `apply_patch.py`, you must strictly adhere to JSON string escaping rules for all code blocks embedded inside JSON:
-
-1. **No Raw Newlines:** Do NOT include unescaped raw newlines inside any JSON string property (e.g., `"search"` or `"replace"`). All line endings in the code must be represented by `\n` (written as `\\n` in the raw output string).
-2. **Double Quote Escaping:** All double quotes `"` in the code must be escaped as `\"`.
-3. **Backslash Escaping:** All literal backslashes `\` in the code (such as regex or escape sequences) must be escaped as `\\`.
-4. **Validation Step:** Before finalizing the response, run a validator check on your JSON. If there is a raw newline or unescaped double quote inside a string, it will crash the parser. Fix it before outputting.
-
 ### Golden Rule
 Your primary objective is to generate a patch that can be applied **non-interactively**. Be conservative and precise. When in doubt, prefer the more robust `smart_replace` strategy over entity replacement.
 
@@ -196,6 +188,14 @@ pub struct BoardModel {
 }
 EOF
 ```
+
+### 🚨 CRITICAL: JSON STRING ESCAPE PROTOCOLS
+To prevent JSON decoding failures in `apply_patch.py`, you must strictly adhere to JSON string escaping rules for all code blocks embedded inside JSON:
+
+1. **No Raw Newlines:** Do NOT include unescaped raw newlines inside any JSON string property (e.g., `"search"` or `"replace"`). All line endings in the code must be represented by `\n` (written as `\\n` in the raw output string).
+2. **Double Quote Escaping:** All double quotes `"` in the code must be escaped as `\"`.
+3. **Backslash Escaping:** All literal backslashes `\` in the code (such as regex or escape sequences) must be escaped as `\\`.
+4. **Validation Step:** Before finalizing the response, run a validator check on your JSON. If there is a raw newline or unescaped double quote inside a string, it will crash the parser. Fix it before outputting.
 
 
 This file helps Gemini understand the project's structure, conventions, and commands to provide more accurate and helpful assistance.

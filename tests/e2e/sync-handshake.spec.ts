@@ -52,9 +52,9 @@ test.describe("Manual Handshake Study Session Loop", () => {
     await expect(page).toHaveURL("/study");
     
     // Validate card front shows the injected situational context
-    await expect(page.locator("p")).toContainText("E2E Testing Context");
+    await expect(page.locator("study-session p").first()).toContainText("E2E Testing Context");
 
-            // 6. Grade the card as "Correct"
+    // 6. Grade the card as "Correct"
     const correctBtn = page.getByRole("button", { name: "Correct", exact: true });
     await correctBtn.click();
 

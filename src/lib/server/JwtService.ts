@@ -28,12 +28,17 @@ const makeServerThenable = <A, E, R extends never>(
   effect: Effect.Effect<A, E, R>
 ): Effect.Effect<A, E, R> & SafePromiseLike<A> => {
   const thenable = effect as unknown as Effect.Effect<A, E, R> & SafePromiseLike<A>;
-  thenable.then = <TResult1 = A, TResult2 = never>(
-    onFulfilled?: ((value: A) => TResult1 | PromiseLike<TResult1>) | null,
-    onRejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null
-  ): PromiseLike<TResult1 | TResult2> => {
-    return serverRuntime.runPromise(effect).then(onFulfilled, onRejected);
-  };
+  Object.defineProperty(thenable, "then", {
+    value: function <TResult1 = A, TResult2 = never>(
+      onFulfilled?: ((value: A) => TResult1 | PromiseLike<TResult1>) | null,
+      onRejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null
+    ): PromiseLike<TResult1 | TResult2> {
+      return serverRuntime.runPromise(effect).then(onFulfilled, onRejected);
+    },
+    writable: true,
+    configurable: true,
+    enumerable: true,
+  });
   return thenable;
 };
 
@@ -80,10 +85,10 @@ export const validateToken = (token: string) =>
       );
     }
 
-                const user = yield* Schema.decodeUnknown(PublicUserSchema)(jwt.payload);
-            yield* Effect.logInfo(`[JwtService] Token successfully validated for user: ${user.email}`);
+    const user = yield* Schema.decodeUnknown(PublicUserSchema)(jwt.payload);
+    yield* Effect.logInfo(`[JwtService] Token successfully validated for user: ${user.email}`);
 
-            return user;
+    return user;
   }).pipe(
     Effect.catchTags({
       JwtValidationError: (error) =>
