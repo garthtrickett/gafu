@@ -135,10 +135,11 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
           decks: decksResult,
           srsUpdates: srsUpdatesResult,
           grammarPoints: grammarPointsResult,
-                    userPreference: showPreference ? {
+                              userPreference: showPreference ? {
             dailyReviewLimit: userPreference.daily_review_limit,
             dailyNewRuleLimit: userPreference.daily_new_rule_limit,
-            enforceMasteryGates: userPreference.enforce_mastery_gates
+            enforceMasteryGates: userPreference.enforce_mastery_gates,
+            hlc: userPreference.hlc
           } : undefined
         };
       });
