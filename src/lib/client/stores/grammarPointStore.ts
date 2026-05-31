@@ -1,5 +1,6 @@
 import { createLocalStore } from "../storage/LocalStoreFactory.ts";
 import { computed } from "@preact/signals-core";
+import { userPreferencesStore } from "./userPreferencesStore.ts";
 
 export interface GrammarPointProgress {
   readonly id: string; // Represents grammar_point_id
@@ -91,11 +92,12 @@ export const grammarPointStore = {
     return catalog.filter(c => !progressIds.has(c.id));
   }),
 
-  /**
+    /**
    * Computed count of rules unlocked within the last 24 hours
    */
   unlockedLast24HoursCount: computed(() => {
     const progress = baseGrammarPointStore.state.value;
-    return getDailyUnlockAllowance(progress, 3);
+    const limit = userPreferencesStore.dailyNewRuleLimit.value;
+    return getDailyUnlockAllowance(progress, limit);
   }),
 };

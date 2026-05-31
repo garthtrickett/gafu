@@ -1,6 +1,7 @@
 import { signal, computed } from "@preact/signals-core";
 import { clientLog } from "../clientLog.ts";
 import { runClientUnscoped } from "../runtime.ts";
+import { userPreferencesStore } from "./userPreferencesStore.ts";
 
 export interface FuriganaSegment {
   readonly kanji: string;
@@ -123,9 +124,10 @@ export const activeSessionStore = {
     return (batchIndex.value + 1) * BATCH_SIZE < masterList.value.length;
   }),
   
-        loadSession: (cards: readonly SessionCard[]) => {
+          loadSession: (cards: readonly SessionCard[]) => {
     const weaved = weaveSessionCards(cards);
-    const cappedCards = weaved.slice(0, 20);
+    const limit = userPreferencesStore.dailyReviewLimit.value;
+    const cappedCards = weaved.slice(0, limit);
     masterList.value = cappedCards;
     batchIndex.value = 0;
     state.value = cappedCards.slice(0, BATCH_SIZE);
