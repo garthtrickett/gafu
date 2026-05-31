@@ -94,8 +94,10 @@ const routes: Route[] = [
 export const matchRoute = (path: string): Effect.Effect<MatchedRoute, never, LocationService> =>
   Effect.gen(function* () {
     const cleanPath = path.split('?')[0] || "/";
+    yield* clientLog("debug", `[Router] Matching route for path: ${cleanPath}`);
     const { tokenState } = yield* Effect.promise(() => import("./stores/authStore.ts"));
     const isLoggedIn = tokenState.value !== null;
+    yield* clientLog("debug", `[Router] User authentication status: isLoggedIn=${isLoggedIn}`);
 
     let matched: Route | null = null;
     let params: string[] = [];
@@ -109,7 +111,8 @@ export const matchRoute = (path: string): Effect.Effect<MatchedRoute, never, Loc
       }
     }
 
-    if (!matched) {
+        if (!matched) {
+      yield* clientLog("warn", `[Router] No route matched for: ${cleanPath}. Redirecting to 404.`);
       return { pattern: /^\/404$/, view: NotFoundView, meta: {}, params: [] };
     }
 
@@ -139,6 +142,7 @@ export const matchRoute = (path: string): Effect.Effect<MatchedRoute, never, Loc
       };
     }
 
+    yield* clientLog("debug", `[Router] Successfully matched route with pattern: ${String(matched.pattern)}`);
     return { ...matched, params };
   });
 

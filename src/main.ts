@@ -15,25 +15,31 @@ import "./components/layouts/app-shell.ts";
 const bootstrapApp = Effect.gen(function* () {
   yield* clientLog("info", "[Main] Initiating application bootstrap sequence...");
 
-  // Hydrate local data storage collections from IndexedDB
+    // Hydrate local data storage collections from IndexedDB
   yield* clientLog("info", "[Main] Hydrating local deck storage from IndexedDB...");
   yield* deckStore.load();
+  yield* clientLog("debug", `[Main] Decks hydrated: count=${deckStore.state.value.length}`);
 
   yield* clientLog("info", "[Main] Hydrating SRS card metadata storage from IndexedDB...");
   yield* srsStore.load();
+  yield* clientLog("debug", `[Main] SRS cards hydrated: count=${srsStore.state.value.length}`);
 
   yield* clientLog("info", "[Main] Hydrating Grammar Point progress storage from IndexedDB...");
   yield* grammarPointStore.load();
+  yield* clientLog("debug", `[Main] Grammar points progress hydrated: count=${grammarPointStore.state.value.length}`);
 
-    yield* clientLog("info", "[Main] Hydrating Grammar Point global catalog storage from IndexedDB...");
+  yield* clientLog("info", "[Main] Hydrating Grammar Point global catalog storage from IndexedDB...");
   yield* grammarPointCatalogStore.load();
+  yield* clientLog("debug", `[Main] Grammar points catalog hydrated: count=${grammarPointCatalogStore.state.value.length}`);
 
   yield* clientLog("info", "[Main] Hydrating User Preferences storage from IndexedDB...");
   const { userPreferencesStore } = yield* Effect.promise(() => import("./lib/client/stores/userPreferencesStore.ts"));
   yield* userPreferencesStore.load();
+  yield* clientLog("debug", `[Main] User preferences hydrated: reviewLimit=${userPreferencesStore.dailyReviewLimit.value}`);
 
   // Attempt session restoration
   const { initAuth } = yield* Effect.promise(() => import("./lib/client/stores/authStore.ts"));
+  yield* clientLog("info", "[Main] Attempting session restoration...");
   yield* initAuth();
 
   // Initialize PWA installation events
