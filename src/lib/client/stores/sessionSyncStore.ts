@@ -40,6 +40,7 @@ export const generateExportPayload = (options?: { isCram?: boolean }) => {
     const now = new Date();
 
     const preferences = yield* Effect.promise(() => import("./userPreferencesStore.ts"));
+    yield* preferences.userPreferencesStore.load();
     const dailyReviewLimit = preferences.userPreferencesStore.dailyReviewLimit.value;
     const dailyNewRuleLimit = preferences.userPreferencesStore.dailyNewRuleLimit.value;
     const enforceMasteryGates = preferences.userPreferencesStore.enforceMasteryGates.value;
@@ -69,7 +70,7 @@ export const generateExportPayload = (options?: { isCram?: boolean }) => {
 
       const unmasteredSliced = unmasteredActive.slice(0, 15);
 
-            queue = unmasteredSliced.map((p) => {
+      queue = unmasteredSliced.map((p) => {
         const match = catalog.find((c) => c.id === p.id);
         return {
           grammar_point_id: p.id,
@@ -90,7 +91,7 @@ export const generateExportPayload = (options?: { isCram?: boolean }) => {
       const activeDueSliced = activeDueProgress.slice(0, dueReviewsTargetCount);
       
       // Map progress indicators dynamically matching against the local catalog store
-            queue = activeDueSliced.map((p) => {
+      queue = activeDueSliced.map((p) => {
         const match = catalog.find((c) => c.id === p.id);
         return {
           grammar_point_id: p.id,
@@ -159,7 +160,7 @@ export const generateExportPayload = (options?: { isCram?: boolean }) => {
       );
     }
 
-        // Cap massive backlogs of due rules to a maximum of 15 items in the exported queue
+    // Cap massive backlogs of due rules to a maximum of 15 items in the exported queue
     const finalQueue = queue.slice(0, 15);
     const queueLength = finalQueue.length;
 
@@ -203,7 +204,7 @@ CRITICAL CONSTRAINTS:
   ]
 }`;
 
-        const payload: ExportPayload = {
+    const payload: ExportPayload = {
       instructions: promptInstructions + promptRest,
       queue: finalQueue,
       vocabulary_pool: kaishiPool,
@@ -211,7 +212,7 @@ CRITICAL CONSTRAINTS:
 
     const jsonString = JSON.stringify(payload, null, 2);
     
-        // Write the compiled payload string directly to the user's system clipboard if API is available
+    // Write the compiled payload string directly to the user's system clipboard if API is available
     if (typeof navigator !== "undefined" && navigator.clipboard) {
       yield* Effect.tryPromise({
         try: () => navigator.clipboard.writeText(jsonString),
@@ -339,7 +340,7 @@ export const importSessionPayload = (jsonString: string) => {
       });
     }
 
-        activeSessionStore.loadSession(sessionCards);
+    activeSessionStore.loadSession(sessionCards);
     yield* clientLog("info", `[SessionSync] Successfully imported ${sessionCards.length} dynamic cards into active session.`);
   });
 

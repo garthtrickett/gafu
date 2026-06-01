@@ -21,18 +21,21 @@ export class StudyDesk extends LitElement {
   @state()
   private importError: string | null = null;
 
+  @state()
+  private saveSuccessMessage: string | null = null;
+
   private _disposeEffect?: () => void;
 
   protected override createRenderRoot() {
     return this;
   }
 
-    override connectedCallback() {
+  override connectedCallback() {
     super.connectedCallback();
     runClientUnscoped(grammarPointStore.load());
     runClientUnscoped(grammarPointCatalogStore.load());
     
-        this._disposeEffect = effect(() => {
+    this._disposeEffect = effect(() => {
       const count = grammarPointStore.state.value.length;
       const catalogCount = grammarPointCatalogStore.state.value.length;
       // Subscribe to preference signals
@@ -52,7 +55,7 @@ export class StudyDesk extends LitElement {
     this._disposeEffect?.();
   }
 
-    private triggerExport = (e: Event) => {
+  private triggerExport = (e: Event) => {
     const btn = e.target as HTMLButtonElement;
     const originalText = btn.textContent || "";
     btn.textContent = "⏱️ Compiling...";
@@ -120,11 +123,11 @@ export class StudyDesk extends LitElement {
     );
   };
 
-    private toggleQueue = () => {
+  private toggleQueue = () => {
     this.showQueue = !this.showQueue;
   };
 
-      private handlePreferenceUpdate = (e: Event, type: "review" | "newRule") => {
+  private handlePreferenceUpdate = (e: Event, type: "review" | "newRule") => {
     const val = parseInt((e.target as HTMLInputElement).value, 10);
     if (isNaN(val) || val < 0) return;
 
@@ -141,6 +144,12 @@ export class StudyDesk extends LitElement {
           currentGate
         );
         yield* clientLog("info", "[StudyDesk] Preferences updated successfully.");
+        yield* Effect.sync(() => {
+          this.saveSuccessMessage = "Settings saved!";
+          setTimeout(() => {
+            this.saveSuccessMessage = null;
+          }, 2000);
+        });
       })
     );
   };
@@ -159,6 +168,12 @@ export class StudyDesk extends LitElement {
           checked
         );
         yield* clientLog("info", "[StudyDesk] Preferences updated successfully.");
+        yield* Effect.sync(() => {
+          this.saveSuccessMessage = "Settings saved!";
+          setTimeout(() => {
+            this.saveSuccessMessage = null;
+          }, 2000);
+        });
       })
     );
   };
@@ -167,12 +182,12 @@ export class StudyDesk extends LitElement {
     const now = new Date();
     const catalog = grammarPointCatalogStore.state.value;
     
-        // Find and sort active progress items where nextReview is in the past (oldest first)
+    // Find and sort active progress items where nextReview is in the past (oldest first)
     const allDueItems = grammarPointStore.state.value
       .filter(p => new Date(p.nextReview).getTime() <= now.getTime())
       .sort((a, b) => new Date(a.nextReview).getTime() - new Date(b.nextReview).getTime());
 
-        const reviewLimit = userPreferencesStore.dailyReviewLimit.value;
+    const reviewLimit = userPreferencesStore.dailyReviewLimit.value;
 
     // Slice reviews to enforce a clean dynamic daily active cap and group the rest into backlog
     const dailyTargetItems = allDueItems.slice(0, reviewLimit);
@@ -183,7 +198,7 @@ export class StudyDesk extends LitElement {
     const showMasteryGateWarning = enforceGates && masteryRate < 80 && grammarPointStore.activeLearningRules.value.length > 0;
     const hasBacklog = backlogItems.length > 0;
 
-        const mappedDailyTarget = dailyTargetItems.map(p => {
+    const mappedDailyTarget = dailyTargetItems.map(p => {
       const catalogItem = catalog.find(c => c.id === p.id);
       return {
         name: catalogItem ? catalogItem.formal_name : "Loading...",
@@ -221,14 +236,14 @@ export class StudyDesk extends LitElement {
       finalBacklog = [];
     }
 
-        return html`
+    return html`
       <div class="max-w-4xl mx-auto space-y-6">
         <div class="flex items-center justify-between border-b border-zinc-800 pb-4">
           <div>
             <h1 class="text-2xl font-bold">Language Study Desk</h1>
             <p class="text-sm text-zinc-400">Review your active decks and vocabulary cycles.</p>
           </div>
-                    <button 
+          <button 
             @click=${logout}
             class="px-4 py-2 bg-zinc-850 hover:bg-zinc-800 text-zinc-200 hover:text-white rounded text-sm font-medium border border-zinc-800 transition-colors cursor-pointer"
           >
@@ -258,7 +273,7 @@ export class StudyDesk extends LitElement {
 
             <div class='space-y-1.5 pt-1'>
               <span class='text-[10px] font-bold text-zinc-500 uppercase tracking-wider block'>Unmastered Rules Blocking Progress:</span>
-                            <div class='flex flex-wrap gap-1.5' id='unmastered-blocking-list'>
+              <div class='flex flex-wrap gap-1.5' id='unmastered-blocking-list'>
                 ${grammarPointStore.unmasteredActiveRules.value.map(rule => {
                   const catalogItem = grammarPointCatalogStore.state.value.find(c => c.id === rule.id);
                   return html`
@@ -329,7 +344,7 @@ export class StudyDesk extends LitElement {
             </div>
           </div>
 
-                    <!-- Study Progress / Stats Card -->
+          <!-- Study Progress / Stats Card -->
           <div class="p-6 bg-zinc-950 border border-zinc-800 rounded-lg shadow-sm space-y-4 flex flex-col justify-between">
             <div>
               <div class="flex items-center justify-between">
@@ -337,24 +352,29 @@ export class StudyDesk extends LitElement {
               </div>
 
               <div class="mt-4 p-3 bg-zinc-900/40 border border-zinc-900 rounded-lg space-y-3">
-                <span class="text-2xs font-bold text-zinc-500 uppercase tracking-widest">Study Configuration</span>
+                <div class="flex items-center justify-between">
+                  <span class="text-2xs font-bold text-zinc-500 uppercase tracking-widest">Study Configuration</span>
+                  ${this.saveSuccessMessage ? html`
+                    <span class="text-xs text-green-400 font-medium animate-fade-in">✓ ${this.saveSuccessMessage}</span>
+                  ` : ""}
+                </div>
                 <div class="grid grid-cols-2 gap-4">
                   <div class="space-y-1">
                     <label class="text-[10px] font-medium text-zinc-400 uppercase">Review Cap</label>
                     <input 
                       type="number" 
                       .value=${userPreferencesStore.dailyReviewLimit.value}
-                      @change=${(e: Event) => this.handlePreferenceUpdate(e, "review")}
-                      class="w-full px-2 py-1 bg-zinc-950 border border-zinc-800 rounded text-xs text-green-400 focus:outline-none focus:border-green-600"
+                      @input=${(e: Event) => this.handlePreferenceUpdate(e, "review")}
+                      class="w-full px-2 py-1 bg-zinc-950 border-zinc-800 rounded text-xs text-green-400 focus:outline-none focus:border-green-600"
                     />
                   </div>
-                                    <div class="space-y-1">
+                  <div class="space-y-1">
                     <label class="text-[10px] font-medium text-zinc-400 uppercase">New Rules</label>
                     <input 
                       type="number" 
                       .value=${userPreferencesStore.dailyNewRuleLimit.value}
-                      @change=${(e: Event) => this.handlePreferenceUpdate(e, "newRule")}
-                      class="w-full px-2 py-1 bg-zinc-950 border border-zinc-800 rounded text-xs text-blue-400 focus:outline-none focus:border-blue-600"
+                      @input=${(e: Event) => this.handlePreferenceUpdate(e, "newRule")}
+                      class="w-full px-2 py-1 bg-zinc-950 border-zinc-800 rounded text-xs text-blue-400 focus:outline-none focus:border-blue-600"
                     />
                   </div>
                 </div>
@@ -387,7 +407,7 @@ export class StudyDesk extends LitElement {
 
               ${this.showQueue ? html`
                 <div class="mt-4 p-3 bg-zinc-900/60 border border-zinc-900 rounded-lg space-y-4 animate-fade-in">
-                                    <div class="space-y-2">
+                  <div class="space-y-2">
                     <span class="text-xs font-bold text-green-400 uppercase tracking-wider block">${`Due Today - Daily Target (${finalDailyTarget.length} rules)`}</span>
                     <div class="divide-y divide-zinc-900/80 max-h-32 overflow-y-auto pr-1">
                       ${finalDailyTarget.map(item => html`
@@ -403,7 +423,7 @@ export class StudyDesk extends LitElement {
                   </div>
 
                   ${finalBacklog.length > 0 ? html`
-                                        <div class="space-y-2 border-t border-zinc-900/60 pt-2">
+                    <div class="space-y-2 border-t border-zinc-900/60 pt-2">
                       <span class="text-xs font-semibold text-zinc-500 uppercase tracking-wider block">${`Snoozed Backlog (${finalBacklog.length} rules)`}</span>
                       <div class="divide-y divide-zinc-900/80 max-h-24 overflow-y-auto pr-1 opacity-60">
                         ${finalBacklog.map(item => html`
