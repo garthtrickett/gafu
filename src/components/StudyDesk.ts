@@ -144,13 +144,14 @@ export class StudyDesk extends LitElement {
           currentGate
         );
         yield* clientLog("info", "[StudyDesk] Preferences updated successfully.");
-        yield* Effect.sync(() => {
+      }).pipe(
+        Effect.andThen(() => {
           this.saveSuccessMessage = "Settings saved!";
           setTimeout(() => {
             this.saveSuccessMessage = null;
           }, 2000);
-        });
-      })
+        })
+      )
     );
   };
 
@@ -168,21 +169,21 @@ export class StudyDesk extends LitElement {
           checked
         );
         yield* clientLog("info", "[StudyDesk] Preferences updated successfully.");
-        yield* Effect.sync(() => {
+      }).pipe(
+        Effect.andThen(() => {
           this.saveSuccessMessage = "Settings saved!";
           setTimeout(() => {
             this.saveSuccessMessage = null;
           }, 2000);
-        });
-      })
+        })
+      )
     );
   };
 
   override render() {
-    const now = new Date();
     const catalog = grammarPointCatalogStore.state.value;
     
-        // Find and sort all active progress items by lowest retrievability (most in need of review) first
+    // Find and sort all active progress items by lowest retrievability (most in need of review) first
     const allDueItems = [...grammarPointStore.state.value]
       .sort((a, b) => calculateRetrievability(a) - calculateRetrievability(b));
 
@@ -441,7 +442,7 @@ export class StudyDesk extends LitElement {
               ` : ""}
             </div>
             <div class="p-4 bg-zinc-900/40 border border-zinc-900 rounded-lg text-xs text-zinc-400 leading-relaxed">
-              💡 <strong>Handshake Flow</strong>: Click \"Copy Progress\", paste it to your https://aistudio.google.com with 3.5 Flash selected in the playground to generate your daily review cards, then paste the returned JSON back here to review with zero latency.
+              💡 <strong>Handshake Flow</strong>: Click "Copy Progress", paste it to your https://aistudio.google.com with 3.5 Flash selected in the playground to generate your daily review cards, then paste the returned JSON back here to review with zero latency.
             </div>
           </div>
         </div>

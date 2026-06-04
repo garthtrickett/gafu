@@ -8,8 +8,8 @@ export interface GrammarPointProgress {
   readonly repetitions: number;
   readonly intervalDays: number;
   readonly nextReview: string;
-  readonly difficulty: number;
-  readonly stability: number;
+  readonly difficulty?: number;
+  readonly stability?: number;
   readonly lastReviewedAt?: string | null;
   readonly unlockedAt?: string; // ISO string representing when the rule was unlocked
   readonly hlc?: string;

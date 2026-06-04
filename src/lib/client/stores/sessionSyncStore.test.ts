@@ -9,7 +9,7 @@ describe("sessionSyncStore export payload gating integration tests", () => {
     await runClientPromise(grammarPointCatalogStore.clear());
   });
 
-    it("should cap massive backlogs of due rules to a maximum of 15 items in the exported queue sorted by retrievability", async () => {
+  it("should cap massive backlogs of due rules to a maximum of 15 items in the exported queue sorted by retrievability", async () => {
     const catalogItems = Array.from({ length: 50 }, (_, i) => ({
       id: `gp-${i}`,
       formal_name: `grammar-${i}`,
@@ -62,8 +62,8 @@ describe("sessionSyncStore export payload gating integration tests", () => {
     const past = new Date(Date.now() - 100000).toISOString();
     await runClientPromise(
       grammarPointStore.putAll([
-        { id: "gp-0", easeFactor: 2.5, repetitions: 3, intervalDays: 1, nextReview: past, hlc: "0000000000000:0000:initial" },
-        { id: "gp-1", easeFactor: 2.5, repetitions: 3, intervalDays: 1, nextReview: past, hlc: "0000000000000:0000:initial" },
+        { id: "gp-0", easeFactor: 2.5, repetitions: 3, intervalDays: 1, stability: 8.0, difficulty: 4.0, nextReview: past, hlc: "0000000000000:0000:initial" },
+        { id: "gp-1", easeFactor: 2.5, repetitions: 3, intervalDays: 1, stability: 8.0, difficulty: 4.0, nextReview: past, hlc: "0000000000000:0000:initial" },
       ])
     );
 
@@ -111,7 +111,7 @@ describe("sessionSyncStore export payload gating integration tests", () => {
     expect(payload.queue.map((q: any) => q.grammar_point_id)).toEqual(["gp-0", "gp-1"]);
 
     const finalProgress = grammarPointStore.state.peek();
-        expect(finalProgress).toHaveLength(2);
+    expect(finalProgress).toHaveLength(2);
   });
 
   it("should unlock and append up to 3 new rules for ineligible users if enforceMasteryGates is toggled off", async () => {

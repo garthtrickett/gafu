@@ -35,21 +35,17 @@ export const RecordReviewPayloadSchema = Schema.transform(
     lastReviewedAt: Schema.NullOr(Schema.String),
   }),
   {
-        decode: (input) => {
-      const isSnake = "grammar_point_id" in input;
-      const lastReviewedAt = isSnake 
-        ? ("last_reviewed_at" in input ? (input as any).last_reviewed_at : null)
-        : ("lastReviewedAt" in input ? (input as any).lastReviewedAt : null);
-      if (isSnake) {
+    decode: (input) => {
+      if ("grammar_point_id" in input) {
         return {
           grammarPointId: input.grammar_point_id,
           easeFactor: input.ease_factor,
           repetitions: input.repetitions,
           intervalDays: input.interval_days,
           nextReview: input.next_review,
-          difficulty: (input as any).difficulty,
-          stability: (input as any).stability,
-          lastReviewedAt,
+          difficulty: input.difficulty,
+          stability: input.stability,
+          lastReviewedAt: input.last_reviewed_at,
         };
       }
       return {
@@ -58,9 +54,9 @@ export const RecordReviewPayloadSchema = Schema.transform(
         repetitions: input.repetitions,
         intervalDays: input.intervalDays,
         nextReview: input.nextReview,
-        difficulty: (input as any).difficulty,
-        stability: (input as any).stability,
-        lastReviewedAt,
+        difficulty: input.difficulty,
+        stability: input.stability,
+        lastReviewedAt: input.lastReviewedAt,
       };
     },
     encode: (normalized) => ({

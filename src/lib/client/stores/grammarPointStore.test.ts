@@ -55,6 +55,7 @@ describe("grammarPointStore state management and pacing helpers", () => {
         easeFactor: 2.5,
         repetitions: 4,
         intervalDays: 24, // >= 21 -> Graduated
+        stability: 24.0,
         nextReview: new Date().toISOString(),
         unlockedAt: new Date().toISOString(),
       })
@@ -113,7 +114,7 @@ describe("grammarPointStore state management and pacing helpers", () => {
     expect(grammarPointStore.unlockedLast24HoursCount.value).toBe(1);
   });
 
-    describe("canUnlockMoreRules gating logic", () => {
+  describe("canUnlockMoreRules gating logic", () => {
     it("should return true for empty active learning queues to allow initial seeding", () => {
       const emptyProgress: GrammarPointProgress[] = [];
       expect(canUnlockMoreRules(emptyProgress)).toBe(true);
@@ -242,7 +243,7 @@ describe("Grammar Point Gating and Pacing Math", () => {
     expect(allowanceC).toBe(5);
   });
 
-    it("should properly enforce master check for new unlocks", () => {
+  it("should properly enforce master check for new unlocks", () => {
     // 80% mastery threshold: stability >= 7 or difficulty <= 4
     const progressMastered: GrammarPointProgress[] = [
       { id: "gp-1", easeFactor: 2.5, repetitions: 3, intervalDays: 1, difficulty: 5.0, stability: 7.0, nextReview: "" }, // Mastered (stability)
@@ -283,7 +284,7 @@ describe("grammarPointStore computed mastery metrics", () => {
     expect(grammarPointStore.unmasteredActiveRules.value).toHaveLength(0);
   });
 
-    it("should calculate correct mastery rate and list unmastered active rules, ignoring graduated rules", async () => {
+  it("should calculate correct mastery rate and list unmastered active rules, ignoring graduated rules", async () => {
     await runClientPromise(
       grammarPointStore.putAll([
         { id: "gp-1", easeFactor: 2.5, repetitions: 3, intervalDays: 1, difficulty: 5.0, stability: 7.0, nextReview: "" }, // mastered (stability >= 7)
@@ -305,4 +306,3 @@ describe("grammarPointStore computed mastery metrics", () => {
     expect(unmastered.map(u => u.id).sort()).toEqual(["gp-3", "gp-4"].sort());
   });
 });
-

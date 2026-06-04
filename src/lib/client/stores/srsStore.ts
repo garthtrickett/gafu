@@ -9,8 +9,8 @@ export interface SrsCardClient {
   readonly repetitions: number;
   readonly intervalDays: number;
   readonly nextReview: string;
-  readonly difficulty: number;
-  readonly stability: number;
+  readonly difficulty?: number;
+  readonly stability?: number;
   readonly lastReviewedAt?: string | null;
   readonly hlc?: string;
 }

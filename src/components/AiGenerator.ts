@@ -2,7 +2,6 @@ import { LitElement, html } from "lit";
 import { customElement } from "lit/decorators.js";
 import { ReactiveSamController } from "../lib/client/reactive-sam-controller";
 import { tokenState } from "../lib/client/stores/authStore";
-import { deckStore } from "../lib/client/stores/deckStore";
 import { srsStore } from "../lib/client/stores/srsStore";
 import { enqueueTransaction } from "../lib/client/sync/OutboxQueue";
 import { clientLog } from "../lib/client/clientLog";
@@ -135,19 +134,18 @@ export class AiGenerator extends LitElement {
     const generated = this.controller.model.generatedCard;
     if (!generated) return;
 
-    const defaultDeckId = deckStore.state.value[0]?.id || "c0eebc99-9c0b-4ef8-bb6d-6bb9bd380c33";
     const cardId = crypto.randomUUID();
 
     const srsCardData = {
       id: cardId,
-      user_id: "",
-      deck_id: defaultDeckId,
       front: generated.front,
       back: generated.back,
       easeFactor: 2.5,
       repetitions: 0,
       intervalDays: 0,
       nextReview: new Date().toISOString(),
+      difficulty: 5.0,
+      stability: 0.0,
     };
 
     await runClientPromise(

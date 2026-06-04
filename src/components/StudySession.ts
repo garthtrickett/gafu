@@ -30,12 +30,12 @@ export const calculateSrsUpdate = (
   const stability = current.stability !== undefined ? current.stability : 0.0;
   const repetitions = current.repetitions || 0;
 
-  let nextDifficulty = isCorrect
+  const nextDifficulty = isCorrect
     ? Math.max(1.0, difficulty - 0.5)
     : Math.min(10.0, difficulty + 1.5);
 
   let nextStability = 0.0;
-  let nextRepetitions = isCorrect ? repetitions + 1 : 0;
+  const nextRepetitions = isCorrect ? repetitions + 1 : 0;
 
   if (isCorrect) {
     if (repetitions === 0 || stability === 0.0) {
