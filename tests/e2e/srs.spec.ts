@@ -58,8 +58,9 @@ test.describe("SRS Pacing, Daily Cap, and Mastery Gating E2E Flow", () => {
     await pool.end();
   });
 
-  test("should enforce lock-step daily pacing and caps during study desk operations", async ({ page }) => {
+    test("should enforce lock-step daily pacing and caps during study desk operations", async ({ page, context }) => {
     if (!testUser) {
+      await context.grantPermissions(["clipboard-read", "clipboard-write"]);
       throw new Error("testUser is undefined");
     }
 

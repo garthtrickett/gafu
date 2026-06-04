@@ -117,6 +117,8 @@ describe("StudyDesk component and activeSessionStore pacing presentation", () =>
     expect(toggle).not.toBeNull();
     toggle.checked = false;
     toggle.dispatchEvent(new Event("change"));
+    // @ts-ignore
+    await desk.updateComplete;
     await new Promise(resolve => setTimeout(resolve, 50));
 
     // Mastery Gate alert should be hidden immediately
@@ -125,7 +127,9 @@ describe("StudyDesk component and activeSessionStore pacing presentation", () =>
     expect(htmlContent).not.toContain("id=\"backlog-advice-hint\"");
 
     // Verify progression export button is unlocked after gate is bypassed
-    expect(progressBtn.disabled).toBe(false);
-    expect(progressBtn.textContent).toContain("Copy Progress Payload");
+    const progressBtnAfter = document.querySelector("#btn-export-progress") as HTMLButtonElement;
+    expect(progressBtnAfter).not.toBeNull();
+    expect(progressBtnAfter.disabled).toBe(false);
+    expect(progressBtnAfter.textContent).toContain("Copy Progress Payload");
   });
 });

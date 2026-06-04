@@ -28,8 +28,8 @@ const state = signal<readonly SessionCard[]>([]);
 const currentIndex = signal<number>(0);
 const batchIndex = signal<number>(0);
 
-const saveSessionState = ()
-  => Effect.gen(function* () {
+const saveSessionState = () =>
+  Effect.gen(function* () {
     yield* Effect.tryPromise({
       try: () =>
         set(
