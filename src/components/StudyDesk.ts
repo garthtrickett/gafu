@@ -35,7 +35,7 @@ export class StudyDesk extends LitElement {
     runClientUnscoped(grammarPointStore.load());
     runClientUnscoped(grammarPointCatalogStore.load());
     
-    this._disposeEffect = effect(() => {
+        this._disposeEffect = effect(() => {
       const count = grammarPointStore.state.value.length;
       const catalogCount = grammarPointCatalogStore.state.value.length;
       // Subscribe to preference signals
@@ -44,6 +44,12 @@ export class StudyDesk extends LitElement {
       void userPreferencesStore.enforceMasteryGates.value;
       void grammarPointStore.activeMasteryRate.value;
       void grammarPointStore.unmasteredActiveRules.value;
+      void grammarPointStore.unstartedCount.value;
+      void grammarPointStore.learningCount.value;
+      void grammarPointStore.masteredCount.value;
+      void grammarPointStore.graduatedCount.value;
+      void grammarPointStore.averageDifficulty.value;
+      void grammarPointStore.averageRetrievability.value;
 
       runClientUnscoped(clientLog("info", `[StudyDesk] Store updated - progress count: ${count}, catalog count: ${catalogCount}`));
       this.requestUpdate();
@@ -193,10 +199,23 @@ export class StudyDesk extends LitElement {
     const dailyTargetItems = allDueItems.slice(0, reviewLimit);
     const backlogItems = allDueItems.slice(reviewLimit);
 
-    const enforceGates = userPreferencesStore.enforceMasteryGates.value;
+        const enforceGates = userPreferencesStore.enforceMasteryGates.value;
     const masteryRate = grammarPointStore.activeMasteryRate.value;
     const showMasteryGateWarning = enforceGates && masteryRate < 80 && grammarPointStore.activeLearningRules.value.length > 0;
     const hasBacklog = backlogItems.length > 0;
+
+    const unstarted = grammarPointStore.unstartedCount.value;
+    const learning = grammarPointStore.learningCount.value;
+    const mastered = grammarPointStore.masteredCount.value;
+    const graduated = grammarPointStore.graduatedCount.value;
+    const avgDiff = grammarPointStore.averageDifficulty.value;
+    const avgRet = grammarPointStore.averageRetrievability.value;
+
+    const totalRules = unstarted + learning + mastered + graduated;
+    const pctUnstarted = totalRules > 0 ? (unstarted / totalRules) * 100 : 0;
+    const pctLearning = totalRules > 0 ? (learning / totalRules) * 100 : 0;
+    const pctMastered = totalRules > 0 ? (mastered / totalRules) * 100 : 0;
+    const pctGraduated = totalRules > 0 ? (graduated / totalRules) * 100 : 0;
 
     runClientUnscoped(clientLog("info", `[StudyDesk] Rendering desk. showMasteryGateWarning=${showMasteryGateWarning}, masteryRate=${masteryRate}%, enforceGates=${enforceGates}`));
 
@@ -300,11 +319,91 @@ export class StudyDesk extends LitElement {
           </div>
         ` : ""}
 
-        ${showMasteryGateWarning && hasBacklog ? html`
+                ${showMasteryGateWarning && hasBacklog ? html`
           <div class='p-3 bg-blue-500/10 border border-blue-500/20 text-blue-400 rounded-lg text-xs leading-normal animate-fade-in' id='backlog-advice-hint'>
             💡 <strong>Backlog Alert</strong>: You have ${backlogItems.length} reviews snoozed in your backlog! Try increasing your <strong>Review Cap</strong> in the configuration panel below to bring them into your due queue and master them.
           </div>
         ` : ""}
+
+        <!-- Real-Time FSRS Metrics Panel -->
+        <div class="grid gap-4 sm:grid-cols-3 p-5 bg-zinc-950 border border-zinc-800 rounded-lg shadow-sm" id="metrics-panel">
+          <!-- 1. Estimated Retention (Memory Health) -->
+          <div class="flex flex-col justify-between p-4 bg-zinc-900/40 border border-zinc-900 rounded-lg">
+            <div>
+              <span class="text-2xs font-bold text-zinc-500 uppercase tracking-widest block">Memory Retention</span>
+              <div class="flex items-baseline gap-2 mt-2">
+                <span class="text-3xl font-extrabold tracking-tight ${avgRet >= 85 ? "text-green-400" : avgRet >= 75 ? "text-yellow-400" : "text-red-400"}" id="retention-rate">
+                  ${avgRet}%
+                </span>
+                <span class="text-xs text-zinc-500">recall prob.</span>
+              </div>
+            </div>
+            <p class="text-3xs text-zinc-400 mt-3 leading-relaxed">
+              FSRS estimate of your current memory retrievability. Optimal target is 85–90%.
+            </p>
+          </div>
+
+          <!-- 2. Deck Difficulty -->
+          <div class="flex flex-col justify-between p-4 bg-zinc-900/40 border border-zinc-900 rounded-lg">
+            <div>
+              <span class="text-2xs font-bold text-zinc-500 uppercase tracking-widest block">Deck Difficulty</span>
+              <div class="flex items-baseline justify-between mt-2">
+                <span class="text-2xl font-bold tracking-tight text-zinc-200" id="avg-difficulty">
+                  ${avgDiff.toFixed(1)} <span class="text-xs text-zinc-500">/ 10</span>
+                </span>
+                <span class="text-xs font-semibold ${avgDiff < 4.0 ? "text-green-400" : avgDiff < 7.0 ? "text-yellow-400" : "text-red-400"}" id="difficulty-label">
+                  ${avgDiff < 4.0 ? "Easy" : avgDiff < 7.0 ? "Moderate" : "Challenging"}
+                </span>
+              </div>
+              <div class="w-full bg-zinc-800 h-1.5 rounded-full overflow-hidden mt-3.5">
+                <div class="h-full transition-all duration-300 ${avgDiff < 4.0 ? "bg-green-500" : avgDiff < 7.0 ? "bg-yellow-500" : "bg-red-500"}" style="width: ${avgDiff * 10}%"></div>
+              </div>
+            </div>
+            <p class="text-3xs text-zinc-400 mt-3 leading-relaxed">
+              Weighted average complexity of active rules in your current deck.
+            </p>
+          </div>
+
+          <!-- 3. Card Distribution -->
+          <div class="flex flex-col justify-between p-4 bg-zinc-900/40 border border-zinc-900 rounded-lg">
+            <div>
+              <span class="text-2xs font-bold text-zinc-500 uppercase tracking-widest block">Deck Distribution</span>
+              
+              <!-- Stacked proportional progress bar -->
+              <div class="w-full h-2.5 rounded-full overflow-hidden flex bg-zinc-800 mt-4 shadow-inner" id="distribution-bar">
+                ${totalRules === 0 
+                  ? html`<div class="h-full bg-zinc-700 w-full" title="Unstarted"></div>`
+                  : html`
+                      <div class="h-full bg-zinc-600 transition-all duration-300" style="width: ${pctUnstarted}%" title="Unstarted: ${unstarted}"></div>
+                      <div class="h-full bg-blue-500 transition-all duration-300" style="width: ${pctLearning}%" title="Learning: ${learning}"></div>
+                      <div class="h-full bg-yellow-500 transition-all duration-300" style="width: ${pctMastered}%" title="Mastered: ${mastered}"></div>
+                      <div class="h-full bg-green-500 transition-all duration-300" style="width: ${pctGraduated}%" title="Graduated: ${graduated}"></div>
+                    `
+                }
+              </div>
+
+              <!-- Legend -->
+              <div class="grid grid-cols-2 gap-x-2 gap-y-1 mt-3.5 text-3xs font-medium text-zinc-400">
+                <div class="flex items-center gap-1.5">
+                  <span class="w-1.5 h-1.5 rounded-full bg-zinc-600 shrink-0"></span>
+                  <span class="truncate">New: <strong class="text-zinc-300" id="count-unstarted">${unstarted}</strong></span>
+                </div>
+                <div class="flex items-center gap-1.5">
+                  <span class="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0"></span>
+                  <span class="truncate">Learning: <strong class="text-zinc-300" id="count-learning">${learning}</strong></span>
+                </div>
+                <div class="flex items-center gap-1.5">
+                  <span class="w-1.5 h-1.5 rounded-full bg-yellow-500 shrink-0"></span>
+                  <span class="truncate">Mastery: <strong class="text-zinc-300" id="count-mastered">${mastered}</strong></span>
+                </div>
+                <div class="flex items-center gap-1.5">
+                  <span class="w-1.5 h-1.5 rounded-full bg-green-500 shrink-0"></span>
+                  <span class="truncate">Graduated: <strong class="text-zinc-300" id="count-graduated">${graduated}</strong></span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
 
         <div class="grid gap-6 md:grid-cols-2">
           <!-- Setup Wizard Deck Card (Manual Handshake Compiler) -->
