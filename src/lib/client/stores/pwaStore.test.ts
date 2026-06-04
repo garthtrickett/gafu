@@ -21,13 +21,29 @@ describe("pwaStore - PWA and Service Worker Update Lifecycle", () => {
   beforeEach(() => {
     vi.clearAllMocks();
 
-    // Stub serviceWorker support on jsdom navigator
+        // Stub serviceWorker support on jsdom navigator
     Object.defineProperty(global.navigator, "serviceWorker", {
       value: {
         register: vi.fn()
       },
       configurable: true,
       writable: true
+    });
+
+    // Stub matchMedia support in jsdom
+    Object.defineProperty(window, "matchMedia", {
+      writable: true,
+      configurable: true,
+      value: vi.fn().mockImplementation((query: string) => ({
+        matches: false,
+        media: query,
+        onchange: null,
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      })),
     });
 
     // Stub production environment setting for local PWA registration check

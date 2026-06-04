@@ -15,9 +15,9 @@ export const isAppInstalledState = signal<boolean>(false);
 export const isUpdateAvailableState = signal<boolean>(false);
 
 export const initPWA = () => {
-  if (typeof window === "undefined") return;
+    if (typeof window === "undefined") return;
 
-  if (window.matchMedia("(display-mode: standalone)").matches) {
+  if (typeof window.matchMedia === "function" && window.matchMedia("(display-mode: standalone)").matches) {
     isAppInstalledState.value = true;
   }
 
@@ -64,7 +64,7 @@ export const promptInstall = async () => {
   installPromptState.value = null;
 };
 
-export const applyAppUpdate = async () => {
+export const applyAppUpdate =  () => {
   if (wbInstance) {
     runClientUnscoped(clientLog("info", "[PWA] Requesting waiting service worker to skip waiting..."));
     wbInstance.messageSkipWaiting();
