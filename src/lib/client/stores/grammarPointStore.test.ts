@@ -313,9 +313,176 @@ describe("grammarPointStore computed mastery metrics", () => {
     // Mastery rate: 2/4 = 50%
     expect(grammarPointStore.activeMasteryRate.value).toBe(50);
 
-    // Unmastered active rules: gp-3, gp-4
+        // Unmastered active rules: gp-3, gp-4
     const unmastered = grammarPointStore.unmasteredActiveRules.value;
     expect(unmastered).toHaveLength(2);
     expect(unmastered.map(u => u.id).sort()).toEqual(["gp-3", "gp-4"].sort());
+  });
+
+  it("should calculate correct partition sizes as items transition through learning cycles", async () => {
+    // 1. Seed catalog with 3 rules
+    await runClientPromise(
+      grammarPointCatalogStore.putAll([
+        { id: "gp-1", formal_name: "だ", base_meaning: "Is", difficulty_level: "N5" },
+        { id: "gp-2", formal_name: "です", base_meaning: "Is (polite)", difficulty_level: "N5" },
+        { id: "gp-3", formal_name: "は", base_meaning: "Topic", difficulty_level: "N5" },
+      ])
+    );
+
+    // 2. Initial state: All 3 are unstarted, none are learning, mastered, or graduated
+    expect(grammarPointStore.unstartedCount.value).toBe(3);
+    expect(grammarPointStore.learningCount.value).toBe(0);
+    expect(grammarPointStore.masteredCount.value).toBe(0);
+    expect(grammarPointStore.graduatedCount.value).toBe(0);
+
+    // 3. Unlock gp-1 but do not review (repetitions = 0) -> Still considered unstarted
+    await runClientPromise(
+      grammarPointStore.put({
+        id: "gp-1",
+        easeFactor: 2.5,
+        repetitions: 0,
+        intervalDays: 0,
+        stability: 0.0,
+        difficulty: 5.0,
+        nextReview: new Date().toISOString(),
+      })
+    );
+    expect(grammarPointStore.unstartedCount.value).toBe(3);
+    expect(grammarPointStore.learningCount.value).toBe(0);
+    expect(grammarPointStore.masteredCount.value).toBe(0);
+    expect(grammarPointStore.graduatedCount.value).toBe(0);
+
+    // 4. Update gp-1 to learning (repetitions > 0, unmastered)
+    await runClientPromise(
+      grammarPointStore.put({
+        id: "gp-1",
+        easeFactor: 2.5,
+        repetitions: 1,
+        intervalDays: 1,
+        stability: 1.0,
+        difficulty: 5.0,
+        nextReview: new Date().toISOString(),
+      })
+    );
+    expect(grammarPointStore.unstartedCount.value).toBe(2); // gp-1 is started
+    expect(grammarPointStore.learningCount.value).toBe(1);
+    expect(grammarPointStore.masteredCount.value).toBe(0);
+    expect(grammarPointStore.graduatedCount.value).toBe(0);
+
+    // 5. Update gp-1 to mastered (stability >= 7.0)
+    await runClientPromise(
+      grammarPointStore.put({
+        id: "gp-1",
+        easeFactor: 2.5,
+        repetitions: 3,
+        intervalDays: 7,
+        stability: 7.0,
+        difficulty: 5.0,
+        nextReview: new Date().toISOString(),
+      })
+    );
+    expect(grammarPointStore.unstartedCount.value).toBe(2);
+    expect(grammarPointStore.learningCount.value).toBe(0);
+    expect(grammarPointStore.masteredCount.value).toBe(1);
+    expect(grammarPointStore.graduatedCount.value).toBe(0);
+
+    // 6. Update gp-1 to graduated (stability >= 21.0)
+    await runClientPromise(
+      grammarPointStore.put({
+        id: "gp-1",
+        easeFactor: 2.5,
+        repetitions: 5,
+        intervalDays: 21,
+        stability: 21.0,
+        difficulty: 5.0,
+        nextReview: new Date().toISOString(),
+      })
+    );
+    expect(grammarPointStore.unstartedCount.value).toBe(2);
+    expect(grammarPointStore.learningCount.value).toBe(0);
+    expect(grammarPointStore.masteredCount.value).toBe(0);
+    expect(grammarPointStore.graduatedCount.value).toBe(1);
+  });
+
+  it("should calculate average difficulty across studied rules", async () => {
+    // 1. Initial empty state returns fallback difficulty
+    expect(grammarPointStore.averageDifficulty.value).toBe(5.0);
+
+    // 2. Unreviewed rule does not count as studied
+    await runClientPromise(
+      grammarPointStore.put({
+        id: "gp-1",
+        easeFactor: 2.5,
+        repetitions: 0,
+        intervalDays: 0,
+        stability: 0.0,
+        difficulty: 7.5,
+        nextReview: new Date().toISOString(),
+      })
+    );
+    expect(grammarPointStore.averageDifficulty.value).toBe(5.0);
+
+    // 3. Studied rule counts towards average
+    await runClientPromise(
+      grammarPointStore.put({
+        id: "gp-1",
+        easeFactor: 2.5,
+        repetitions: 1,
+        intervalDays: 1,
+        stability: 1.0,
+        difficulty: 7.5,
+        nextReview: new Date().toISOString(),
+      })
+    );
+    expect(grammarPointStore.averageDifficulty.value).toBe(7.5);
+
+    // 4. Multiple studied rules average out
+    await runClientPromise(
+      grammarPointStore.putAll([
+        { id: "gp-1", easeFactor: 2.5, repetitions: 1, intervalDays: 1, stability: 1.0, difficulty: 7.5, nextReview: new Date().toISOString() },
+        { id: "gp-2", easeFactor: 2.5, repetitions: 2, intervalDays: 3, stability: 3.0, difficulty: 3.5, nextReview: new Date().toISOString() },
+        { id: "gp-3", easeFactor: 2.5, repetitions: 3, intervalDays: 6, stability: 6.0, difficulty: 4.6, nextReview: new Date().toISOString() },
+      ])
+    );
+    // (7.5 + 3.5 + 4.6) / 3 = 15.6 / 3 = 5.2
+    expect(grammarPointStore.averageDifficulty.value).toBe(5.2);
+  });
+
+  it("should calculate average retrievability matching FSRS exponential decay", async () => {
+    // 1. Empty state default is 100%
+    expect(grammarPointStore.averageRetrievability.value).toBe(100);
+
+    const now = Date.now();
+
+    // 2. Studied just now (elapsed = 0) has 100% retrievability
+    await runClientPromise(
+      grammarPointStore.put({
+        id: "gp-1",
+        easeFactor: 2.5,
+        repetitions: 1,
+        intervalDays: 5,
+        stability: 5.0,
+        difficulty: 5.0,
+        lastReviewedAt: new Date(now).toISOString(),
+        nextReview: new Date(now + 5 * 24 * 60 * 60 * 1000).toISOString(),
+      })
+    );
+    expect(grammarPointStore.averageRetrievability.value).toBe(100);
+
+    // 3. Reviewed 5 days ago with stability = 5.0 decays to 90% (0.9 ^ (5/5) = 0.9)
+    const fiveDaysAgo = new Date(now - 5 * 24 * 60 * 60 * 1000).toISOString();
+    await runClientPromise( 
+      grammarPointStore.put({
+        id: "gp-1",
+        easeFactor: 2.5,
+        repetitions: 1,
+        intervalDays: 5,
+        stability: 5.0,
+        difficulty: 5.0,
+        lastReviewedAt: fiveDaysAgo,
+        nextReview: new Date(now).toISOString(),
+      })
+    );
+    expect(grammarPointStore.averageRetrievability.value).toBe(90);
   });
 });
