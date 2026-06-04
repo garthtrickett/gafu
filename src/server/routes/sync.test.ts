@@ -334,15 +334,20 @@ describe("HLC Synchronization Causal Order Integration", () => {
     expect(unpackedPrefHlc.counter).toBe(6); // should be remote.counter + 1 = 6
     expect(pref.enforce_mastery_gates).toBe(false);
 
-    // 4. Execute a pull using a slightly older HLC than the clientAheadHlc
+        // 4. Execute a pull using a slightly older HLC than the clientAheadHlc
     const olderHlc = packHlc({
       physical: futureTime - 1000,
       counter: 0,
       nodeId: "other-node"
     });
 
+    const epochRecord = await db.selectFrom("sync_epoch")
+      .selectAll()
+      .executeTakeFirstOrThrow();
+    const activeEpochId = epochRecord.id;
+
     const pullResponse = await app.handle(
-      new Request(`http://localhost/api/sync/pull?since=${olderHlc}`, {
+      new Request(`http://localhost/api/sync/pull?since=${olderHlc}&epochId=${activeEpochId}`, {
         headers: {
           Authorization: `Bearer ${token}`
         }

@@ -1,27 +1,38 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { isUpdateAvailableState, initPWA, applyAppUpdate } from "./pwaStore";
 
-const mockRegister = vi.fn().mockResolvedValue({});
-const mockAddEventListener = vi.fn();
-const mockMessageSkipWaiting = vi.fn().mockResolvedValue({});
+const mocks = vi.hoisted(() => {
+  return {
+    mockRegister: vi.fn(),
+    mockAddEventListener: vi.fn(),
+    mockMessageSkipWaiting: vi.fn(),
+  };
+});
 
-class MockWorkbox {
-  register = mockRegister;
-  addEventListener = mockAddEventListener;
-  messageSkipWaiting = mockMessageSkipWaiting;
-}
+vi.mock("workbox-window", () => {
+  const Workbox = vi.fn(function () {
+    return {
+      register: mocks.mockRegister,
+      addEventListener: mocks.mockAddEventListener,
+      messageSkipWaiting: mocks.mockMessageSkipWaiting,
+    };
+  });
+  return { Workbox };
+});
 
-vi.mock("workbox-window", () => ({
-  Workbox: vi.fn().mockImplementation(() => new MockWorkbox())
-}));
+const mockRegister = mocks.mockRegister;
+const mockAddEventListener = mocks.mockAddEventListener;
+const mockMessageSkipWaiting = mocks.mockMessageSkipWaiting;
 
 describe("pwaStore - PWA and Service Worker Update Lifecycle", () => {
   let originalProd: boolean;
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockRegister.mockResolvedValue({});
+    mockMessageSkipWaiting.mockResolvedValue({});
 
-        // Stub serviceWorker support on jsdom navigator
+    // Stub serviceWorker support on jsdom navigator
     Object.defineProperty(global.navigator, "serviceWorker", {
       value: {
         register: vi.fn()
