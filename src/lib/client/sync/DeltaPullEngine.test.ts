@@ -109,7 +109,25 @@ describe("DeltaPullEngine - Client Causal Merging", () => {
     const oldHlc = `${Date.now() - 100000}:0001:server`;
     const { set } = await import("idb-keyval");
     await set("last_pull_hlc", oldHlc, syncMetadataStore);
-    await set("sync_epoch_id", "old-epoch-uuid", syncMetadataStore);
+        await set("sync_epoch_id", "old-epoch-uuid", syncMetadataStore);
+
+    // Seed at least one deck and one catalog item to bypass self-healing full sync trigger
+    await Effect.runPromise(
+      deckStore.put({
+        id: "mock-deck-id",
+        name: "Mock Deck",
+        category: "Japanese",
+        content: {}
+      })
+    );
+    await Effect.runPromise(
+      grammarPointCatalogStore.put({
+        id: "mock-catalog-id",
+        formal_name: "Mock",
+        base_meaning: "Meaning",
+        difficulty_level: "N5"
+      })
+    );
 
     const newEpochId = "new-epoch-uuid";
     const resetPayload = {
