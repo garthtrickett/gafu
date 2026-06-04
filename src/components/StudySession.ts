@@ -167,7 +167,7 @@ export class StudySession extends LitElement {
         });
       }
 
-            if (action.type === "FORCE_MASTER") {
+                  if (action.type === "FORCE_MASTER") {
         const { grammarPointId } = action;
         
         const currentProgress = grammarPointStore.state.peek().find(p => p.id === grammarPointId) || {
@@ -175,13 +175,16 @@ export class StudySession extends LitElement {
           easeFactor: 2.5,
           repetitions: 0,
           intervalDays: 0,
-          nextReview: new Date().toISOString()
+          nextReview: new Date().toISOString(),
+          difficulty: 5.0,
+          stability: 0.0,
+          lastReviewedAt: null
         };
 
         const nextReviewDate = new Date();
         nextReviewDate.setDate(nextReviewDate.getDate() + 21);
 
-        const forcedMetrics = {
+        const forcedMetrics = { 
           easeFactor: currentProgress.easeFactor || 2.5,
           repetitions: 3,
           intervalDays: 21,
@@ -196,6 +199,9 @@ export class StudySession extends LitElement {
           repetitions: forcedMetrics.repetitions,
           intervalDays: forcedMetrics.intervalDays,
           nextReview: forcedMetrics.nextReview,
+          difficulty: currentProgress.difficulty ?? 5.0,
+          stability: currentProgress.stability ?? 0.0,
+          lastReviewedAt: currentProgress.lastReviewedAt ?? null
         });
 
         yield* enqueueTransaction("record_review", {
@@ -204,6 +210,9 @@ export class StudySession extends LitElement {
           repetitions: forcedMetrics.repetitions,
           intervalDays: forcedMetrics.intervalDays,
           nextReview: forcedMetrics.nextReview,
+          difficulty: currentProgress.difficulty ?? 5.0,
+          stability: currentProgress.stability ?? 0.0,
+          lastReviewedAt: currentProgress.lastReviewedAt ?? null
         });
 
         yield* Effect.sync(() => {
@@ -215,7 +224,7 @@ export class StudySession extends LitElement {
         });
       }
 
-      if (action.type === "SUBMIT_GRADE") {
+            if (action.type === "SUBMIT_GRADE") {
         const { grammarPointId, isCorrect } = action;
         
         // Retrieve existing progress metadata for this grammar rule from IndexedDB, or fallback to standard N5 defaults
@@ -224,7 +233,10 @@ export class StudySession extends LitElement {
           easeFactor: 2.5,
           repetitions: 0,
           intervalDays: 0,
-          nextReview: new Date().toISOString()
+          nextReview: new Date().toISOString(),
+          difficulty: 5.0,
+          stability: 0.0,
+          lastReviewedAt: null
         };
 
         const metrics = calculateSrsUpdate(
@@ -245,6 +257,9 @@ export class StudySession extends LitElement {
           repetitions: metrics.repetitions,
           intervalDays: metrics.intervalDays,
           nextReview: metrics.nextReview,
+          difficulty: currentProgress.difficulty ?? 5.0,
+          stability: currentProgress.stability ?? 0.0,
+          lastReviewedAt: currentProgress.lastReviewedAt ?? null
         });
 
         // Enqueue queue transaction
@@ -254,6 +269,9 @@ export class StudySession extends LitElement {
           repetitions: metrics.repetitions,
           intervalDays: metrics.intervalDays,
           nextReview: metrics.nextReview,
+          difficulty: currentProgress.difficulty ?? 5.0,
+          stability: currentProgress.stability ?? 0.0,
+          lastReviewedAt: currentProgress.lastReviewedAt ?? null
         });
 
         // Advance progress store indicator sequentially

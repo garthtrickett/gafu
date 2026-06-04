@@ -19,13 +19,16 @@ interface DeltaResponse {
     readonly content: unknown;
     readonly hlc: string;
   }>;
-  readonly srsUpdates: Array<{
+    readonly srsUpdates: Array<{
     readonly id: string;
     readonly grammarPointId: string;
     readonly easeFactor: number;
     readonly repetitions: number;
     readonly intervalDays: number;
     readonly nextReview: string;
+    readonly difficulty: number;
+    readonly stability: number;
+    readonly lastReviewedAt: string | null;
     readonly hlc: string;
   }>;
   readonly grammarPoints: Array<{
@@ -161,9 +164,9 @@ export const executeDeltaPull = () =>
         }
       }
 
-      if (srsUpdatesLen > 0 && srsStore && grammarPointStore) {
+            if (srsUpdatesLen > 0 && srsStore && grammarPointStore) {
         const existingSrs = srsStore.state.peek();
-        const mappedSrs = delta.srsUpdates.map(u => ({
+        const mappedSrs = delta.srsUpdates.map(u => ({ 
           id: u.id,
           front: "",
           back: "",
@@ -171,6 +174,9 @@ export const executeDeltaPull = () =>
           repetitions: u.repetitions,
           intervalDays: u.intervalDays,
           nextReview: u.nextReview,
+          difficulty: u.difficulty,
+          stability: u.stability,
+          lastReviewedAt: u.lastReviewedAt,
           hlc: u.hlc
         }));
         const filteredSrs = filterCausal(mappedSrs, existingSrs);
@@ -179,12 +185,15 @@ export const executeDeltaPull = () =>
         }
 
         const existingProgress = grammarPointStore.state.peek();
-        const mappedProgress = delta.srsUpdates.map(u => ({
+        const mappedProgress = delta.srsUpdates.map(u => ({ 
           id: u.grammarPointId,
           easeFactor: u.easeFactor,
           repetitions: u.repetitions,
           intervalDays: u.intervalDays,
           nextReview: u.nextReview,
+          difficulty: u.difficulty,
+          stability: u.stability,
+          lastReviewedAt: u.lastReviewedAt,
           hlc: u.hlc
         }));
         const filteredProgress = filterCausal(mappedProgress, existingProgress);

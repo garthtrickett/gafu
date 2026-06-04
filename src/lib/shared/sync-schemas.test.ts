@@ -41,7 +41,7 @@ describe("Sync schemas verification", () => {
     }
   });
 
-  it("should apply default values on omitted optional record_review fields", () => {
+    it("should apply default values on omitted optional record_review fields", () => {
     const raw = {
       grammarPointId: "e0eebc99-9c0b-4ef8-bb6d-6bb9bd380e55",
       repetitions: 0,
@@ -53,6 +53,30 @@ describe("Sync schemas verification", () => {
     if (Either.isRight(result)) {
       expect(result.right.easeFactor).toBe(2.5);
       expect(result.right.intervalDays).toBe(0);
+      expect(result.right.difficulty).toBe(5.0);
+      expect(result.right.stability).toBe(0.0);
+      expect(result.right.lastReviewedAt).toBeNull();
+    }
+  });
+
+  it("should successfully decode camelCase record_review payload with newly introduced FSRS-Lite properties", () => {
+    const raw = {
+      grammarPointId: "e0eebc99-9c0b-4ef8-bb6d-6bb9bd380e55",
+      easeFactor: 2.7,
+      repetitions: 2,
+      intervalDays: 6,
+      nextReview: "2026-05-31T04:32:00.000Z",
+      difficulty: 4.5,
+      stability: 12.3,
+      lastReviewedAt: "2026-05-28T04:32:00.000Z",
+    };
+
+    const result = Schema.decodeUnknownEither(RecordReviewPayloadSchema)(raw);
+    expect(Either.isRight(result)).toBe(true);
+    if (Either.isRight(result)) {
+      expect(result.right.difficulty).toBe(4.5);
+      expect(result.right.stability).toBe(12.3);
+      expect(result.right.lastReviewedAt).toBe("2026-05-28T04:32:00.000Z");
     }
   });
 

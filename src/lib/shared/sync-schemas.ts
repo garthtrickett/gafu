@@ -6,6 +6,9 @@ export const CamelCaseReviewSchema = Schema.Struct({
   repetitions: Schema.Int,
   intervalDays: Schema.optional(Schema.Int).pipe(Schema.withDecodingDefault(() => 0)),
   nextReview: Schema.String,
+  difficulty: Schema.optional(Schema.Number).pipe(Schema.withDecodingDefault(() => 5.0)),
+  stability: Schema.optional(Schema.Number).pipe(Schema.withDecodingDefault(() => 0.0)),
+  lastReviewedAt: Schema.optional(Schema.NullOr(Schema.String)).pipe(Schema.withDecodingDefault(() => null)),
 });
 
 export const SnakeCaseReviewSchema = Schema.Struct({
@@ -14,6 +17,9 @@ export const SnakeCaseReviewSchema = Schema.Struct({
   repetitions: Schema.Int,
   interval_days: Schema.optional(Schema.Int).pipe(Schema.withDecodingDefault(() => 0)),
   next_review: Schema.String,
+  difficulty: Schema.optional(Schema.Number).pipe(Schema.withDecodingDefault(() => 5.0)),
+  stability: Schema.optional(Schema.Number).pipe(Schema.withDecodingDefault(() => 0.0)),
+  last_reviewed_at: Schema.optional(Schema.NullOr(Schema.String)).pipe(Schema.withDecodingDefault(() => null)),
 });
 
 export const RecordReviewPayloadSchema = Schema.transform(
@@ -24,16 +30,26 @@ export const RecordReviewPayloadSchema = Schema.transform(
     repetitions: Schema.Int,
     intervalDays: Schema.Int,
     nextReview: Schema.String,
+    difficulty: Schema.Number,
+    stability: Schema.Number,
+    lastReviewedAt: Schema.NullOr(Schema.String),
   }),
   {
         decode: (input) => {
-      if ("grammar_point_id" in input) {
+      const isSnake = "grammar_point_id" in input;
+      const lastReviewedAt = isSnake 
+        ? ("last_reviewed_at" in input ? (input as any).last_reviewed_at : null)
+        : ("lastReviewedAt" in input ? (input as any).lastReviewedAt : null);
+      if (isSnake) {
         return {
           grammarPointId: input.grammar_point_id,
           easeFactor: input.ease_factor,
           repetitions: input.repetitions,
           intervalDays: input.interval_days,
           nextReview: input.next_review,
+          difficulty: (input as any).difficulty,
+          stability: (input as any).stability,
+          lastReviewedAt,
         };
       }
       return {
@@ -42,6 +58,9 @@ export const RecordReviewPayloadSchema = Schema.transform(
         repetitions: input.repetitions,
         intervalDays: input.intervalDays,
         nextReview: input.nextReview,
+        difficulty: (input as any).difficulty,
+        stability: (input as any).stability,
+        lastReviewedAt,
       };
     },
     encode: (normalized) => ({
@@ -50,6 +69,9 @@ export const RecordReviewPayloadSchema = Schema.transform(
       repetitions: normalized.repetitions,
       intervalDays: normalized.intervalDays,
       nextReview: normalized.nextReview,
+      difficulty: normalized.difficulty,
+      stability: normalized.stability,
+      lastReviewedAt: normalized.lastReviewedAt,
     }),
   }
 );

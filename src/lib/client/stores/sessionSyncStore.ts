@@ -101,7 +101,7 @@ export const generateExportPayload = (options?: { isCram?: boolean }) => {
         };
       });
 
-      // 2. Process and save new introductions if eligible
+            // 2. Process and save new introductions if eligible
       if (eligible && nextIntroductions.length > 0) {
         yield* clientLog("info", `[SessionSync] Unlocking ${nextIntroductions.length} new grammar points.`);
         
@@ -111,6 +111,9 @@ export const generateExportPayload = (options?: { isCram?: boolean }) => {
           repetitions: 0,
           intervalDays: 0,
           nextReview: now.toISOString(),
+          difficulty: 5.0,
+          stability: 0.0,
+          lastReviewedAt: null,
           unlockedAt: now.toISOString(),
         }));
         

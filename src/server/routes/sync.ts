@@ -78,13 +78,16 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
           hlc: d.hlc
         }));
 
-                const srsUpdatesResult = srsCards.map(c => ({
+                                const srsUpdatesResult = srsCards.map(c => ({
           id: c.id,
           grammarPointId: c.grammar_point_id,
           easeFactor: c.ease_factor,
           repetitions: c.repetitions,
           intervalDays: c.interval_days,
           nextReview: c.next_review.toISOString(),
+          difficulty: Number(c.difficulty),
+          stability: Number(c.stability),
+          lastReviewedAt: c.last_reviewed_at ? c.last_reviewed_at.toISOString() : null,
           hlc: c.hlc
         }));
 
@@ -206,13 +209,16 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
 
         yield* Effect.logInfo(`[Sync:Push] HLC converged: client=${clientHlc} -> converged=${convergedPacked}`);
 
-        if (decodedTx.type === "record_review") {
+                if (decodedTx.type === "record_review") {
           const payload = decodedTx.payload;
           const grammarPointId = payload.grammarPointId;
           const easeFactor = payload.easeFactor;
           const repetitions = payload.repetitions;
           const intervalDays = payload.intervalDays;
           const nextReview = payload.nextReview;
+          const difficulty = payload.difficulty;
+          const stability = payload.stability;
+          const lastReviewedAt = payload.lastReviewedAt;
 
           yield* Effect.logInfo(`[Sync:Push] Recording review grammarPointId=${grammarPointId}. easeFactor=${easeFactor}, reps=${repetitions}, nextReview=${nextReview}`);
 
@@ -230,7 +236,7 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
             return { success: true };
           }
 
-          yield* Effect.tryPromise({ 
+                    yield* Effect.tryPromise({ 
             try: () => db.insertInto("srs_card")
               .values({
                 id: crypto.randomUUID() as SrsCardId,
@@ -240,6 +246,9 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
                 repetitions: repetitions,
                 interval_days: intervalDays,
                 next_review: new Date(nextReview),
+                difficulty: difficulty,
+                stability: stability,
+                last_reviewed_at: lastReviewedAt ? new Date(lastReviewedAt) : null,
                 created_at: new Date(),
                 updated_at: new Date(),
                 hlc: convergedPacked
@@ -251,6 +260,9 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
                   repetitions: repetitions,
                   interval_days: intervalDays,
                   next_review: new Date(nextReview),
+                  difficulty: difficulty,
+                  stability: stability,
+                  last_reviewed_at: lastReviewedAt ? new Date(lastReviewedAt) : null,
                   updated_at: new Date(),
                   hlc: convergedPacked
                 })
