@@ -42,8 +42,8 @@ test.describe("Mastery Gating, Cram Generation, and Preferences Bypass E2E Flow"
     // Seed 5 active SRS cards where exactly 2 are mastered (repetitions >= 3 or interval_days >= 7)
     // This places the user's mastery rate at exactly 2/5 = 40% (under the 80% gate threshold)
     const pastDate = new Date(Date.now() - 3600000);
-    const srsCards = [
-      // gp-1: Mastered (repetitions = 3)
+        const srsCards = [
+      // gp-1: Mastered (stability >= 7.0)
       {
         id: crypto.randomUUID() as SrsCardId,
         user_id: testUser.userId,
@@ -51,12 +51,15 @@ test.describe("Mastery Gating, Cram Generation, and Preferences Bypass E2E Flow"
         ease_factor: 2.5,
         repetitions: 3,
         interval_days: 3,
+        difficulty: 5.0,
+        stability: 7.0,
+        last_reviewed_at: pastDate,
         next_review: pastDate,
         created_at: new Date(),
         updated_at: new Date(),
         hlc: "0000000000000:0000:initial"
       },
-      // gp-2: Mastered (interval_days = 7)
+      // gp-2: Mastered (difficulty <= 4.0)
       {
         id: crypto.randomUUID() as SrsCardId,
         user_id: testUser.userId,
@@ -64,6 +67,9 @@ test.describe("Mastery Gating, Cram Generation, and Preferences Bypass E2E Flow"
         ease_factor: 2.5,
         repetitions: 1,
         interval_days: 7,
+        difficulty: 4.0,
+        stability: 1.0,
+        last_reviewed_at: pastDate,
         next_review: pastDate,
         created_at: new Date(),
         updated_at: new Date(),
@@ -77,6 +83,9 @@ test.describe("Mastery Gating, Cram Generation, and Preferences Bypass E2E Flow"
         ease_factor: 2.5,
         repetitions: 0,
         interval_days: 0,
+        difficulty: 5.0,
+        stability: 2.0,
+        last_reviewed_at: pastDate,
         next_review: pastDate,
         created_at: new Date(),
         updated_at: new Date(),
@@ -90,6 +99,9 @@ test.describe("Mastery Gating, Cram Generation, and Preferences Bypass E2E Flow"
         ease_factor: 2.5,
         repetitions: 0,
         interval_days: 0,
+        difficulty: 5.0,
+        stability: 2.0,
+        last_reviewed_at: pastDate,
         next_review: pastDate,
         created_at: new Date(),
         updated_at: new Date(),
@@ -103,6 +115,9 @@ test.describe("Mastery Gating, Cram Generation, and Preferences Bypass E2E Flow"
         ease_factor: 2.5,
         repetitions: 0,
         interval_days: 0,
+        difficulty: 5.0,
+        stability: 2.0,
+        last_reviewed_at: pastDate,
         next_review: pastDate,
         created_at: new Date(),
         updated_at: new Date(),

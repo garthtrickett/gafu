@@ -112,7 +112,7 @@ test.describe("SRS Pacing, Daily Cap, and Mastery Gating E2E Flow", () => {
 
     expect(grammarPoints.length).toBeGreaterThanOrEqual(25);
 
-    // 2. Pre-seed the database with 30 due srs_card records for this user (all due in the past)
+        // 2. Pre-seed the database with 30 due srs_card records for this user (all due in the past)
     const pastDate = new Date(Date.now() - 3600000); // 1h in past
     const srsCards = grammarPoints.map((gp) => ({
       id: crypto.randomUUID() as SrsCardId,
@@ -121,6 +121,9 @@ test.describe("SRS Pacing, Daily Cap, and Mastery Gating E2E Flow", () => {
       ease_factor: 2.5,
       repetitions: 1,
       interval_days: 1,
+      difficulty: 5.0,
+      stability: 24.0,
+      last_reviewed_at: pastDate,
       next_review: pastDate,
       created_at: new Date(),
       updated_at: new Date(),
@@ -160,7 +163,7 @@ test.describe("SRS Pacing, Daily Cap, and Mastery Gating E2E Flow", () => {
 
     expect(grammarPoints.length).toBeGreaterThanOrEqual(25);
 
-    // 2. Pre-seed the database with 30 due srs_card records for this user (all due in the past)
+        // 2. Pre-seed the database with 30 due srs_card records for this user (all due in the past)
     const pastDate = new Date(Date.now() - 3600000);
     const srsCards = grammarPoints.map((gp) => ({
       id: crypto.randomUUID() as SrsCardId,
@@ -169,6 +172,9 @@ test.describe("SRS Pacing, Daily Cap, and Mastery Gating E2E Flow", () => {
       ease_factor: 2.5,
       repetitions: 1,
       interval_days: 1,
+      difficulty: 5.0,
+      stability: 24.0,
+      last_reviewed_at: pastDate,
       next_review: pastDate,
       created_at: new Date(),
       updated_at: new Date(),
