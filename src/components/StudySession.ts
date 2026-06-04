@@ -16,54 +16,64 @@ import { Effect } from "effect";
 import "./FuriganaSentence";
 
 export const calculateSrsUpdate = (
-  current: { easeFactor: number; repetitions: number; intervalDays: number },
+  current: {
+    easeFactor?: number;
+    repetitions?: number;
+    intervalDays?: number;
+    difficulty?: number;
+    stability?: number;
+  },
   isCorrect: boolean
 ) => {
-  let easeFactor = current.easeFactor || 2.5;
-  let repetitions = current.repetitions || 0;
-  let intervalDays = current.intervalDays || 0;
+  const now = new Date();
+  const difficulty = current.difficulty !== undefined ? current.difficulty : 5.0;
+  const stability = current.stability !== undefined ? current.stability : 0.0;
+  const repetitions = current.repetitions || 0;
+
+  let nextDifficulty = isCorrect
+    ? Math.max(1.0, difficulty - 0.5)
+    : Math.min(10.0, difficulty + 1.5);
+
+  let nextStability = 0.0;
+  let nextRepetitions = isCorrect ? repetitions + 1 : 0;
 
   if (isCorrect) {
-    repetitions = repetitions + 1;
-    if (repetitions === 1) {
-      intervalDays = 1;
-    } else if (repetitions === 2) {
-      intervalDays = 6;
+    if (repetitions === 0 || stability === 0.0) {
+      nextStability = 1.0;
     } else {
-      intervalDays = Math.ceil(intervalDays * easeFactor);
+      const factor = Math.max(1.2, 3.5 - 0.2 * difficulty);
+      nextStability = stability * factor;
     }
-
-    // Tweak 3: Introduce Review "Fuzz" for intervals >= 5
-    if (intervalDays >= 5) {
-      const fuzzRange = 0.05; // +/- 5%
-      const fuzzFactor = 1 + (Math.random() * (fuzzRange * 2) - fuzzRange);
-      intervalDays = Math.max(1, Math.round(intervalDays * fuzzFactor));
-    }
-
-    // Tweak 2: Mitigate "Ease Hell" with progressive recovery
-    const easeBonus = repetitions >= 3 ? 0.25 : 0.15;
-    easeFactor = Math.max(1.3, easeFactor + easeBonus);
   } else {
-    // Tweak 1: Soften Lapses on Mature Cards
-    if (intervalDays >= 7) {
-      intervalDays = Math.max(3, Math.ceil(intervalDays * 0.20));
+    if (stability >= 7.0) {
+      nextStability = Math.max(1.0, stability * 0.25);
     } else {
-      intervalDays = 1;
+      nextStability = 0.5;
     }
-    repetitions = 0;
-    easeFactor = Math.max(1.3, easeFactor - 0.2);
   }
 
-  const nextReview = new Date();
+  let intervalDays = Math.ceil(nextStability);
+  if (intervalDays >= 5) {
+    const fuzzRange = 0.05; // +/- 5%
+    const fuzzFactor = 1 + (Math.random() * (fuzzRange * 2) - fuzzRange);
+    intervalDays = Math.max(1, Math.round(intervalDays * fuzzFactor));
+  }
+
+  const nextReview = new Date(now.getTime());
   nextReview.setDate(nextReview.getDate() + intervalDays);
+
+  const easeFactor = Math.max(1.3, 3.5 - 0.2 * nextDifficulty);
 
   return {
     easeFactor: Math.round(easeFactor * 100) / 100,
-    repetitions,
+    repetitions: nextRepetitions,
     intervalDays,
-    nextReview: nextReview.toISOString(),
+    difficulty: Math.round(nextDifficulty * 100) / 100,
+    stability: Math.round(nextStability * 100) / 100,
+    lastReviewedAt: now.toISOString(),
+    nextReview: nextReview.toISOString()
   };
-};;
+};
 
 export interface StudySessionModel {
   readonly audioPlaying: boolean;

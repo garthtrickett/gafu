@@ -13,53 +13,57 @@ describe("StudySession SRS calculations", () => {
   });
 
   it("should calculate correct updates on correct reviews", () => {
-    const initial = { easeFactor: 2.5, repetitions: 0, intervalDays: 0 };
+    const initial = { difficulty: 5.0, stability: 0.0, repetitions: 0 };
     const firstCorrect = calculateSrsUpdate(initial, true);
     expect(firstCorrect.repetitions).toBe(1);
     expect(firstCorrect.intervalDays).toBe(1);
-    expect(firstCorrect.easeFactor).toBeGreaterThan(2.5);
+    expect(firstCorrect.difficulty).toBe(4.5);
+    expect(firstCorrect.stability).toBe(1.0);
 
     const secondCorrect = calculateSrsUpdate(firstCorrect, true);
     expect(secondCorrect.repetitions).toBe(2);
-    expect(secondCorrect.intervalDays).toBe(6);
+    expect(secondCorrect.intervalDays).toBe(3);
+    expect(secondCorrect.stability).toBe(2.6);
   });
 
-  it("should reset to 1 day on incorrect reviews if interval is under mature threshold", () => {
-    const state = { easeFactor: 2.8, repetitions: 4, intervalDays: 4 };
+  it("should drop stability and increase difficulty on incorrect reviews if interval is under mature threshold", () => {
+    const state = { difficulty: 5.0, stability: 4.0, repetitions: 2 };
     const result = calculateSrsUpdate(state, false);
     expect(result.repetitions).toBe(0);
     expect(result.intervalDays).toBe(1);
-    expect(result.easeFactor).toBe(2.6); 
+    expect(result.difficulty).toBe(6.5);
+    expect(result.stability).toBe(0.5);
   });
 
-  it("should soften mature card lapses instead of resetting to 1 day", () => {
-    const matureState = { easeFactor: 2.5, repetitions: 3, intervalDays: 40 };
+  it("should soften mature card lapses instead of resetting to 0.5 days", () => {
+    const matureState = { difficulty: 5.0, stability: 12.0, repetitions: 3 };
     const result = calculateSrsUpdate(matureState, false);
     expect(result.repetitions).toBe(0);
-    expect(result.intervalDays).toBe(8); // 40 * 0.20 = 8
-    expect(result.easeFactor).toBe(2.3); // 2.5 - 0.2
+    expect(result.intervalDays).toBe(3);
+    expect(result.difficulty).toBe(6.5);
+    expect(result.stability).toBe(3.0);
   });
 
-  it("should recover easeFactor more aggressively on consecutive repetitions", () => {
-    const stateLowEase = { easeFactor: 1.3, repetitions: 2, intervalDays: 2 };
-    // repetitions becomes 3 (consecutive >= 3), so it gets 0.25 bonus
-    const result = calculateSrsUpdate(stateLowEase, true);
-    expect(result.repetitions).toBe(3);
-    expect(result.easeFactor).toBe(1.55); // 1.3 + 0.25
+  it("should recover difficulty predictably on consecutive repetitions", () => {
+    const stateHighDiff = { difficulty: 8.0, stability: 2.0, repetitions: 1 };
+    const result = calculateSrsUpdate(stateHighDiff, true);
+    expect(result.difficulty).toBe(7.5);
   });
 
   it("should apply interval fuzz for intervals greater than or equal to 5", () => {
-    const state = { easeFactor: 2.5, repetitions: 2, intervalDays: 6 };
+    const state = { difficulty: 5.0, stability: 6.0, repetitions: 2 };
     
+    // Without fuzz (Math.random() is 0.5, so multiplier is 1.0)
+    const resultStandard = calculateSrsUpdate(state, true);
+    expect(resultStandard.intervalDays).toBe(15);
+
     // Mock Math.random() to return 0.0 (maximum negative fuzz: -5%)
     const randomSpy = vi.spyOn(Math, "random").mockReturnValue(0.0);
-    // Next interval: 6 * 2.5 = 15. With max negative fuzz (-5%), 15 * 0.95 = 14.25 -> rounded to 14
     const resultNegative = calculateSrsUpdate(state, true);
     expect(resultNegative.intervalDays).toBe(14);
     
     // Mock Math.random() to return 1.0 (maximum positive fuzz: +5%)
     randomSpy.mockReturnValue(1.0);
-    // With max positive fuzz (+5%), 15 * 1.05 = 15.75 -> rounded to 16
     const resultPositive = calculateSrsUpdate(state, true);
     expect(resultPositive.intervalDays).toBe(16);
   });
