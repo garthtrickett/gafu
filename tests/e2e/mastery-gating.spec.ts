@@ -42,7 +42,7 @@ test.describe("Mastery Gating, Cram Generation, and Preferences Bypass E2E Flow"
     // Seed 5 active SRS cards where exactly 2 are mastered (repetitions >= 3 or interval_days >= 7)
     // This places the user's mastery rate at exactly 2/5 = 40% (under the 80% gate threshold)
     const pastDate = new Date(Date.now() - 3600000);
-        const srsCards = [
+    const srsCards = [
       // gp-1: Mastered (stability >= 7.0)
       {
         id: crypto.randomUUID() as SrsCardId,
@@ -172,13 +172,10 @@ test.describe("Mastery Gating, Cram Generation, and Preferences Bypass E2E Flow"
     await expect(gateAlert).toBeVisible();
     await expect(page.locator("#mastery-rate-pct")).toContainText("40%");
 
-    // 4. Copy standard progress payload and assert that 0 new rules are introduced (queue remains exactly 5 due items)
-    await page.locator("button", { hasText: "Copy Progress Payload" }).click();
-    await expect(page.locator("button", { hasText: "Copied to Clipboard!" })).toBeVisible();
-
-    const clipboardText = await page.evaluate(() => navigator.clipboard.readText());
-    const payload = JSON.parse(clipboardText) as { queue: unknown[] };
-    expect(payload.queue).toHaveLength(5);
+    // 4. Verify standard progress payload copy button is locked (disabled) with appropriate messaging
+    const progressBtn = page.locator("#btn-export-progress");
+    await expect(progressBtn).toHaveAttribute("disabled", "");
+    await expect(progressBtn).toContainText("Progression Locked");
 
     // 5. Verify the 'Compile Cram Payload' button is visible, click it, and assert the payload structure is specialized
     const cramBtn = page.locator("#btn-cram-export");
@@ -197,9 +194,10 @@ test.describe("Mastery Gating, Cram Generation, and Preferences Bypass E2E Flow"
     // 7. Verify Mastery Gate Card disappears immediately
     await expect(gateAlert).not.toBeVisible();
 
-    // 8. Copy standard payload again and assert that new rules are successfully introduced (total length exceeds 5)
-    await page.locator("button", { hasText: "Copy Progress Payload" }).click();
-    await expect(page.locator("button", { hasText: "Copied to Clipboard!" })).toBeVisible();
+    // 8. Verify progression export button is now unlocked (enabled), click it, and assert that new rules are successfully introduced (total length exceeds 5)
+    await expect(progressBtn).not.toHaveAttribute("disabled", "");
+    await progressBtn.click();
+    await expect(progressBtn).toContainText("Copied to Clipboard!");
 
     const bypassedClipboardText = await page.evaluate(() => navigator.clipboard.readText());
     const bypassedPayload = JSON.parse(bypassedClipboardText) as { queue: unknown[] };

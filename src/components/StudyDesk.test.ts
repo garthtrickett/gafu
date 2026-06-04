@@ -38,7 +38,7 @@ describe("StudyDesk component and activeSessionStore pacing presentation", () =>
     }));
     await runClientPromise(grammarPointCatalogStore.putAll(catalogItems));
 
-        // 2. Seed progress with 30 due items (all in the past)
+    // 2. Seed progress with 30 due items (all in the past)
     const past = new Date(Date.now() - 10000).toISOString();
     const progressItems = Array.from({ length: 30 }, (_, i) => ({
       id: `gp-${i}`,
@@ -65,7 +65,7 @@ describe("StudyDesk component and activeSessionStore pacing presentation", () =>
     // @ts-ignore
     await desk.updateComplete;
 
-        // 4. Assertions on the DOM:
+    // 4. Assertions on the DOM:
     // Due Today section should have exactly 20 rules, backlog has 10
     const htmlContent = document.body.innerHTML;
     expect(htmlContent).toContain("Due Today - Daily Target (20 rules)");
@@ -81,7 +81,7 @@ describe("StudyDesk component and activeSessionStore pacing presentation", () =>
     ];
     await runClientPromise(grammarPointCatalogStore.putAll(catalogItems));
 
-        // 2. Seed active learning progress below 80% threshold (0% mastery: 2 active learning rules, both 0 reps)
+    // 2. Seed active learning progress below 80% threshold (0% mastery: 2 active learning rules, both 0 reps)
     const past = new Date(Date.now() - 10000).toISOString();
     await runClientPromise(
       grammarPointStore.putAll([
@@ -106,6 +106,12 @@ describe("StudyDesk component and activeSessionStore pacing presentation", () =>
     expect(htmlContent).toContain("です");
     expect(htmlContent).toContain("id=\"backlog-advice-hint\""); // backlog advice rendered since gp-2 is in backlog
 
+    // Verify progression export button is locked while gate is active
+    const progressBtn = document.querySelector("#btn-export-progress") as HTMLButtonElement;
+    expect(progressBtn).not.toBeNull();
+    expect(progressBtn.disabled).toBe(true);
+    expect(progressBtn.textContent).toContain("Progression Locked");
+
     // 4. Toggle the gate preference switch off
     const toggle = document.querySelector("#enforce-gates-toggle") as HTMLInputElement;
     expect(toggle).not.toBeNull();
@@ -117,5 +123,9 @@ describe("StudyDesk component and activeSessionStore pacing presentation", () =>
     htmlContent = document.body.innerHTML;
     expect(htmlContent).not.toContain("id=\"mastery-gate-alert\"");
     expect(htmlContent).not.toContain("id=\"backlog-advice-hint\"");
+
+    // Verify progression export button is unlocked after gate is bypassed
+    expect(progressBtn.disabled).toBe(false);
+    expect(progressBtn.textContent).toContain("Copy Progress Payload");
   });
 });

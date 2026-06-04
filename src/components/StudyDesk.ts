@@ -198,6 +198,8 @@ export class StudyDesk extends LitElement {
     const showMasteryGateWarning = enforceGates && masteryRate < 80 && grammarPointStore.activeLearningRules.value.length > 0;
     const hasBacklog = backlogItems.length > 0;
 
+    runClientUnscoped(clientLog("info", `[StudyDesk] Rendering desk. showMasteryGateWarning=${showMasteryGateWarning}, masteryRate=${masteryRate}%, enforceGates=${enforceGates}`));
+
     const mappedDailyTarget = dailyTargetItems.map(p => {
       const catalogItem = catalog.find(c => c.id === p.id);
       return {
@@ -315,13 +317,29 @@ export class StudyDesk extends LitElement {
             <div class="space-y-4 pt-2 border-t border-zinc-900">
               <div class="space-y-2">
                 <span class="text-xs font-semibold text-zinc-400 uppercase tracking-wider block">1. Export Progress</span>
-                <button 
-                  @click=${this.triggerExport}
-                  class="w-full py-2.5 bg-zinc-900 hover:bg-zinc-850 text-zinc-100 hover:text-white font-medium rounded text-sm transition-colors cursor-pointer border border-zinc-800 flex items-center justify-center gap-2"
-                >
-                  📋 Copy Progress Payload
-                </button>
-                <p class="text-2xs text-zinc-500">Copies your due progress rules so the AI can compile matching cards.</p>
+                ${showMasteryGateWarning
+                  ? html`
+                      <button 
+                        disabled
+                        class="w-full py-2.5 bg-zinc-900/40 text-zinc-500 font-medium rounded text-sm border border-zinc-800/60 flex items-center justify-center gap-2 cursor-not-allowed"
+                        id="btn-export-progress"
+                      >
+                        🔒 Progression Locked (Gate Active)
+                      </button>
+                      <p class="text-2xs text-yellow-500/80 leading-normal">
+                        ⚠️ Your progress is locked under the 80% mastery threshold. Please use the <strong>Cram Payload</strong> above to review unmastered concepts first.
+                      </p>
+                    `
+                  : html`
+                      <button 
+                        @click=${this.triggerExport}
+                        class="w-full py-2.5 bg-zinc-900 hover:bg-zinc-850 text-zinc-100 hover:text-white font-medium rounded text-sm transition-colors cursor-pointer border border-zinc-800 flex items-center justify-center gap-2"
+                        id="btn-export-progress"
+                      >
+                        📋 Copy Progress Payload
+                      </button>
+                      <p class="text-2xs text-zinc-500">Copies your due progress rules so the AI can compile matching cards.</p>
+                    `}
               </div>
 
               <form @submit=${this.handleImport} class="space-y-2 pt-2 border-t border-zinc-900">

@@ -119,7 +119,7 @@ describe("activeSessionStore & weaveSessionCards unit tests", () => {
     expect(activeSessionStore.hasMoreBatches.value).toBe(false);
   });
 
-  it("should clear state correctly", () => {
+    it("should clear state correctly", () => {
     const cards = [
       createMockCard("A", 1),
       createMockCard("B", 1)
@@ -132,6 +132,29 @@ describe("activeSessionStore & weaveSessionCards unit tests", () => {
     expect(activeSessionStore.state.value).toEqual([]);
     expect(activeSessionStore.currentIndex.value).toBe(0);
     expect(activeSessionStore.batchIndex.value).toBe(0);
+  });
+
+  it("should successfully persist and hydrate the session state from IndexedDB", async () => {
+    const cards = [
+      createMockCard("A", 1),
+      createMockCard("B", 1)
+    ];
+    activeSessionStore.loadSession(cards);
+
+    // Wait briefly for asynchronous background storage operation
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    // Manually clear the in-memory state to test hydration
+    activeSessionStore.state.value = [];
+    activeSessionStore.masterList.value = [];
+    activeSessionStore.currentIndex.value = 0;
+    activeSessionStore.batchIndex.value = 0;
+
+    // Hydrate state from IndexedDB
+    await runClientPromise(activeSessionStore.load());
+
+    expect(activeSessionStore.masterList.value).toHaveLength(2);
+    expect(activeSessionStore.state.value).toHaveLength(2);
   });
 
   it("should successfully integrate with importSessionPayload to parse, activate, and weave cards", async () => {

@@ -42,10 +42,15 @@ const bootstrapApp = Effect.gen(function* () {
   yield* grammarPointCatalogStore.load();
   yield* clientLog("debug", `[Main] Grammar points catalog hydrated: count=${grammarPointCatalogStore.state.value.length}`);
 
-  yield* clientLog("info", "[Main] Hydrating User Preferences storage from IndexedDB...");
+    yield* clientLog("info", "[Main] Hydrating User Preferences storage from IndexedDB...");
   const { userPreferencesStore } = yield* Effect.promise(() => import("./lib/client/stores/userPreferencesStore.ts"));
   yield* userPreferencesStore.load();
   yield* clientLog("debug", `[Main] User preferences hydrated: reviewLimit=${userPreferencesStore.dailyReviewLimit.value}`);
+
+  yield* clientLog("info", "[Main] Hydrating Active Session state from IndexedDB...");
+  const { activeSessionStore } = yield* Effect.promise(() => import("./lib/client/stores/activeSessionStore.ts"));
+  yield* activeSessionStore.load();
+  yield* clientLog("debug", `[Main] Active session hydrated: masterListCount=${activeSessionStore.masterList.value.length}`);
 
   // 4. Attempt session restoration
   const { initAuth } = yield* Effect.promise(() => import("./lib/client/stores/authStore.ts"));
