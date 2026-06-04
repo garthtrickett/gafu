@@ -35,7 +35,7 @@ export class StudyDesk extends LitElement {
     runClientUnscoped(grammarPointStore.load());
     runClientUnscoped(grammarPointCatalogStore.load());
     
-        this._disposeEffect = effect(() => {
+    this._disposeEffect = effect(() => {
       const count = grammarPointStore.state.value.length;
       const catalogCount = grammarPointCatalogStore.state.value.length;
       // Subscribe to preference signals
@@ -199,7 +199,7 @@ export class StudyDesk extends LitElement {
     const dailyTargetItems = allDueItems.slice(0, reviewLimit);
     const backlogItems = allDueItems.slice(reviewLimit);
 
-        const enforceGates = userPreferencesStore.enforceMasteryGates.value;
+    const enforceGates = userPreferencesStore.enforceMasteryGates.value;
     const masteryRate = grammarPointStore.activeMasteryRate.value;
     const showMasteryGateWarning = enforceGates && masteryRate < 80 && grammarPointStore.activeLearningRules.value.length > 0;
     const hasBacklog = backlogItems.length > 0;
@@ -272,59 +272,6 @@ export class StudyDesk extends LitElement {
           </button>
         </div>
 
-        ${showMasteryGateWarning ? html`
-          <div class='p-5 bg-yellow-500/10 border border-yellow-500/20 rounded-lg space-y-3 animate-fade-in' id='mastery-gate-alert'>
-            <div class='flex items-center justify-between'>
-              <div class='flex items-center gap-3.5'>
-                <span class='text-2xl'>🔒</span>
-                <div>
-                  <h3 class='text-sm font-bold text-yellow-500'>Mastery Gate Active</h3>
-                  <p class='text-xs text-zinc-400'>You must reach an 80% mastery rate of active learning rules to unlock new material.</p>
-                </div>
-              </div>
-              <div class='text-right'>
-                <span class='text-xl font-bold text-yellow-500' id='mastery-rate-pct'>${masteryRate}%</span>
-                <span class='text-3xs text-zinc-500 block uppercase tracking-wider font-semibold'>Mastery Rate</span>
-              </div>
-            </div>
-
-            <div class='w-full bg-zinc-900 h-1.5 rounded-full overflow-hidden'>
-              <div class='bg-yellow-500 h-full transition-all duration-300' style='width: ${masteryRate}%'></div>
-            </div>
-
-            <div class='space-y-1.5 pt-1'>
-              <span class='text-[10px] font-bold text-zinc-500 uppercase tracking-wider block'>Unmastered Rules Blocking Progress:</span>
-              <div class='flex flex-wrap gap-1.5' id='unmastered-blocking-list'>
-                ${grammarPointStore.unmasteredActiveRules.value.map(rule => {
-                  const catalogItem = grammarPointCatalogStore.state.value.find(c => c.id === rule.id);
-                  return html`
-                    <span class='px-2 py-0.5 bg-zinc-900 text-yellow-500 border border-yellow-500/10 text-xs font-semibold rounded'>${catalogItem ? catalogItem.formal_name : "Loading..."}</span>
-                  `;
-                })}
-              </div>
-            </div>
-
-            <div class='pt-2.5 border-t border-zinc-900/40 flex items-center justify-between gap-4'>
-              <p class='text-2xs text-zinc-400 leading-relaxed'>
-                💡 <strong>Stuck?</strong> Copy a specialized Cram Payload to generate highly focused practice sentences targeting your troublesome unmastered rules.
-              </p>
-              <button 
-                @click=${this.triggerCramExport}
-                class='px-3.5 py-1.5 bg-yellow-500 hover:bg-yellow-600 text-zinc-950 font-bold rounded text-2xs transition-colors cursor-pointer shrink-0'
-                id='btn-cram-export'
-              >
-                📋 Copy Cram Payload
-              </button>
-            </div>
-          </div>
-        ` : ""}
-
-                ${showMasteryGateWarning && hasBacklog ? html`
-          <div class='p-3 bg-blue-500/10 border border-blue-500/20 text-blue-400 rounded-lg text-xs leading-normal animate-fade-in' id='backlog-advice-hint'>
-            💡 <strong>Backlog Alert</strong>: You have ${backlogItems.length} reviews snoozed in your backlog! Try increasing your <strong>Review Cap</strong> in the configuration panel below to bring them into your due queue and master them.
-          </div>
-        ` : ""}
-
         <!-- Real-Time FSRS Metrics Panel -->
         <div class="grid gap-4 sm:grid-cols-3 p-5 bg-zinc-950 border border-zinc-800 rounded-lg shadow-sm" id="metrics-panel">
           <!-- 1. Estimated Retention (Memory Health) -->
@@ -383,27 +330,80 @@ export class StudyDesk extends LitElement {
               </div>
 
               <!-- Legend -->
-              <div class="grid grid-cols-2 gap-x-2 gap-y-1 mt-3.5 text-3xs font-medium text-zinc-400">
+              <div class="grid grid-cols-2 gap-x-5 gap-y-2 mt-3.5 text-[11px] font-medium text-zinc-400" id="distribution-legend">
                 <div class="flex items-center gap-1.5">
                   <span class="w-1.5 h-1.5 rounded-full bg-zinc-600 shrink-0"></span>
-                  <span class="truncate">New: <strong class="text-zinc-300" id="count-unstarted">${unstarted}</strong></span>
+                  <span>New: <strong class="text-zinc-300" id="count-unstarted">${unstarted}</strong></span>
                 </div>
                 <div class="flex items-center gap-1.5">
                   <span class="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0"></span>
-                  <span class="truncate">Learning: <strong class="text-zinc-300" id="count-learning">${learning}</strong></span>
+                  <span>Learning: <strong class="text-zinc-300" id="count-learning">${learning}</strong></span>
                 </div>
                 <div class="flex items-center gap-1.5">
                   <span class="w-1.5 h-1.5 rounded-full bg-yellow-500 shrink-0"></span>
-                  <span class="truncate">Mastery: <strong class="text-zinc-300" id="count-mastered">${mastered}</strong></span>
+                  <span>Mastery: <strong class="text-zinc-300" id="count-mastered">${mastered}</strong></span>
                 </div>
                 <div class="flex items-center gap-1.5">
                   <span class="w-1.5 h-1.5 rounded-full bg-green-500 shrink-0"></span>
-                  <span class="truncate">Graduated: <strong class="text-zinc-300" id="count-graduated">${graduated}</strong></span>
+                  <span>Graduated: <strong class="text-zinc-300" id="count-graduated">${graduated}</strong></span>
                 </div>
               </div>
             </div>
           </div>
         </div>
+
+        ${showMasteryGateWarning ? html`
+          <div class='p-5 bg-yellow-500/10 border border-yellow-500/20 rounded-lg space-y-3 animate-fade-in' id='mastery-gate-alert'>
+            <div class='flex items-center justify-between'>
+              <div class='flex items-center gap-3.5'>
+                <span class='text-2xl'>🔒</span>
+                <div>
+                  <h3 class='text-sm font-bold text-yellow-500'>Mastery Gate Active</h3>
+                  <p class='text-xs text-zinc-400'>You must reach an 80% mastery rate of active learning rules to unlock new material.</p>
+                </div>
+              </div>
+              <div class='text-right'>
+                <span class='text-xl font-bold text-yellow-500' id='mastery-rate-pct'>${masteryRate}%</span>
+                <span class='text-3xs text-zinc-500 block uppercase tracking-wider font-semibold'>Mastery Rate</span>
+              </div>
+            </div>
+
+            <div class='w-full bg-zinc-900 h-1.5 rounded-full overflow-hidden'>
+              <div class='bg-yellow-500 h-full transition-all duration-300' style='width: ${masteryRate}%'></div>
+            </div>
+
+            <div class='space-y-1.5 pt-1'>
+              <span class='text-[10px] font-bold text-zinc-500 uppercase tracking-wider block'>Unmastered Rules Blocking Progress:</span>
+              <div class='flex flex-wrap gap-1.5' id='unmastered-blocking-list'>
+                ${grammarPointStore.unmasteredActiveRules.value.map(rule => {
+                  const catalogItem = grammarPointCatalogStore.state.value.find(c => c.id === rule.id);
+                  return html`
+                    <span class='px-2 py-0.5 bg-zinc-900 text-yellow-500 border border-yellow-500/10 text-xs font-semibold rounded'>${catalogItem ? catalogItem.formal_name : "Loading..."}</span>
+                  `;
+                })}
+              </div>
+            </div>
+
+            <div class='pt-2.5 border-t border-zinc-900/40 flex items-center justify-between gap-4'>
+              <p class='text-2xs text-zinc-400 leading-relaxed'>
+                💡 <strong>Stuck?</strong> Copy a specialized Cram Payload to generate highly focused practice sentences targeting your troublesome unmastered rules.
+              </p>
+              <button 
+                @click=${this.triggerCramExport}
+                class='px-3.5 py-1.5 bg-yellow-500 hover:bg-yellow-600 text-zinc-950 font-bold rounded text-2xs transition-colors cursor-pointer shrink-0'
+                id='btn-cram-export'
+              >
+                📋 Copy Cram Payload
+              </button>
+            </div>
+          </div>
+        ` : ""}
+
+        ${showMasteryGateWarning && hasBacklog ? html`
+          <div class='p-3 bg-blue-500/10 border border-blue-500/20 text-blue-400 rounded-lg text-xs leading-normal animate-fade-in' id='backlog-advice-hint'>
+            💡 <strong>Backlog Alert</strong>: You have ${backlogItems.length} reviews snoozed in your backlog! Try increasing your <strong>Review Cap</strong> in the configuration panel below to bring them into your due queue and master them.
+          </div>
+        ` : ""}
 
         <div class="grid gap-6 md:grid-cols-2">
           <!-- Setup Wizard Deck Card (Manual Handshake Compiler) -->
