@@ -43,13 +43,13 @@ export const calculateRetrievability = (progress: { stability?: number; lastRevi
 };
 
 export const canUnlockMoreRules = (progressList: GrammarPointProgress[]): boolean => {
-  const learningRules = progressList.filter(p => p.intervalDays < 21);
+  const learningRules = progressList.filter(p => (p.stability ?? 0.0) < 21.0);
   if (learningRules.length === 0) {
     return true;
   }
 
   const masteredCount = learningRules.filter(
-    p => p.repetitions >= 3 || p.intervalDays >= 7
+    p => (p.stability ?? 0.0) >= 7.0 || (p.difficulty ?? 5.0) <= 4.0
   ).length;
 
   return (masteredCount / learningRules.length) >= 0.8;
@@ -76,12 +76,12 @@ export const grammarPointStore = {
 
   activeLearningRules: computed(() => {
     const progress = baseGrammarPointStore.state.value;
-    return progress.filter(p => p.intervalDays < 21);
+    return progress.filter(p => (p.stability ?? 0.0) < 21.0);
   }),
 
   graduatedRules: computed(() => {
     const progress = baseGrammarPointStore.state.value;
-    return progress.filter(p => p.intervalDays >= 21);
+    return progress.filter(p => (p.stability ?? 0.0) >= 21.0);
   }),
 
   lockedCatalogItems: computed(() => {
@@ -99,21 +99,21 @@ export const grammarPointStore = {
 
   activeMasteryRate: computed(() => {
     const progress = baseGrammarPointStore.state.value;
-    const learningRules = progress.filter(p => p.intervalDays < 21);
+    const learningRules = progress.filter(p => (p.stability ?? 0.0) < 21.0);
     if (learningRules.length === 0) {
       return 100;
     }
     const masteredCount = learningRules.filter(
-      p => p.repetitions >= 3 || p.intervalDays >= 7
+      p => (p.stability ?? 0.0) >= 7.0 || (p.difficulty ?? 5.0) <= 4.0
     ).length;
     return Math.round((masteredCount / learningRules.length) * 100);
   }),
 
   unmasteredActiveRules: computed(() => {
     const progress = baseGrammarPointStore.state.value;
-    const learningRules = progress.filter(p => p.intervalDays < 21);
+    const learningRules = progress.filter(p => (p.stability ?? 0.0) < 21.0);
     return learningRules.filter(
-      p => !(p.repetitions >= 3 || p.intervalDays >= 7)
+      p => !((p.stability ?? 0.0) >= 7.0 || (p.difficulty ?? 5.0) <= 4.0)
     );
   }),
 };

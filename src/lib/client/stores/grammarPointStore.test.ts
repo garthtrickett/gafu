@@ -113,7 +113,7 @@ describe("grammarPointStore state management and pacing helpers", () => {
     expect(grammarPointStore.unlockedLast24HoursCount.value).toBe(1);
   });
 
-  describe("canUnlockMoreRules gating logic", () => {
+    describe("canUnlockMoreRules gating logic", () => {
     it("should return true for empty active learning queues to allow initial seeding", () => {
       const emptyProgress: GrammarPointProgress[] = [];
       expect(canUnlockMoreRules(emptyProgress)).toBe(true);
@@ -121,11 +121,11 @@ describe("grammarPointStore state management and pacing helpers", () => {
 
     it("should return true if exactly 80% of active learning rules are mastered", () => {
       const progress: GrammarPointProgress[] = [
-        { id: "1", easeFactor: 2.5, repetitions: 3, intervalDays: 1, nextReview: "" }, // mastered (reps >= 3)
-        { id: "2", easeFactor: 2.5, repetitions: 0, intervalDays: 8, nextReview: "" }, // mastered (intervalDays >= 7)
-        { id: "3", easeFactor: 2.5, repetitions: 3, intervalDays: 7, nextReview: "" }, // mastered (both)
-        { id: "4", easeFactor: 2.5, repetitions: 4, intervalDays: 12, nextReview: "" }, // mastered
-        { id: "5", easeFactor: 2.5, repetitions: 1, intervalDays: 2, nextReview: "" }, // NOT mastered
+        { id: "1", easeFactor: 2.5, repetitions: 3, intervalDays: 1, difficulty: 5.0, stability: 7.0, nextReview: "" }, // mastered (stability >= 7)
+        { id: "2", easeFactor: 2.5, repetitions: 0, intervalDays: 8, difficulty: 4.0, stability: 1.0, nextReview: "" }, // mastered (difficulty <= 4)
+        { id: "3", easeFactor: 2.5, repetitions: 3, intervalDays: 7, difficulty: 3.5, stability: 8.0, nextReview: "" }, // mastered (both)
+        { id: "4", easeFactor: 2.5, repetitions: 4, intervalDays: 12, difficulty: 4.0, stability: 12.0, nextReview: "" }, // mastered (both)
+        { id: "5", easeFactor: 2.5, repetitions: 1, intervalDays: 2, difficulty: 5.0, stability: 2.0, nextReview: "" }, // NOT mastered
       ];
 
       // 4/5 = 80%
@@ -134,11 +134,11 @@ describe("grammarPointStore state management and pacing helpers", () => {
 
     it("should return false if less than 80% of active learning rules are mastered", () => {
       const progress: GrammarPointProgress[] = [
-        { id: "1", easeFactor: 2.5, repetitions: 3, intervalDays: 1, nextReview: "" }, // mastered
-        { id: "2", easeFactor: 2.5, repetitions: 0, intervalDays: 8, nextReview: "" }, // mastered
-        { id: "3", easeFactor: 2.5, repetitions: 1, intervalDays: 2, nextReview: "" }, // NOT mastered
-        { id: "4", easeFactor: 2.5, repetitions: 0, intervalDays: 0, nextReview: "" }, // NOT mastered
-        { id: "5", easeFactor: 2.5, repetitions: 2, intervalDays: 3, nextReview: "" }, // NOT mastered
+        { id: "1", easeFactor: 2.5, repetitions: 3, intervalDays: 1, difficulty: 5.0, stability: 7.0, nextReview: "" }, // mastered (stability >= 7)
+        { id: "2", easeFactor: 2.5, repetitions: 0, intervalDays: 8, difficulty: 4.0, stability: 1.0, nextReview: "" }, // mastered (difficulty <= 4)
+        { id: "3", easeFactor: 2.5, repetitions: 1, intervalDays: 2, difficulty: 5.0, stability: 2.0, nextReview: "" }, // NOT mastered
+        { id: "4", easeFactor: 2.5, repetitions: 0, intervalDays: 0, difficulty: 5.0, stability: 0.0, nextReview: "" }, // NOT mastered
+        { id: "5", easeFactor: 2.5, repetitions: 2, intervalDays: 3, difficulty: 5.0, stability: 3.0, nextReview: "" }, // NOT mastered
       ];
 
       // 2/5 = 40% < 80%
@@ -147,12 +147,12 @@ describe("grammarPointStore state management and pacing helpers", () => {
 
     it("should ignore graduated rules when evaluating mastery of active learning rules", () => {
       const progress: GrammarPointProgress[] = [
-        { id: "1", easeFactor: 2.5, repetitions: 3, intervalDays: 1, nextReview: "" }, // mastered active
-        { id: "2", easeFactor: 2.5, repetitions: 0, intervalDays: 8, nextReview: "" }, // mastered active
-        { id: "3", easeFactor: 2.5, repetitions: 3, intervalDays: 7, nextReview: "" }, // mastered active
-        { id: "4", easeFactor: 2.5, repetitions: 4, intervalDays: 12, nextReview: "" }, // mastered active
-        { id: "5", easeFactor: 2.5, repetitions: 1, intervalDays: 2, nextReview: "" }, // NOT mastered active
-        { id: "6", easeFactor: 2.5, repetitions: 0, intervalDays: 30, nextReview: "" }, // Graduated rule (interval >= 21) - should be ignored
+        { id: "1", easeFactor: 2.5, repetitions: 3, intervalDays: 1, difficulty: 5.0, stability: 7.0, nextReview: "" }, // mastered active
+        { id: "2", easeFactor: 2.5, repetitions: 0, intervalDays: 8, difficulty: 4.0, stability: 1.0, nextReview: "" }, // mastered active
+        { id: "3", easeFactor: 2.5, repetitions: 3, intervalDays: 7, difficulty: 4.0, stability: 8.0, nextReview: "" }, // mastered active
+        { id: "4", easeFactor: 2.5, repetitions: 4, intervalDays: 12, difficulty: 3.0, stability: 12.0, nextReview: "" }, // mastered active
+        { id: "5", easeFactor: 2.5, repetitions: 1, intervalDays: 2, difficulty: 5.0, stability: 2.0, nextReview: "" }, // NOT mastered active
+        { id: "6", easeFactor: 2.5, repetitions: 0, intervalDays: 30, difficulty: 5.0, stability: 25.0, nextReview: "" }, // Graduated rule (stability >= 21) - should be ignored
       ];
 
       // Out of 5 active learning rules, 4 are mastered = 80%. Should return true.
@@ -242,33 +242,33 @@ describe("Grammar Point Gating and Pacing Math", () => {
     expect(allowanceC).toBe(5);
   });
 
-  it("should properly enforce master check for new unlocks", () => {
-    // 80% mastery threshold: intervalDays >= 7 or repetitions >= 3
+    it("should properly enforce master check for new unlocks", () => {
+    // 80% mastery threshold: stability >= 7 or difficulty <= 4
     const progressMastered: GrammarPointProgress[] = [
-      { id: "gp-1", easeFactor: 2.5, repetitions: 3, intervalDays: 1, nextReview: "" }, // Mastered (reps)
-      { id: "gp-2", easeFactor: 2.5, repetitions: 1, intervalDays: 7, nextReview: "" }, // Mastered (interval)
-      { id: "gp-3", easeFactor: 2.5, repetitions: 0, intervalDays: 0, nextReview: "" }, // Learning
+      { id: "gp-1", easeFactor: 2.5, repetitions: 3, intervalDays: 1, difficulty: 5.0, stability: 7.0, nextReview: "" }, // Mastered (stability)
+      { id: "gp-2", easeFactor: 2.5, repetitions: 1, intervalDays: 7, difficulty: 4.0, stability: 1.0, nextReview: "" }, // Mastered (difficulty)
+      { id: "gp-3", easeFactor: 2.5, repetitions: 0, intervalDays: 0, difficulty: 5.0, stability: 0.0, nextReview: "" }, // Learning
     ];
     // Mastered: 2 / 3 = 66% (Not eligible since < 80%)
     expect(canUnlockMoreRules(progressMastered)).toBe(false);
 
     const progressFullMastered: GrammarPointProgress[] = [
-      { id: "gp-1", easeFactor: 2.5, repetitions: 3, intervalDays: 1, nextReview: "" }, // Mastered
-      { id: "gp-2", easeFactor: 2.5, repetitions: 1, intervalDays: 7, nextReview: "" }, // Mastered
-      { id: "gp-3", easeFactor: 2.5, repetitions: 3, intervalDays: 1, nextReview: "" }, // Mastered
-      { id: "gp-4", easeFactor: 2.5, repetitions: 1, intervalDays: 1, nextReview: "" }, // Learning
+      { id: "gp-1", easeFactor: 2.5, repetitions: 3, intervalDays: 1, difficulty: 5.0, stability: 7.0, nextReview: "" }, // Mastered
+      { id: "gp-2", easeFactor: 2.5, repetitions: 1, intervalDays: 7, difficulty: 4.0, stability: 1.0, nextReview: "" }, // Mastered
+      { id: "gp-3", easeFactor: 2.5, repetitions: 3, intervalDays: 1, difficulty: 5.0, stability: 8.0, nextReview: "" }, // Mastered
+      { id: "gp-4", easeFactor: 2.5, repetitions: 1, intervalDays: 1, difficulty: 5.0, stability: 1.0, nextReview: "" }, // Learning
     ];
     // Mastered: 3 / 4 = 75% (Not eligible)
     expect(canUnlockMoreRules(progressFullMastered)).toBe(false);
 
     const progressPassThreshold: GrammarPointProgress[] = [
-      { id: "gp-1", easeFactor: 2.5, repetitions: 3, intervalDays: 1, nextReview: "" }, // Mastered
-      { id: "gp-2", easeFactor: 2.5, repetitions: 1, intervalDays: 7, nextReview: "" }, // Mastered
-      { id: "gp-3", easeFactor: 2.5, repetitions: 3, intervalDays: 1, nextReview: "" }, // Mastered
-      { id: "gp-4", easeFactor: 2.5, repetitions: 4, intervalDays: 1, nextReview: "" }, // Mastered
-      { id: "gp-5", easeFactor: 2.5, repetitions: 1, intervalDays: 1, nextReview: "" }, // Learning
+      { id: "gp-1", easeFactor: 2.5, repetitions: 3, intervalDays: 1, difficulty: 5.0, stability: 7.0, nextReview: "" }, // Mastered
+      { id: "gp-2", easeFactor: 2.5, repetitions: 1, intervalDays: 7, difficulty: 4.0, stability: 1.0, nextReview: "" }, // Mastered
+      { id: "gp-3", easeFactor: 2.5, repetitions: 3, intervalDays: 1, difficulty: 5.0, stability: 8.0, nextReview: "" }, // Mastered
+      { id: "gp-4", easeFactor: 2.5, repetitions: 4, intervalDays: 1, difficulty: 3.5, stability: 1.0, nextReview: "" }, // Mastered
+      { id: "gp-5", easeFactor: 2.5, repetitions: 1, intervalDays: 1, difficulty: 5.0, stability: 2.0, nextReview: "" }, // Learning
     ];
-        // Mastered: 4 / 5 = 80% (Eligible!)
+    // Mastered: 4 / 5 = 80% (Eligible!)
     expect(canUnlockMoreRules(progressPassThreshold)).toBe(true);
   });
 });
@@ -283,14 +283,14 @@ describe("grammarPointStore computed mastery metrics", () => {
     expect(grammarPointStore.unmasteredActiveRules.value).toHaveLength(0);
   });
 
-  it("should calculate correct mastery rate and list unmastered active rules, ignoring graduated rules", async () => {
+    it("should calculate correct mastery rate and list unmastered active rules, ignoring graduated rules", async () => {
     await runClientPromise(
       grammarPointStore.putAll([
-        { id: "gp-1", easeFactor: 2.5, repetitions: 3, intervalDays: 1, nextReview: "" }, // mastered (reps)
-        { id: "gp-2", easeFactor: 2.5, repetitions: 1, intervalDays: 7, nextReview: "" }, // mastered (interval)
-        { id: "gp-3", easeFactor: 2.5, repetitions: 1, intervalDays: 2, nextReview: "" }, // unmastered
-        { id: "gp-4", easeFactor: 2.5, repetitions: 0, intervalDays: 0, nextReview: "" }, // unmastered
-        { id: "gp-5", easeFactor: 2.5, repetitions: 1, intervalDays: 30, nextReview: "" }, // graduated (ignored)
+        { id: "gp-1", easeFactor: 2.5, repetitions: 3, intervalDays: 1, difficulty: 5.0, stability: 7.0, nextReview: "" }, // mastered (stability >= 7)
+        { id: "gp-2", easeFactor: 2.5, repetitions: 1, intervalDays: 7, difficulty: 4.0, stability: 1.0, nextReview: "" }, // mastered (difficulty <= 4)
+        { id: "gp-3", easeFactor: 2.5, repetitions: 1, intervalDays: 2, difficulty: 5.0, stability: 2.0, nextReview: "" }, // unmastered
+        { id: "gp-4", easeFactor: 2.5, repetitions: 0, intervalDays: 0, difficulty: 5.0, stability: 0.0, nextReview: "" }, // unmastered
+        { id: "gp-5", easeFactor: 2.5, repetitions: 1, intervalDays: 30, difficulty: 5.0, stability: 25.0, nextReview: "" }, // graduated (stability >= 21, ignored)
       ])
     );
 
