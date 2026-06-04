@@ -203,8 +203,66 @@ test.describe("SRS Pacing, Daily Cap, and Mastery Gating E2E Flow", () => {
     await reviewInput.fill("50");
     await reviewInput.press("Enter");
 
-    // 6. Verify the lists dynamically expand and adjust: all 30 should now be inside target, backlog should disappear
+        // 6. Verify the lists dynamically expand and adjust: all 30 should now be inside target, backlog should disappear
     await expect(page.locator("text=Due Today - Daily Target (30 rules)")).toBeVisible();
     await expect(page.locator("text=Snoozed Backlog")).not.toBeVisible();
+  });
+
+  test("should update memory retention and deck difficulty metrics reactively after completing a study session", async ({ page, context }) => {
+    if (!testUser) {
+      await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+      throw new Error("testUser is undefined");
+    }
+
+    // 1. Authenticate the test user
+    await page.goto("/login");
+    await page.locator("#email").fill(testUser.email);
+    await page.locator("#password").fill(testUser.password);
+    await page.locator('button[type="submit"]').click();
+
+    await expect(page).toHaveURL("/");
+
+    // 2. Initial state metrics check: Since the user starts fresh, we should see 100% retention and 5.0 difficulty fallbacks
+    await expect(page.locator("#retention-rate")).toContainText("100%");
+    await expect(page.locator("#avg-difficulty")).toContainText("5.0");
+
+    // 3. Inject and complete a study session with a card
+    const mockPayload = {
+      session_id: "test-metrics-session",
+      cards: [
+        {
+          grammar_point_id: "e0eebc99-9c0b-4ef8-bb6d-6bb9bd380e55", 
+          english_context: "E2E Testing metrics reactive update.",
+          japanese_sentence: "これはテストです。",
+          furigana: [
+            { kanji: "これ" },
+            { kanji: "は" },
+            { kanji: "テスト" },
+            { kanji: "です" }
+          ],
+          audio_url: null,
+          hlc: "0000000000000:0000:initial"
+        }
+      ]
+    };
+
+    const textarea = page.locator("textarea");
+    await textarea.fill(JSON.stringify(mockPayload));
+    await page.locator("button", { hasText: "Import & Start Study" }).click();
+
+    // Confirm transition to the active study session view
+    await expect(page).toHaveURL("/study");
+
+    // Grade the card as Correct (difficulty: 4.5, stability: 1.0, repetitions: 1)
+    await page.getByRole("button", { name: "Correct", exact: true }).click();
+    await expect(page.locator("h2")).toContainText("Review Completed!");
+
+    // Return to study desk
+    await page.locator("button", { hasText: "Back to Study Desk" }).click();
+    await expect(page).toHaveURL("/");
+
+    // 4. Verify metrics updated on the main page:
+    await expect(page.locator("#avg-difficulty")).toContainText("4.5");
+    await expect(page.locator("#count-learning")).toContainText("1");
   });
 });

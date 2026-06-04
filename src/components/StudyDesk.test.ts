@@ -126,10 +126,48 @@ describe("StudyDesk component and activeSessionStore pacing presentation", () =>
     expect(htmlContent).not.toContain("id=\"mastery-gate-alert\"");
     expect(htmlContent).not.toContain("id=\"backlog-advice-hint\"");
 
-    // Verify progression export button is unlocked after gate is bypassed
+        // Verify progression export button is unlocked after gate is bypassed
     const progressBtnAfter = document.querySelector("#btn-export-progress") as HTMLButtonElement;
     expect(progressBtnAfter).not.toBeNull();
     expect(progressBtnAfter.disabled).toBe(false);
     expect(progressBtnAfter.textContent).toContain("Copy Progress Payload");
+  });
+
+  it("should render the metrics panel with exact calculations and distributions", async () => {
+    // 1. Seed catalog with 3 rules
+    await runClientPromise(
+      grammarPointCatalogStore.putAll([
+        { id: "gp-1", formal_name: "だ", base_meaning: "Is", difficulty_level: "N5" },
+        { id: "gp-2", formal_name: "です", base_meaning: "Is (polite)", difficulty_level: "N5" },
+        { id: "gp-3", formal_name: "は", base_meaning: "Topic", difficulty_level: "N5" },
+      ])
+    );
+
+    // 2. Seed progress with 1 studied rule (learning) and 1 graduated rule
+    const now = Date.now();
+    await runClientPromise(
+      grammarPointStore.putAll([
+        { id: "gp-1", easeFactor: 2.5, repetitions: 1, intervalDays: 1, difficulty: 7.5, stability: 1.0, lastReviewedAt: new Date(now).toISOString(), nextReview: new Date().toISOString() },
+        { id: "gp-2", easeFactor: 2.5, repetitions: 4, intervalDays: 21, difficulty: 4.5, stability: 21.0, lastReviewedAt: new Date(now).toISOString(), nextReview: new Date().toISOString() },
+      ])
+    );
+
+    const desk = document.createElement("study-desk");
+    document.body.appendChild(desk);
+    await new Promise(resolve => setTimeout(resolve, 50));
+
+    const htmlContent = document.body.innerHTML;
+    expect(htmlContent).toContain("id=\"metrics-panel\"");
+    expect(htmlContent).toContain("id=\"retention-rate\"");
+    expect(htmlContent).toContain("100%"); 
+
+    expect(htmlContent).toContain("id=\"avg-difficulty\"");
+    expect(htmlContent).toContain("6.0"); 
+
+    expect(htmlContent).toContain("id=\"count-unstarted\"");
+    expect(document.querySelector("#count-unstarted")?.textContent).toBe("1");
+    expect(document.querySelector("#count-learning")?.textContent).toBe("1");
+    expect(document.querySelector("#count-mastered")?.textContent).toBe("0");
+    expect(document.querySelector("#count-graduated")?.textContent).toBe("1");
   });
 });
