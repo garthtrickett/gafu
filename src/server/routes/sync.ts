@@ -18,7 +18,7 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
     async ({ query, headers, set, runEffect }) => {
       const pullEffect = Effect.gen(function* () {
         const since = query.since || "0000000000000:0000:initial";
-        yield* Effect.logInfo(`[Sync:Pull] Executing pull requests. sinceHlc=${since}`);
+        yield* Effect.logInfo(`[Sync:Pull] Executing pull requests. sinceHlc=${since}, clientEpochId=${query.epochId}`);
 
         const authHeader = headers["authorization"];
         yield* Effect.logInfo(`[Sync:Pull] Received Authorization header: "${authHeader}"`);
@@ -33,6 +33,35 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
 
         const user = yield* validateToken(token);
         yield* Effect.logInfo(`[Sync:Pull] Authorized session for subscriber: ${user.email} (ID: ${user.id})`);
+
+        // Retrieve active database sync epoch
+        yield* Effect.logInfo(`[Sync:Pull] Fetching active database sync epoch...`);
+        const activeEpoch = yield* Effect.tryPromise({
+          try: () => db.selectFrom("sync_epoch")
+            .selectAll()
+            .executeTakeFirstOrThrow(),
+          catch: (cause) => new AuthDatabaseError({ cause })
+        });
+        const activeEpochId = activeEpoch.id;
+        yield* Effect.logInfo(`[Sync:Pull] Active database sync epoch is: ${activeEpochId}`);
+
+        const clientEpochId = query.epochId;
+        const serverTimestamp = Date.now();
+        const serverHlc = packHlc(initHlc("server", serverTimestamp));
+
+        // Epoch Verification: If client epoch doesn't match active epoch, trigger client auto-heal
+        if (!clientEpochId || clientEpochId !== activeEpochId) {
+          yield* Effect.logWarning(`[Sync:Pull] Sync Epoch mismatch detected! Client epochId: "${clientEpochId}", active server epochId: "${activeEpochId}". Directing client to reset Sync state.`);
+          return {
+            resetSync: true,
+            epochId: activeEpochId,
+            serverTimestamp,
+            serverHlc,
+            decks: [],
+            srsUpdates: [],
+            grammarPoints: []
+          };
+        }
 
         const op = since === "0000000000000:0000:initial" ? ">=" : ">";
 
@@ -70,7 +99,7 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
         });
         yield* Effect.logInfo(`[Sync:Pull] Retrieved ${grammarPoints.length} matching grammar points from database`);
 
-                const decksResult = decks.map(d => ({
+        const decksResult = decks.map(d => ({
           id: d.id,
           name: d.name,
           category: d.category,
@@ -78,7 +107,7 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
           hlc: d.hlc
         }));
 
-                                const srsUpdatesResult = srsCards.map(c => ({
+        const srsUpdatesResult = srsCards.map(c => ({
           id: c.id,
           grammarPointId: c.grammar_point_id,
           easeFactor: c.ease_factor,
@@ -111,34 +140,34 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
 
         if (!userPreference) {
           yield* Effect.logInfo(`[Sync:Pull] Seed default preferences for user_id=${user.id}`);
-                      userPreference = yield* Effect.tryPromise({
-              try: () => db.insertInto("user_preference")
-                .values({
-                  user_id: user.id as UserId,
-                  daily_review_limit: 20,
-                  daily_new_rule_limit: 3,
-                  enforce_mastery_gates: true,
-                  created_at: new Date(),
-                  updated_at: new Date(),
-                  hlc: "0000000000000:0000:initial"
-                })
-                .returningAll()
-                .executeTakeFirstOrThrow(),
-              catch: (cause) => new AuthDatabaseError({ cause })
-            });
+          userPreference = yield* Effect.tryPromise({
+            try: () => db.insertInto("user_preference")
+              .values({
+                user_id: user.id as UserId,
+                daily_review_limit: 20,
+                daily_new_rule_limit: 3,
+                enforce_mastery_gates: true,
+                created_at: new Date(),
+                updated_at: new Date(),
+                hlc: "0000000000000:0000:initial"
+              })
+              .returningAll()
+              .executeTakeFirstOrThrow(),
+            catch: (cause) => new AuthDatabaseError({ cause })
+          });
         }
 
         const showPreference = userPreference && (op === ">=" ? userPreference.hlc >= since : userPreference.hlc > since);
-        const serverTimestamp = Date.now();
         yield* Effect.logInfo(`[Sync:Pull] Complete. generatedServerTimestamp=${serverTimestamp}`);
 
         return {
           serverTimestamp,
-          serverHlc: packHlc(initHlc("server", serverTimestamp)),
+          serverHlc,
+          epochId: activeEpochId,
           decks: decksResult,
           srsUpdates: srsUpdatesResult,
           grammarPoints: grammarPointsResult,
-                              userPreference: showPreference ? {
+          userPreference: showPreference ? {
             dailyReviewLimit: userPreference.daily_review_limit,
             dailyNewRuleLimit: userPreference.daily_new_rule_limit,
             enforceMasteryGates: userPreference.enforce_mastery_gates,
@@ -167,7 +196,8 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
     },
     {
       query: t.Object({
-        since: t.Optional(t.String())
+        since: t.Optional(t.String()),
+        epochId: t.Optional(t.String())
       })
     }
   )
@@ -177,7 +207,7 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
       const pushEffect = Effect.gen(function* () {
         yield* Effect.logInfo(`[Sync:Push] Processing transaction. txId=${body.id}, type=${body.type}`);
 
-                const decodedTx = yield* Schema.decodeUnknown(OutboxTransactionSchema)(body).pipe(
+        const decodedTx = yield* Schema.decodeUnknown(OutboxTransactionSchema)(body).pipe(
           Effect.mapError(
             (parseError) =>
               new AuthError({
@@ -209,7 +239,7 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
 
         yield* Effect.logInfo(`[Sync:Push] HLC converged: client=${clientHlc} -> converged=${convergedPacked}`);
 
-                if (decodedTx.type === "record_review") {
+        if (decodedTx.type === "record_review") {
           const payload = decodedTx.payload;
           const grammarPointId = payload.grammarPointId;
           const easeFactor = payload.easeFactor;
@@ -236,7 +266,7 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
             return { success: true };
           }
 
-                    yield* Effect.tryPromise({ 
+          yield* Effect.tryPromise({ 
             try: () => db.insertInto("srs_card")
               .values({
                 id: crypto.randomUUID() as SrsCardId,
@@ -271,7 +301,7 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
             catch: (cause) => new AuthDatabaseError({ cause })
           });
           yield* Effect.logInfo(`[Sync:Push] Review recorded for grammarPointId=${grammarPointId}`);
-                } else if (decodedTx.type === "update_preferences") {
+        } else if (decodedTx.type === "update_preferences") {
           const payload = decodedTx.payload;
           const dailyReviewLimit = payload.dailyReviewLimit;
           const dailyNewRuleLimit = payload.dailyNewRuleLimit;
@@ -306,7 +336,7 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
           yield* Effect.logInfo(`[Sync:Push] Preferences updated successfully for user_id=${user.id}`);
         } else if (decodedTx.type === "toggle_skin") {
           yield* Effect.logInfo(`[Sync:Push] Processing skin toggle. payload=${JSON.stringify(decodedTx.payload)}`);
-                } else if (decodedTx.type === "unlock_deck") {
+        } else if (decodedTx.type === "unlock_deck") {
           yield* Effect.logInfo(`[Sync:Push] Processing deck unlock. payload=${JSON.stringify(decodedTx.payload)}`);
         } else {
           yield* Effect.logWarning(`[Sync:Push] Unrecognized transaction type: ${(decodedTx as { readonly type: string }).type}`);

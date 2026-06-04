@@ -6,6 +6,7 @@ import * as m03 from "../../migrations/03_add_hlc_columns";
 import * as m04 from "../../migrations/04_add_enforce_mastery_gates";
 import * as m05 from "../../migrations/05_add_fsrs_lite_columns";
 import * as m06 from "../../migrations/06_backfill_fsrs_lite";
+import * as m07 from "../../migrations/07_add_sync_epoch";
 
 export const migrationObjects: Record<string, Migration> = {
   "00_init_db": { up: m00.up, down: m00.down },
@@ -15,4 +16,5 @@ export const migrationObjects: Record<string, Migration> = {
   "04_add_enforce_mastery_gates": { up: m04.up, down: m04.down },
   "05_add_fsrs_lite_columns": { up: m05.up, down: m05.down },
   "06_backfill_fsrs_lite": { up: m06.up, down: m06.down },
+  "07_add_sync_epoch": { up: m07.up, down: m07.down },
 };

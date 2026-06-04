@@ -1,6 +1,7 @@
 import { Effect } from "effect";
 import { runClientUnscoped } from "./lib/client/runtime.ts";
 import { clientLog } from "./lib/client/clientLog.ts";
+import { runClientMigrations } from "./lib/client/storage/ClientMigrationCoordinator.ts";
 import { deckStore } from "./lib/client/stores/deckStore.ts";
 import { srsStore } from "./lib/client/stores/srsStore.ts";
 import { grammarPointStore, grammarPointCatalogStore } from "./lib/client/stores/grammarPointStore.ts";
@@ -15,13 +16,16 @@ import "./components/layouts/app-shell.ts";
 const bootstrapApp = Effect.gen(function* () {
   yield* clientLog("info", "[Main] Initiating application bootstrap sequence...");
 
-  // Hydrate local HLC state first to ensure clock validity during early mutations
+  // 1. Run local-first client database schema migrations upfront as a secure boot barrier
+  yield* runClientMigrations();
+
+  // 2. Hydrate local HLC state to ensure clock validity during early mutations
   yield* clientLog("info", "[Main] Hydrating local HLC state from IndexedDB...");
   const { hlcStore } = yield* Effect.promise(() => import("./lib/client/stores/hlcStore.ts"));
   yield* hlcStore.load();
   yield* clientLog("debug", `[Main] HLC state hydrated: hlc=${hlcStore.getPacked()}`);
 
-  // Hydrate local data storage collections from IndexedDB
+  // 3. Hydrate local data storage collections from IndexedDB
   yield* clientLog("info", "[Main] Hydrating local deck storage from IndexedDB...");
   yield* deckStore.load();
   yield* clientLog("debug", `[Main] Decks hydrated: count=${deckStore.state.value.length}`);
@@ -43,18 +47,18 @@ const bootstrapApp = Effect.gen(function* () {
   yield* userPreferencesStore.load();
   yield* clientLog("debug", `[Main] User preferences hydrated: reviewLimit=${userPreferencesStore.dailyReviewLimit.value}`);
 
-  // Attempt session restoration
+  // 4. Attempt session restoration
   const { initAuth } = yield* Effect.promise(() => import("./lib/client/stores/authStore.ts"));
   yield* clientLog("info", "[Main] Attempting session restoration...");
   yield* initAuth();
 
-  // Initialize PWA installation events
+  // 5. Initialize PWA installation events
   yield* Effect.sync(() => {
     clientLog("info", "[Main] Registering PWA installation listeners...");
     initPWA();
   });
 
-  // Start the background system daemons
+  // 6. Start the background system daemons
   yield* Effect.sync(() => {
     clientLog("info", "[Main] Launching synchronization and prewarm services...");
     startOutboxService();

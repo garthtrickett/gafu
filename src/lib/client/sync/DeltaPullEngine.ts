@@ -1,4 +1,4 @@
-import { createStore, get, set } from "idb-keyval";
+import { createStore, get, set, del } from "idb-keyval";
 import { Effect, Schedule } from "effect";
 import { isOnlineState } from "../stores/syncStore";
 import { clientLog } from "../clientLog";
@@ -8,8 +8,11 @@ const DB_NAME = "bedrock-lang-sync-v1";
 const STORE_NAME = "metadata";
 const syncMetadataStore = createStore(DB_NAME, STORE_NAME);
 const LAST_PULL_KEY = "last_pull_hlc";
+const SYNC_EPOCH_KEY = "sync_epoch_id";
 
 interface DeltaResponse {
+  readonly resetSync?: boolean;
+  readonly epochId?: string;
   readonly serverTimestamp: number;
   readonly serverHlc: string;
   readonly decks: Array<{
@@ -19,7 +22,7 @@ interface DeltaResponse {
     readonly content: unknown;
     readonly hlc: string;
   }>;
-    readonly srsUpdates: Array<{
+  readonly srsUpdates: Array<{
     readonly id: string;
     readonly grammarPointId: string;
     readonly easeFactor: number;
@@ -38,7 +41,7 @@ interface DeltaResponse {
     readonly difficulty_level: string;
     readonly hlc: string;
   }>;
-    readonly userPreference?: {
+  readonly userPreference?: {
     readonly dailyReviewLimit: number;
     readonly dailyNewRuleLimit: number;
     readonly enforceMasteryGates: boolean;
@@ -54,6 +57,18 @@ const savePullHlc = (hlc: string): Promise<void> => {
   return set(LAST_PULL_KEY, hlc, syncMetadataStore);
 };
 
+const clearStoredPullHlc = (): Promise<void> => {
+  return del(LAST_PULL_KEY, syncMetadataStore);
+};
+
+const getStoredEpochId = (): Promise<string> => {
+  return get<string>(SYNC_EPOCH_KEY, syncMetadataStore).then((id) => id || "");
+};
+
+const saveEpochId = (id: string): Promise<void> => {
+  return set(SYNC_EPOCH_KEY, id, syncMetadataStore);
+};
+
 const filterCausal = <T extends { id: string; hlc?: string }>(
   incoming: T[],
   existingList: readonly { id: string; hlc?: string }[]
@@ -65,7 +80,7 @@ const filterCausal = <T extends { id: string; hlc?: string }>(
   });
 };
 
-export const executeDeltaPull = () =>
+export const executeDeltaPull = (): Effect.Effect<void, any, never> =>
   Effect.gen(function* () {
     yield* clientLog("debug", "[DeltaPull] executeDeltaPull loop checkpoint triggered.");
 
@@ -87,6 +102,11 @@ export const executeDeltaPull = () =>
       catch: (e) => e,
     });
 
+    let cachedEpochId = yield* Effect.tryPromise({
+      try: () => getStoredEpochId(),
+      catch: (e) => e,
+    });
+
     const { deckStore } = yield* Effect.promise(() => import("../stores/deckStore"));
     const { srsStore } = yield* Effect.promise(() => import("../stores/srsStore"));
     const { grammarPointStore, grammarPointCatalogStore } = yield* Effect.promise(() => import("../stores/grammarPointStore"));
@@ -96,14 +116,14 @@ export const executeDeltaPull = () =>
     const gpCount = grammarPointStore?.state?.peek()?.length ?? 0;
     const catalogCount = grammarPointCatalogStore?.state?.peek()?.length ?? 0;
     
-    yield* clientLog("info", `[DeltaPull] Local state inspection - deckCount: ${deckCount}, gpCount: ${gpCount}, catalogCount: ${catalogCount}, lastPull: ${lastPull}`);
+    yield* clientLog("info", `[DeltaPull] Local state inspection - deckCount: ${deckCount}, gpCount: ${gpCount}, catalogCount: ${catalogCount}, lastPull: ${lastPull}, cachedEpochId: ${cachedEpochId}`);
     
-        if (lastPull !== "0000000000000:0000:initial" && (deckCount === 0 || catalogCount === 0)) {
+    if (lastPull !== "0000000000000:0000:initial" && (deckCount === 0 || catalogCount === 0)) {
       yield* clientLog("warn", "[DeltaPull] Local catalog or decks are empty but lastPull is non-initial. Forcing full sync (since=initial) to heal local state.");
       lastPull = "0000000000000:0000:initial";
     }
 
-    yield* clientLog("info", `[DeltaPull] Executing pull request (Since: ${lastPull})...`);
+    yield* clientLog("info", `[DeltaPull] Executing pull request (Since: ${lastPull}, Epoch: ${cachedEpochId})...`);
 
     const headers: Record<string, string> = {
       Authorization: `Bearer ${token}`,
@@ -111,7 +131,7 @@ export const executeDeltaPull = () =>
 
     const response = yield* Effect.tryPromise({
       try: () =>
-        fetch(`/api/sync/pull?since=${lastPull}`, {
+        fetch(`/api/sync/pull?since=${lastPull}&epochId=${cachedEpochId}`, {
           method: "GET",
           headers,
         }),
@@ -128,6 +148,35 @@ export const executeDeltaPull = () =>
       try: () => response.json() as Promise<DeltaResponse>,
       catch: (e) => new Error(`Invalid JSON received from pull: ${String(e)}`),
     }));
+
+    // Causal Reset Handler: If database era mismatch occurs, client purges its boundary checkpoint
+    if (delta.resetSync) {
+      yield* clientLog("warn", `[DeltaPull] Sync Reset Requested by Server! Wiping last_pull_hlc and saving new epochId: ${delta.epochId}`);
+      
+      yield* Effect.tryPromise({
+        try: () => clearStoredPullHlc(),
+        catch: (e) => e,
+      });
+
+      if (delta.epochId) {
+        yield* Effect.tryPromise({
+          try: () => saveEpochId(delta.epochId!),
+          catch: (e) => e,
+        });
+      }
+
+      yield* clientLog("info", "[DeltaPull] Re-triggering executeDeltaPull for clean state pull...");
+      yield* Effect.forkDaemon(executeDeltaPull());
+      return;
+    }
+
+    // Persist new epoch ID if returned in standard response
+    if (delta.epochId && delta.epochId !== cachedEpochId) {
+      yield* Effect.tryPromise({
+        try: () => saveEpochId(delta.epochId!),
+        catch: (e) => e,
+      });
+    }
 
     const decksLen = delta?.decks?.length ?? 0;
     const srsUpdatesLen = delta?.srsUpdates?.length ?? 0;
@@ -164,7 +213,7 @@ export const executeDeltaPull = () =>
         }
       }
 
-            if (srsUpdatesLen > 0 && srsStore && grammarPointStore) {
+      if (srsUpdatesLen > 0 && srsStore && grammarPointStore) {
         const existingSrs = srsStore.state.peek();
         const mappedSrs = delta.srsUpdates.map(u => ({ 
           id: u.id,
@@ -202,7 +251,7 @@ export const executeDeltaPull = () =>
         }
       }
 
-            if (delta.userPreference && userPreferencesStore) {
+      if (delta.userPreference && userPreferencesStore) {
         const existingPref = userPreferencesStore.state.peek().find(p => p.id === "settings");
         if (!existingPref || !existingPref.hlc || !delta.userPreference.hlc || delta.userPreference.hlc > existingPref.hlc) {
           yield* userPreferencesStore.put({

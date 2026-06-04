@@ -7,3 +7,4 @@ export type { default as DeckTable, Deck, NewDeck, DeckUpdate, DeckId } from "./
 export type { default as SrsCardTable, SrsCard, NewSrsCard, SrsCardUpdate, SrsCardId } from "./generated/public/SrsCard";
 export type { default as GrammarPointTable, GrammarPoint, NewGrammarPoint, GrammarPointUpdate, GrammarPointId } from "./generated/public/GrammarPoint";
 export type { default as UserPreferenceTable, UserPreference, NewUserPreference, UserPreferenceUpdate } from "./generated/public/UserPreference";
+export type { default as SyncEpochTable, SyncEpoch, NewSyncEpoch, SyncEpochUpdate, SyncEpochId } from "./generated/public/SyncEpoch";

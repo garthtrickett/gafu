@@ -38,6 +38,8 @@ describe("grammarPointStore state management and pacing helpers", () => {
         easeFactor: 2.5,
         repetitions: 1,
         intervalDays: 3, // < 21 -> Active Learning
+        stability: 3.0,
+        difficulty: 5.0,
         nextReview: new Date().toISOString(),
         unlockedAt: new Date().toISOString(),
       })
@@ -56,6 +58,7 @@ describe("grammarPointStore state management and pacing helpers", () => {
         repetitions: 4,
         intervalDays: 24, // >= 21 -> Graduated
         stability: 24.0,
+        difficulty: 5.0,
         nextReview: new Date().toISOString(),
         unlockedAt: new Date().toISOString(),
       })
@@ -81,6 +84,8 @@ describe("grammarPointStore state management and pacing helpers", () => {
           easeFactor: 2.5,
           repetitions: 0,
           intervalDays: 0,
+          stability: 0.0,
+          difficulty: 5.0,
           nextReview: new Date().toISOString(),
           unlockedAt: twoHoursAgo, // Within last 24h
         },
@@ -89,6 +94,8 @@ describe("grammarPointStore state management and pacing helpers", () => {
           easeFactor: 2.5,
           repetitions: 0,
           intervalDays: 0,
+          stability: 0.0,
+          difficulty: 5.0,
           nextReview: new Date().toISOString(),
           unlockedAt: twentyThreeHoursAgo, // Within last 24h
         },
@@ -97,6 +104,8 @@ describe("grammarPointStore state management and pacing helpers", () => {
           easeFactor: 2.5,
           repetitions: 0,
           intervalDays: 0,
+          stability: 0.0,
+          difficulty: 5.0,
           nextReview: new Date().toISOString(),
           unlockedAt: twentyFiveHoursAgo, // Older than 24h
         },
@@ -105,6 +114,8 @@ describe("grammarPointStore state management and pacing helpers", () => {
           easeFactor: 2.5,
           repetitions: 0,
           intervalDays: 0,
+          stability: 0.0,
+          difficulty: 5.0,
           nextReview: new Date().toISOString(), // No unlockedAt (legacy)
         },
       ])
@@ -202,6 +213,8 @@ describe("Grammar Point Gating and Pacing Math", () => {
         easeFactor: 2.5,
         repetitions: 1,
         intervalDays: 1,
+        stability: 1.0,
+        difficulty: 5.0,
         nextReview: now.toString(),
         unlockedAt,
       };

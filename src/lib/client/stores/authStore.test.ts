@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Effect } from "effect";
 import { login, signup, tokenState, userState } from "./authStore.ts";
-import { LocationLive } from "../LocationService.ts";
+import { LocationLive, LocationService } from "../LocationService.ts";
 
 describe("authStore", () => {
   beforeEach(() => {
@@ -35,7 +35,7 @@ describe("authStore", () => {
     global.fetch = fetchMock as any;
 
     await Effect.runPromise(
-      login("test@site.com", "password123").pipe(
+      (login("test@site.com", "password123") as Effect.Effect<any, any, LocationService>).pipe(
         Effect.provide(LocationLive)
       )
     );

@@ -49,9 +49,50 @@ describe("Synchronization API Endpoint Suite", () => {
     expect(response.status).toBe(401);
   });
 
-  it("should allow pulling updates with a valid security token and HLC string", async () => {
-    const response = await app.handle(
+  it("should return resetSync true and the active epochId when client pulls with a mismatched or missing epoch ID", async () => {
+    // 1. Fetch active epoch ID from database first to know what to compare
+    const epochRecord = await db.selectFrom("sync_epoch")
+      .selectAll()
+      .executeTakeFirstOrThrow();
+    const activeEpochId = epochRecord.id;
+
+    // 2. Perform a pull request without sending any epochId
+    const responseNoEpoch = await app.handle(
       new Request("http://localhost/api/sync/pull?since=0000000000000:0000:initial", {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      })
+    );
+    expect(responseNoEpoch.status).toBe(200);
+    const bodyNoEpoch = (await responseNoEpoch.json()) as { resetSync: boolean; epochId: string; decks: unknown[] };
+    expect(bodyNoEpoch.resetSync).toBe(true);
+    expect(bodyNoEpoch.epochId).toBe(activeEpochId);
+    expect(bodyNoEpoch.decks).toHaveLength(0); // payload queries bypassed on mismatch
+
+    // 3. Perform a pull request sending a mismatched epochId
+    const responseBadEpoch = await app.handle(
+      new Request("http://localhost/api/sync/pull?since=0000000000000:0000:initial&epochId=wrong-epoch-uuid", {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      })
+    );
+    expect(responseBadEpoch.status).toBe(200);
+    const bodyBadEpoch = (await responseBadEpoch.json()) as { resetSync: boolean; epochId: string };
+    expect(bodyBadEpoch.resetSync).toBe(true);
+    expect(bodyBadEpoch.epochId).toBe(activeEpochId);
+  });
+
+  it("should allow pulling updates with a valid security token and HLC string", async () => {
+    // Fetch active epoch ID to send on pull so it bypasses resetSync trigger
+    const epochRecord = await db.selectFrom("sync_epoch")
+      .selectAll()
+      .executeTakeFirstOrThrow();
+    const activeEpochId = epochRecord.id;
+
+    const response = await app.handle(
+      new Request(`http://localhost/api/sync/pull?since=0000000000000:0000:initial&epochId=${activeEpochId}`, {
         headers: {
           Authorization: `Bearer ${token}`
         }

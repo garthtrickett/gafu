@@ -13,9 +13,9 @@ export default defineConfig(({ command, mode }) => ({
         maximumFileSizeToCacheInBytes: 15 * 1024 * 1024, // High threshold to support pre-cached audio assets
       },
       filename: "sw.ts",
-      registerType: "autoUpdate",
+      registerType: "prompt",
       devOptions: {
-        enabled: true,
+        enabled: false,
         type: "module",
       },
       manifest: {

@@ -103,4 +103,63 @@ describe("DeltaPullEngine - Client Causal Merging", () => {
     expect(progress!.easeFactor).toBe(3.1); // remains newer value
     expect(progress!.hlc).toBe(localNewerHlc);
   });
+
+  it("should wipe local pull boundaries and re-trigger a full sync when the server returns a resetSync directive", async () => {
+    // Seed initial last_pull_hlc and sync_epoch_id
+    const oldHlc = `${Date.now() - 100000}:0001:server`;
+    const { set } = await import("idb-keyval");
+    await set("last_pull_hlc", oldHlc, syncMetadataStore);
+    await set("sync_epoch_id", "old-epoch-uuid", syncMetadataStore);
+
+    const newEpochId = "new-epoch-uuid";
+    const resetPayload = {
+      resetSync: true,
+      epochId: newEpochId,
+      serverTimestamp: Date.now(),
+      serverHlc: `${Date.now()}:0000:server`,
+      decks: [],
+      srsUpdates: [],
+      grammarPoints: []
+    };
+
+    const cleanSyncPayload = {
+      serverTimestamp: Date.now() + 1000,
+      serverHlc: `${Date.now() + 1000}:0001:server`,
+      epochId: newEpochId,
+      decks: [],
+      srsUpdates: [],
+      grammarPoints: []
+    };
+
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve(resetPayload)
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve(cleanSyncPayload)
+      });
+    global.fetch = fetchMock as any;
+
+    await Effect.runPromise(executeDeltaPull());
+
+    // Allow daemon fork re-trigger loop to complete
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    // Verify 'last_pull_hlc' was wiped and then updated to the final HLC from the clean second pull
+    const savedHlc = await get<string>("last_pull_hlc", syncMetadataStore);
+    expect(savedHlc).toBe(cleanSyncPayload.serverHlc);
+
+    // Verify the new server epochId was persisted under 'sync_epoch_id'
+    const savedEpoch = await get<string>("sync_epoch_id", syncMetadataStore);
+    expect(savedEpoch).toBe(newEpochId);
+
+    // Verify fetch was invoked exactly twice, first with the old epoch/HLC and then with the reset 'initial' state
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[0]?.[0]).toContain(`since=${oldHlc}&epochId=old-epoch-uuid`);
+    expect(fetchMock.mock.calls[1]?.[0]).toContain(`since=0000000000000:0000:initial&epochId=${newEpochId}`);
+  });
 });
