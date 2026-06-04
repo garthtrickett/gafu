@@ -8,26 +8,50 @@ const metadataStore = createStore("bedrock-lang-sync-v1", "metadata");
 const collectionsStore = createStore("bedrock-lang-storage-v1", "collections");
 const VERSION_KEY = "client_db_version";
 
+interface LegacyGrammarPointProgress {
+  id: string;
+  easeFactor?: number;
+  repetitions?: number;
+  intervalDays?: number;
+  nextReview: string | Date;
+  difficulty?: number;
+  stability?: number;
+  lastReviewedAt?: string | null;
+  [key: string]: unknown;
+}
+
+interface LegacySrsCardClient {
+  id: string;
+  easeFactor?: number;
+  repetitions?: number;
+  intervalDays?: number;
+  nextReview: string | Date;
+  difficulty?: number;
+  stability?: number;
+  lastReviewedAt?: string | null;
+  [key: string]: unknown;
+}
+
 const migrateV1ToV2 = () =>
   Effect.gen(function* () {
     yield* clientLog("info", "[ClientMigration] Running V1 to V2 migration (FSRS-Lite parameters backfill)...");
 
     // 1. Backfill grammar_points collection
-    const gpKey = "store:grammar_points";
+        const gpKey = "store:grammar_points";
     const rawGps = yield* Effect.tryPromise({
-      try: () => get<any[]>(gpKey, collectionsStore),
+      try: () => get<LegacyGrammarPointProgress[]>(gpKey, collectionsStore),
       catch: (e) => new Error(`Failed to read grammar_points during migration: ${String(e)}`),
     });
 
-    if (rawGps && rawGps.length > 0) {
+        if (rawGps && rawGps.length > 0) {
       yield* clientLog("info", `[ClientMigration] Backfilling ${rawGps.length} grammar point progress records...`);
-      const updatedGps = rawGps.map((item) => {
+      const updatedGps = rawGps.map((item): LegacyGrammarPointProgress => {
         const ease = item.easeFactor ?? 2.5;
         const difficulty = item.difficulty !== undefined ? item.difficulty : Math.round(Math.max(1.0, Math.min(10.0, 5.0 + (2.5 - ease) * 4.0)) * 100) / 100;
         const stability = item.stability !== undefined ? item.stability : (item.intervalDays ?? 0.0);
         
-        let lastReviewedAt = item.lastReviewedAt ?? null;
-        if (!lastReviewedAt && (item.repetitions > 0 || item.intervalDays > 0)) {
+                let lastReviewedAt = item.lastReviewedAt ?? null;
+        if (!lastReviewedAt && ((item.repetitions ?? 0) > 0 || (item.intervalDays ?? 0) > 0)) {
           const nextDate = new Date(item.nextReview);
           nextDate.setDate(nextDate.getDate() - (item.intervalDays ?? 0));
           lastReviewedAt = nextDate.toISOString();
@@ -47,22 +71,22 @@ const migrateV1ToV2 = () =>
       });
     }
 
-    // 2. Backfill srs cards collection
+        // 2. Backfill srs cards collection
     const srsKey = "store:srs";
     const rawSrs = yield* Effect.tryPromise({
-      try: () => get<any[]>(srsKey, collectionsStore),
+      try: () => get<LegacySrsCardClient[]>(srsKey, collectionsStore),
       catch: (e) => new Error(`Failed to read srs cards during migration: ${String(e)}`),
     });
 
-    if (rawSrs && rawSrs.length > 0) {
+        if (rawSrs && rawSrs.length > 0) {
       yield* clientLog("info", `[ClientMigration] Backfilling ${rawSrs.length} SRS card records...`);
-      const updatedSrs = rawSrs.map((item) => {
+      const updatedSrs = rawSrs.map((item): LegacySrsCardClient => {
         const ease = item.easeFactor ?? 2.5;
         const difficulty = item.difficulty !== undefined ? item.difficulty : Math.round(Math.max(1.0, Math.min(10.0, 5.0 + (2.5 - ease) * 4.0)) * 100) / 100;
         const stability = item.stability !== undefined ? item.stability : (item.intervalDays ?? 0.0);
         
-        let lastReviewedAt = item.lastReviewedAt ?? null;
-        if (!lastReviewedAt && (item.repetitions > 0 || item.intervalDays > 0)) {
+                let lastReviewedAt = item.lastReviewedAt ?? null;
+        if (!lastReviewedAt && ((item.repetitions ?? 0) > 0 || (item.intervalDays ?? 0) > 0)) {
           const nextDate = new Date(item.nextReview);
           nextDate.setDate(nextDate.getDate() - (item.intervalDays ?? 0));
           lastReviewedAt = nextDate.toISOString();

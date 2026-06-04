@@ -80,7 +80,7 @@ const filterCausal = <T extends { id: string; hlc?: string }>(
   });
 };
 
-export const executeDeltaPull = (): Effect.Effect<void, any, never> =>
+export const executeDeltaPull = (): Effect.Effect<void, unknown, never> =>
   Effect.gen(function* () {
     yield* clientLog("debug", "[DeltaPull] executeDeltaPull loop checkpoint triggered.");
 
@@ -102,7 +102,7 @@ export const executeDeltaPull = (): Effect.Effect<void, any, never> =>
       catch: (e) => e,
     });
 
-    let cachedEpochId = yield* Effect.tryPromise({
+    const cachedEpochId = yield* Effect.tryPromise({
       try: () => getStoredEpochId(),
       catch: (e) => e,
     });

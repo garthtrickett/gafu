@@ -67,6 +67,6 @@ export const promptInstall = async () => {
 export const applyAppUpdate = async () => {
   if (wbInstance) {
     runClientUnscoped(clientLog("info", "[PWA] Requesting waiting service worker to skip waiting..."));
-    await wbInstance.messageSkipWaiting();
+    wbInstance.messageSkipWaiting();
   }
 };
