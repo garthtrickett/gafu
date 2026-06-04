@@ -30,13 +30,14 @@ test.describe("SRS Pacing, Daily Cap, and Mastery Gating E2E Flow", () => {
     console.warn("[E2E srs.spec.ts] Test database seeding complete.");
   });
 
-  test.beforeEach(async () => {
+    test.beforeEach(async () => {
     testUser = await createVerifiedSubscriber();
     // Seed default testing preferences to match original test assertions
     await db.insertInto("user_preference").values({
       user_id: testUser.userId,
       daily_review_limit: 20,
       daily_new_rule_limit: 3,
+      enforce_mastery_gates: false,
       created_at: new Date(),
       updated_at: new Date()
     }).execute();
