@@ -109,11 +109,66 @@ export const grammarPointStore = {
     return Math.round((masteredCount / learningRules.length) * 100);
   }),
 
-  unmasteredActiveRules: computed(() => {
+    unmasteredActiveRules: computed(() => {
     const progress = baseGrammarPointStore.state.value;
     const learningRules = progress.filter(p => (p.stability ?? 0.0) < 21.0);
     return learningRules.filter(
       p => !((p.stability ?? 0.0) >= 7.0 || (p.difficulty ?? 5.0) <= 4.0)
     );
+  }),
+
+  unstartedCount: computed(() => {
+    const catalog = grammarPointCatalogStore.state.value;
+    const progress = baseGrammarPointStore.state.value;
+    const progressMap = new Map(progress.map(p => [p.id, p]));
+    let count = 0;
+    for (const cat of catalog) {
+      const prog = progressMap.get(cat.id);
+      if (!prog || prog.repetitions === 0) {
+        count++;
+      }
+    }
+    return count;
+  }),
+
+  learningCount: computed(() => {
+    const progress = baseGrammarPointStore.state.value;
+    return progress.filter(p => 
+      (p.stability ?? 0.0) < 21.0 &&
+      p.repetitions > 0 &&
+      !((p.stability ?? 0.0) >= 7.0 || (p.difficulty ?? 5.0) <= 4.0)
+    ).length;
+  }),
+
+  masteredCount: computed(() => {
+    const progress = baseGrammarPointStore.state.value;
+    return progress.filter(p => 
+      (p.stability ?? 0.0) < 21.0 &&
+      ((p.stability ?? 0.0) >= 7.0 || (p.difficulty ?? 5.0) <= 4.0)
+    ).length;
+  }),
+
+  graduatedCount: computed(() => {
+    const progress = baseGrammarPointStore.state.value;
+    return progress.filter(p => (p.stability ?? 0.0) >= 21.0).length;
+  }),
+
+  averageDifficulty: computed(() => {
+    const progress = baseGrammarPointStore.state.value;
+    const studied = progress.filter(p => p.repetitions > 0);
+    if (studied.length === 0) {
+      return 5.0;
+    }
+    const sum = studied.reduce((acc, curr) => acc + (curr.difficulty ?? 5.0), 0);
+    return Math.round((sum / studied.length) * 100) / 100;
+  }),
+
+  averageRetrievability: computed(() => {
+    const progress = baseGrammarPointStore.state.value;
+    if (progress.length === 0) {
+      return 100;
+    }
+    const sum = progress.reduce((acc, curr) => acc + calculateRetrievability(curr), 0);
+    return Math.round((sum / progress.length) * 100);
   }),
 };
