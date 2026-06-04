@@ -1,6 +1,7 @@
 import { createLocalStore } from "../storage/LocalStoreFactory.ts";
 import { computed } from "@preact/signals-core";
 import { userPreferencesStore } from "./userPreferencesStore.ts";
+import { Effect } from "effect";
 
 export interface GrammarPointProgress {
   readonly id: string; // Represents grammar_point_id
@@ -74,6 +75,51 @@ export const getDailyUnlockAllowance = (
 export const grammarPointStore = { 
   ...baseGrammarPointStore,
 
+  load: () => {
+    const effect = Effect.gen(function* () {
+      yield* baseGrammarPointStore.load();
+      const current = baseGrammarPointStore.state.peek();
+      let needsWrite = false;
+      const updatedList: GrammarPointProgress[] = [];
+
+      for (const item of current) {
+        if (
+          item.difficulty === undefined ||
+          item.stability === undefined ||
+          (item.repetitions > 0 && item.stability === 0.0) ||
+          (item.intervalDays > 0 && item.stability === 0.0) ||
+          item.lastReviewedAt === undefined
+        ) {
+          needsWrite = true;
+          const ease = item.easeFactor ?? 2.5;
+          const calculatedDifficulty = Math.round(Math.max(1.0, Math.min(10.0, 5.0 + (2.5 - ease) * 4.0)) * 100) / 100;
+          const calculatedStability = item.intervalDays ?? 0.0;
+          
+          let calculatedLastReviewed: string | null = item.lastReviewedAt ?? null;
+          if (!calculatedLastReviewed && (item.repetitions > 0 || item.intervalDays > 0)) {
+            const nextDate = new Date(item.nextReview);
+            nextDate.setDate(nextDate.getDate() - item.intervalDays);
+            calculatedLastReviewed = nextDate.toISOString();
+          }
+
+          updatedList.push({
+            ...item,
+            difficulty: calculatedDifficulty,
+            stability: calculatedStability,
+            lastReviewedAt: calculatedLastReviewed,
+          });
+        } else {
+          updatedList.push(item);
+        }
+      }
+
+      if (needsWrite) {
+        yield* baseGrammarPointStore.putAll(updatedList);
+      }
+    });
+    return effect;
+  },
+
   activeLearningRules: computed(() => {
     const progress = baseGrammarPointStore.state.value;
     return progress.filter(p => (p.stability ?? 0.0) < 21.0);
@@ -91,7 +137,7 @@ export const grammarPointStore = {
     return catalog.filter(c => !progressIds.has(c.id));
   }),
 
-    unlockedLast24HoursCount: computed(() => {
+  unlockedLast24HoursCount: computed(() => {
     const progress = baseGrammarPointStore.state.value;
     const limit = userPreferencesStore.dailyNewRuleLimit.value;
     return getDailyUnlockAllowance(progress, limit);

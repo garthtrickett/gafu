@@ -98,7 +98,7 @@ const update = (model: StudySessionModel, action: StudySessionAction): StudySess
         ...model,
         audioPlaying: true,
       };
-        case "FORCE_MASTER":
+    case "FORCE_MASTER":
     case "SUBMIT_GRADE":
       return {
         ...model,
@@ -125,7 +125,7 @@ export class StudySession extends LitElement {
     return this;
   }
 
-    override connectedCallback() {
+  override connectedCallback() {
     // Setup automatic reactive updates when the activeSessionStore signals change state
     this._disposeEffect = effect(() => {
       void activeSessionStore.state.value;
@@ -177,7 +177,7 @@ export class StudySession extends LitElement {
         });
       }
 
-                  if (action.type === "FORCE_MASTER") {
+      if (action.type === "FORCE_MASTER") {
         const { grammarPointId } = action;
         
         const currentProgress = grammarPointStore.state.peek().find(p => p.id === grammarPointId) || {
@@ -199,6 +199,9 @@ export class StudySession extends LitElement {
           repetitions: 3,
           intervalDays: 21,
           nextReview: nextReviewDate.toISOString(),
+          difficulty: 3.0,
+          stability: 21.0,
+          lastReviewedAt: new Date().toISOString()
         };
 
         yield* clientLog("info", `[StudySession] Force mastered grammarPointId=${grammarPointId}:`, forcedMetrics);
@@ -209,9 +212,9 @@ export class StudySession extends LitElement {
           repetitions: forcedMetrics.repetitions,
           intervalDays: forcedMetrics.intervalDays,
           nextReview: forcedMetrics.nextReview,
-          difficulty: currentProgress.difficulty ?? 5.0,
-          stability: currentProgress.stability ?? 0.0,
-          lastReviewedAt: currentProgress.lastReviewedAt ?? null
+          difficulty: forcedMetrics.difficulty,
+          stability: forcedMetrics.stability,
+          lastReviewedAt: forcedMetrics.lastReviewedAt
         });
 
         yield* enqueueTransaction("record_review", {
@@ -220,9 +223,9 @@ export class StudySession extends LitElement {
           repetitions: forcedMetrics.repetitions,
           intervalDays: forcedMetrics.intervalDays,
           nextReview: forcedMetrics.nextReview,
-          difficulty: currentProgress.difficulty ?? 5.0,
-          stability: currentProgress.stability ?? 0.0,
-          lastReviewedAt: currentProgress.lastReviewedAt ?? null
+          difficulty: forcedMetrics.difficulty,
+          stability: forcedMetrics.stability,
+          lastReviewedAt: forcedMetrics.lastReviewedAt
         });
 
         yield* Effect.sync(() => {
@@ -234,7 +237,7 @@ export class StudySession extends LitElement {
         });
       }
 
-            if (action.type === "SUBMIT_GRADE") {
+      if (action.type === "SUBMIT_GRADE") {
         const { grammarPointId, isCorrect } = action;
         
         // Retrieve existing progress metadata for this grammar rule from IndexedDB, or fallback to standard N5 defaults
@@ -254,6 +257,8 @@ export class StudySession extends LitElement {
             easeFactor: currentProgress.easeFactor,
             repetitions: currentProgress.repetitions,
             intervalDays: currentProgress.intervalDays,
+            difficulty: currentProgress.difficulty,
+            stability: currentProgress.stability,
           },
           isCorrect
         );
@@ -267,9 +272,9 @@ export class StudySession extends LitElement {
           repetitions: metrics.repetitions,
           intervalDays: metrics.intervalDays,
           nextReview: metrics.nextReview,
-          difficulty: currentProgress.difficulty ?? 5.0,
-          stability: currentProgress.stability ?? 0.0,
-          lastReviewedAt: currentProgress.lastReviewedAt ?? null
+          difficulty: metrics.difficulty,
+          stability: metrics.stability,
+          lastReviewedAt: metrics.lastReviewedAt
         });
 
         // Enqueue queue transaction
@@ -279,9 +284,9 @@ export class StudySession extends LitElement {
           repetitions: metrics.repetitions,
           intervalDays: metrics.intervalDays,
           nextReview: metrics.nextReview,
-          difficulty: currentProgress.difficulty ?? 5.0,
-          stability: currentProgress.stability ?? 0.0,
-          lastReviewedAt: currentProgress.lastReviewedAt ?? null
+          difficulty: metrics.difficulty,
+          stability: metrics.stability,
+          lastReviewedAt: metrics.lastReviewedAt
         });
 
         // Advance progress store indicator sequentially
@@ -302,7 +307,7 @@ export class StudySession extends LitElement {
     );
   }
 
-    override render() {
+  override render() {
     const cards = activeSessionStore.state.value;
     const currentIndex = activeSessionStore.currentIndex.value;
     const isFinished = activeSessionStore.isFinished.value;
@@ -391,7 +396,7 @@ export class StudySession extends LitElement {
               </div>
             </div>
 
-                        <div class="flex items-center gap-3">
+            <div class="flex items-center gap-3">
               ${currentCard.audioUrl
                 ? html`
                     <button
@@ -427,7 +432,7 @@ export class StudySession extends LitElement {
               : ""}
           </div>
 
-                    <!-- Single-click verification buttons -->
+          <!-- Single-click verification buttons -->
           <div class="pt-4 border-t border-zinc-900 flex flex-col gap-4 w-full">
             <div class="grid grid-cols-2 gap-4 w-full">
               <button

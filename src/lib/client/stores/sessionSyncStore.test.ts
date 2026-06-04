@@ -62,8 +62,8 @@ describe("sessionSyncStore export payload gating integration tests", () => {
     const past = new Date(Date.now() - 100000).toISOString();
     await runClientPromise(
       grammarPointStore.putAll([
-        { id: "gp-0", easeFactor: 2.5, repetitions: 3, intervalDays: 1, stability: 8.0, difficulty: 4.0, nextReview: past, hlc: "0000000000000:0000:initial" },
-        { id: "gp-1", easeFactor: 2.5, repetitions: 3, intervalDays: 1, stability: 8.0, difficulty: 4.0, nextReview: past, hlc: "0000000000000:0000:initial" },
+        { id: "gp-0", easeFactor: 2.5, repetitions: 3, intervalDays: 1, stability: 8.0, difficulty: 4.0, lastReviewedAt: past, nextReview: past, hlc: "0000000000000:0000:initial" },
+        { id: "gp-1", easeFactor: 2.5, repetitions: 3, intervalDays: 1, stability: 8.0, difficulty: 4.0, lastReviewedAt: past, nextReview: past, hlc: "0000000000000:0000:initial" },
       ])
     );
 
@@ -99,8 +99,8 @@ describe("sessionSyncStore export payload gating integration tests", () => {
     const past = new Date(Date.now() - 100000).toISOString();
     await runClientPromise(
       grammarPointStore.putAll([
-        { id: "gp-0", easeFactor: 2.5, repetitions: 0, intervalDays: 0, nextReview: past, hlc: "0000000000000:0000:initial" },
-        { id: "gp-1", easeFactor: 2.5, repetitions: 0, intervalDays: 0, nextReview: past, hlc: "0000000000000:0000:initial" },
+        { id: "gp-0", easeFactor: 2.5, repetitions: 0, intervalDays: 0, stability: 0.0, difficulty: 5.0, lastReviewedAt: null, nextReview: past, hlc: "0000000000000:0000:initial" },
+        { id: "gp-1", easeFactor: 2.5, repetitions: 0, intervalDays: 0, stability: 0.0, difficulty: 5.0, lastReviewedAt: null, nextReview: past, hlc: "0000000000000:0000:initial" },
       ])
     );
 
@@ -127,8 +127,8 @@ describe("sessionSyncStore export payload gating integration tests", () => {
     const past = new Date(Date.now() - 100000).toISOString();
     await runClientPromise(
       grammarPointStore.putAll([
-        { id: "gp-0", easeFactor: 2.5, repetitions: 0, intervalDays: 0, nextReview: past, hlc: "0000000000000:0000:initial" },
-        { id: "gp-1", easeFactor: 2.5, repetitions: 0, intervalDays: 0, nextReview: past, hlc: "0000000000000:0000:initial" },
+        { id: "gp-0", easeFactor: 2.5, repetitions: 0, intervalDays: 0, stability: 0.0, difficulty: 5.0, lastReviewedAt: null, nextReview: past, hlc: "0000000000000:0000:initial" },
+        { id: "gp-1", easeFactor: 2.5, repetitions: 0, intervalDays: 0, stability: 0.0, difficulty: 5.0, lastReviewedAt: null, nextReview: past, hlc: "0000000000000:0000:initial" },
       ])
     );
 
@@ -167,8 +167,8 @@ describe("sessionSyncStore export payload gating integration tests", () => {
     const past = new Date(Date.now() - 100000).toISOString(); // past -> due
     await runClientPromise(
       grammarPointStore.putAll([
-        { id: "gp-0", easeFactor: 2.5, repetitions: 0, intervalDays: 0, nextReview: future, hlc: "0000000000000:0000:initial" }, // active, unmastered, NOT due
-        { id: "gp-1", easeFactor: 2.5, repetitions: 3, intervalDays: 10, nextReview: past, hlc: "0000000000000:0000:initial" }, // active, mastered, due
+        { id: "gp-0", easeFactor: 2.5, repetitions: 0, intervalDays: 0, stability: 0.0, difficulty: 5.0, lastReviewedAt: null, nextReview: future, hlc: "0000000000000:0000:initial" }, // active, unmastered, NOT due
+        { id: "gp-1", easeFactor: 2.5, repetitions: 3, intervalDays: 10, stability: 10.0, difficulty: 5.0, lastReviewedAt: past, nextReview: past, hlc: "0000000000000:0000:initial" }, // active, mastered, due
       ])
     );
 
