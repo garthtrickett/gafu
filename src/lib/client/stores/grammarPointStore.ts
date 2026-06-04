@@ -32,6 +32,16 @@ const baseGrammarPointStore = createLocalStore<GrammarPointProgress>(
   (a, b) => new Date(a.nextReview).getTime() - new Date(b.nextReview).getTime()
 );
 
+export const calculateRetrievability = (progress: { stability?: number; lastReviewedAt?: string | null }) => {
+  const stability = progress.stability ?? 0.0;
+  if (stability === 0.0 || !progress.lastReviewedAt) {
+    return 0.0; // Brand new or never reviewed: highest priority
+  }
+  const elapsedMs = Date.now() - new Date(progress.lastReviewedAt).getTime();
+  const elapsedDays = elapsedMs / (24 * 60 * 60 * 1000);
+  return Math.max(0.0, Math.min(1.0, Math.pow(0.9, elapsedDays / stability)));
+};
+
 export const canUnlockMoreRules = (progressList: GrammarPointProgress[]): boolean => {
   const learningRules = progressList.filter(p => p.intervalDays < 21);
   if (learningRules.length === 0) {

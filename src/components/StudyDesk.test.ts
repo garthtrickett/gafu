@@ -38,13 +38,16 @@ describe("StudyDesk component and activeSessionStore pacing presentation", () =>
     }));
     await runClientPromise(grammarPointCatalogStore.putAll(catalogItems));
 
-    // 2. Seed progress with 30 due items (all in the past)
+        // 2. Seed progress with 30 due items (all in the past)
     const past = new Date(Date.now() - 10000).toISOString();
     const progressItems = Array.from({ length: 30 }, (_, i) => ({
       id: `gp-${i}`,
       easeFactor: 2.5,
       repetitions: 1,
       intervalDays: 1,
+      difficulty: 5.0,
+      stability: 24.0,
+      lastReviewedAt: past,
       nextReview: past,
     }));
     await runClientPromise(grammarPointStore.putAll(progressItems));
@@ -78,12 +81,12 @@ describe("StudyDesk component and activeSessionStore pacing presentation", () =>
     ];
     await runClientPromise(grammarPointCatalogStore.putAll(catalogItems));
 
-    // 2. Seed active learning progress below 80% threshold (0% mastery: 2 active learning rules, both 0 reps)
+        // 2. Seed active learning progress below 80% threshold (0% mastery: 2 active learning rules, both 0 reps)
     const past = new Date(Date.now() - 10000).toISOString();
     await runClientPromise(
       grammarPointStore.putAll([
-        { id: "gp-1", easeFactor: 2.5, repetitions: 0, intervalDays: 0, nextReview: past },
-        { id: "gp-2", easeFactor: 2.5, repetitions: 0, intervalDays: 0, nextReview: past },
+        { id: "gp-1", easeFactor: 2.5, repetitions: 0, intervalDays: 0, difficulty: 5.0, stability: 0.0, lastReviewedAt: null, nextReview: past },
+        { id: "gp-2", easeFactor: 2.5, repetitions: 0, intervalDays: 0, difficulty: 5.0, stability: 0.0, lastReviewedAt: null, nextReview: past },
       ])
     );
 

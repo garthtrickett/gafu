@@ -3,7 +3,8 @@ import {
   grammarPointStore,
   grammarPointCatalogStore,
   canUnlockMoreRules,
-  getDailyUnlockAllowance
+  getDailyUnlockAllowance,
+  calculateRetrievability
 } from "./grammarPointStore.ts";
 import { activeSessionStore, type SessionCard, type FuriganaSegment } from "./activeSessionStore.ts";
 import { clientLog } from "../clientLog.ts";
@@ -62,11 +63,11 @@ export const generateExportPayload = (options?: { isCram?: boolean }) => {
 
     let queue: ExportedGrammarProgress[] = [];
 
-    if (isCram) {
-      // Cram Session: select unmastered active learning rules (interval < 21) regardless of due date
+        if (isCram) {
+      // Cram Session: select unmastered active learning rules (interval < 21) sorted by lowest retrievability
       const unmasteredActive = localProgress
         .filter((p) => p.intervalDays < 21 && !(p.repetitions >= 3 || p.intervalDays >= 7))
-        .sort((a, b) => new Date(a.nextReview).getTime() - new Date(b.nextReview).getTime());
+        .sort((a, b) => calculateRetrievability(a) - calculateRetrievability(b));
 
       const unmasteredSliced = unmasteredActive.slice(0, 15);
 
@@ -83,10 +84,9 @@ export const generateExportPayload = (options?: { isCram?: boolean }) => {
       // Standard Session
       const dueReviewsTargetCount = Math.max(0, dailyReviewLimit - nextIntroductions.length);
 
-      // 1. Filter active rules where nextReview <= now, sort by oldest first, and slice up to dueReviewsTargetCount
-      const activeDueProgress = localProgress
-        .filter((p) => new Date(p.nextReview).getTime() <= now.getTime())
-        .sort((a, b) => new Date(a.nextReview).getTime() - new Date(b.nextReview).getTime());
+      // 1. Sort all active progress rules by lowest retrievability (most in need of review) first
+      const activeDueProgress = [...localProgress]
+        .sort((a, b) => calculateRetrievability(a) - calculateRetrievability(b));
 
       const activeDueSliced = activeDueProgress.slice(0, dueReviewsTargetCount);
       
@@ -303,7 +303,7 @@ export const importSessionPayload = (jsonString: string) => {
         continue;
       }
 
-      // GATING & ACTIVATION: If an imported card belongs to a previously locked grammar point,
+            // GATING & ACTIVATION: If an imported card belongs to a previously locked grammar point,
       // initialize its local progress and notify the sync system of activation.
       if (!activeIds.has(gpId)) {
         yield* clientLog("info", `[SessionSync] Activating newly introduced grammar point ID: ${gpId}`);
@@ -313,6 +313,9 @@ export const importSessionPayload = (jsonString: string) => {
           easeFactor: 2.5,
           repetitions: 0,
           intervalDays: 0,
+          difficulty: 5.0,
+          stability: 0.0,
+          lastReviewedAt: null,
           nextReview: now.toISOString(),
         };
         

@@ -1,7 +1,7 @@
 import { LitElement, html } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import { effect } from "@preact/signals-core";
-import { grammarPointStore, grammarPointCatalogStore } from "../lib/client/stores/grammarPointStore.ts";
+import { grammarPointStore, grammarPointCatalogStore, calculateRetrievability } from "../lib/client/stores/grammarPointStore.ts";
 import { userPreferencesStore } from "../lib/client/stores/userPreferencesStore.ts";
 import { logout } from "../lib/client/stores/authStore.ts";
 import { generateExportPayload, importSessionPayload } from "../lib/client/stores/sessionSyncStore.ts";
@@ -182,10 +182,9 @@ export class StudyDesk extends LitElement {
     const now = new Date();
     const catalog = grammarPointCatalogStore.state.value;
     
-    // Find and sort active progress items where nextReview is in the past (oldest first)
-    const allDueItems = grammarPointStore.state.value
-      .filter(p => new Date(p.nextReview).getTime() <= now.getTime())
-      .sort((a, b) => new Date(a.nextReview).getTime() - new Date(b.nextReview).getTime());
+        // Find and sort all active progress items by lowest retrievability (most in need of review) first
+    const allDueItems = [...grammarPointStore.state.value]
+      .sort((a, b) => calculateRetrievability(a) - calculateRetrievability(b));
 
     const reviewLimit = userPreferencesStore.dailyReviewLimit.value;
 

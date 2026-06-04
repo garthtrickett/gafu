@@ -9,7 +9,7 @@ describe("sessionSyncStore export payload gating integration tests", () => {
     await runClientPromise(grammarPointCatalogStore.clear());
   });
 
-  it("should cap massive backlogs of due rules to a maximum of 15 items in the exported queue", async () => {
+    it("should cap massive backlogs of due rules to a maximum of 15 items in the exported queue sorted by retrievability", async () => {
     const catalogItems = Array.from({ length: 50 }, (_, i) => ({
       id: `gp-${i}`,
       formal_name: `grammar-${i}`,
@@ -19,21 +19,32 @@ describe("sessionSyncStore export payload gating integration tests", () => {
     }));
     await runClientPromise(grammarPointCatalogStore.putAll(catalogItems));
 
-    const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
-    const progressItems = Array.from({ length: 50 }, (_, i) => ({
-      id: `gp-${i}`,
-      easeFactor: 2.5,
-      repetitions: 1,
-      intervalDays: 1,
-      nextReview: twoHoursAgo,
-      hlc: "0000000000000:0000:initial"
-    }));
+    // Seed progress with varying lastReviewedAt dates to create a clear retrievability gradient
+    const nowMs = Date.now();
+    const progressItems = Array.from({ length: 50 }, (_, i) => {
+      // i = 0 was reviewed 50 hours ago (lowest retrievability, highest priority)
+      // i = 49 was reviewed 1 hour ago (highest retrievability, lowest priority)
+      const hoursAgo = 50 - i;
+      const lastReviewedAt = new Date(nowMs - hoursAgo * 60 * 60 * 1000).toISOString();
+      return {
+        id: `gp-${i}`,
+        easeFactor: 2.5,
+        repetitions: 1,
+        intervalDays: 1,
+        difficulty: 5.0,
+        stability: 24.0,
+        lastReviewedAt,
+        nextReview: new Date().toISOString(),
+        hlc: "0000000000000:0000:initial"
+      };
+    });
     await runClientPromise(grammarPointStore.putAll(progressItems));
 
     const jsonString = await runClientPromise(generateExportPayload());
     const payload = JSON.parse(jsonString);
 
     expect(payload.queue).toHaveLength(15);
+    // gp-0 has been reviewed longest ago, so it has the lowest retrievability and is placed first
     expect(payload.queue[0]?.grammar_point_id).toBe("gp-0");
     expect(payload.queue[14]?.grammar_point_id).toBe("gp-14");
   });
