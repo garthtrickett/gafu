@@ -206,7 +206,7 @@ export class StudySession extends LitElement {
 
         yield* clientLog("info", `[StudySession] Force mastered grammarPointId=${grammarPointId}:`, forcedMetrics);
 
-        const { hlcStore } = yield* Effect.promise(() => import("../stores/hlcStore.ts"));
+        const { hlcStore } = yield* Effect.promise(() => import("../lib/client/stores/hlcStore.ts"));
         const currentHlc = yield* hlcStore.tick();
 
         yield* grammarPointStore.put({
@@ -269,7 +269,7 @@ export class StudySession extends LitElement {
 
         yield* clientLog("info", `[StudySession] Recalculated SM-2 metrics for grammarPointId=${grammarPointId}:`, metrics);
 
-        const { hlcStore } = yield* Effect.promise(() => import("../stores/hlcStore.ts"));
+        const { hlcStore } = yield* Effect.promise(() => import("../lib/client/stores/hlcStore.ts"));
         const currentHlc = yield* hlcStore.tick();
 
         // Persist progress to local store
