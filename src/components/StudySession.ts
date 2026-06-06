@@ -177,7 +177,7 @@ export class StudySession extends LitElement {
         });
       }
 
-      if (action.type === "FORCE_MASTER") {
+            if (action.type === "FORCE_MASTER") {
         const { grammarPointId } = action;
         
         const currentProgress = grammarPointStore.state.peek().find(p => p.id === grammarPointId) || {
@@ -206,6 +206,9 @@ export class StudySession extends LitElement {
 
         yield* clientLog("info", `[StudySession] Force mastered grammarPointId=${grammarPointId}:`, forcedMetrics);
 
+        const { hlcStore } = yield* Effect.promise(() => import("../stores/hlcStore.ts"));
+        const currentHlc = yield* hlcStore.tick();
+
         yield* grammarPointStore.put({
           id: grammarPointId,
           easeFactor: forcedMetrics.easeFactor,
@@ -214,7 +217,8 @@ export class StudySession extends LitElement {
           nextReview: forcedMetrics.nextReview,
           difficulty: forcedMetrics.difficulty,
           stability: forcedMetrics.stability,
-          lastReviewedAt: forcedMetrics.lastReviewedAt
+          lastReviewedAt: forcedMetrics.lastReviewedAt,
+          hlc: currentHlc
         });
 
         yield* enqueueTransaction("record_review", {
@@ -237,7 +241,7 @@ export class StudySession extends LitElement {
         });
       }
 
-      if (action.type === "SUBMIT_GRADE") {
+            if (action.type === "SUBMIT_GRADE") {
         const { grammarPointId, isCorrect } = action;
         
         // Retrieve existing progress metadata for this grammar rule from IndexedDB, or fallback to standard N5 defaults
@@ -265,8 +269,11 @@ export class StudySession extends LitElement {
 
         yield* clientLog("info", `[StudySession] Recalculated SM-2 metrics for grammarPointId=${grammarPointId}:`, metrics);
 
+        const { hlcStore } = yield* Effect.promise(() => import("../stores/hlcStore.ts"));
+        const currentHlc = yield* hlcStore.tick();
+
         // Persist progress to local store
-        yield* grammarPointStore.put({
+        yield* grammarPointStore.put({ 
           id: grammarPointId,
           easeFactor: metrics.easeFactor,
           repetitions: metrics.repetitions,
@@ -274,7 +281,8 @@ export class StudySession extends LitElement {
           nextReview: metrics.nextReview,
           difficulty: metrics.difficulty,
           stability: metrics.stability,
-          lastReviewedAt: metrics.lastReviewedAt
+          lastReviewedAt: metrics.lastReviewedAt,
+          hlc: currentHlc
         });
 
         // Enqueue queue transaction
