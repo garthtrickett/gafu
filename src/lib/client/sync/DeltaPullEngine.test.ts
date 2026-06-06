@@ -175,9 +175,61 @@ describe("DeltaPullEngine - Client Causal Merging", () => {
     const savedEpoch = await get<string>("sync_epoch_id", syncMetadataStore);
     expect(savedEpoch).toBe(newEpochId);
 
-    // Verify fetch was invoked exactly twice, first with the old epoch/HLC and then with the reset 'initial' state
+        // Verify fetch was invoked exactly twice, first with the old epoch/HLC and then with the reset 'initial' state
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(fetchMock.mock.calls[0]?.[0]).toContain(`since=${oldHlc}&epochId=old-epoch-uuid`);
     expect(fetchMock.mock.calls[1]?.[0]).toContain(`since=0000000000000:0000:initial&epochId=${newEpochId}`);
+  });
+
+  it("should prevent older server reviews from overwriting newer local modifications made during study session", async () => {
+    const currentHlc = await Effect.runPromise(hlcStore.tick());
+    await Effect.runPromise(
+      grammarPointStore.put({
+        id: "gp-causal-bug-test",
+        easeFactor: 2.8,
+        repetitions: 3,
+        intervalDays: 21,
+        nextReview: new Date().toISOString(),
+        difficulty: 3.0,
+        stability: 21.0,
+        lastReviewedAt: new Date().toISOString(),
+        hlc: currentHlc
+      })
+    );
+
+    const olderServerHlc = `${Date.now() - 60000}:0001:server`;
+    const mockPayload = {
+      serverTimestamp: Date.now(),
+      serverHlc: `${Date.now()}:0001:server`,
+      decks: [],
+      srsUpdates: [
+        {
+          id: "srs-causal-bug-test",
+          grammarPointId: "gp-causal-bug-test",
+          easeFactor: 2.5,
+          repetitions: 1,
+          intervalDays: 1,
+          nextReview: new Date().toISOString(),
+          difficulty: 5.0,
+          stability: 1.0,
+          lastReviewedAt: new Date().toISOString(),
+          hlc: olderServerHlc
+        }
+      ],
+      grammarPoints: []
+    };
+
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve(mockPayload)
+    });
+    global.fetch = fetchMock as any;
+
+    await Effect.runPromise(executeDeltaPull());
+
+    const progress = grammarPointStore.state.peek().find(p => p.id === "gp-causal-bug-test");
+    expect(progress).toBeDefined();
+    expect(progress!.repetitions).toBe(3);
   });
 });

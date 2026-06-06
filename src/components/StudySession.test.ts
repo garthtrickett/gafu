@@ -1,6 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import "./StudySession";
 import { StudySession, calculateSrsUpdate } from "./StudySession";
+import { runClientPromise } from "../lib/client/runtime";
+import { grammarPointStore } from "../lib/client/stores/grammarPointStore";
+import { hlcStore } from "../lib/client/stores/hlcStore";
 
 describe("StudySession SRS calculations", () => {
   beforeEach(() => {
@@ -116,8 +119,43 @@ describe("StudySession Component State Logic", () => {
     await new Promise((resolve) => setTimeout(resolve, 15));
     expect(controller.model.explanationVisible).toBe(true);
 
-    controller.propose({ type: "FORCE_MASTER", grammarPointId: "gp-123" });
+        controller.propose({ type: "FORCE_MASTER", grammarPointId: "gp-123" });
     await new Promise((resolve) => setTimeout(resolve, 15));
     expect(controller.model.explanationVisible).toBe(false);
+  });
+
+  it("should write a valid HLC string to grammarPointStore on SUBMIT_GRADE", async () => {
+    const controller = (element as any).controller;
+    
+    await runClientPromise(grammarPointStore.clear());
+    await runClientPromise(hlcStore.clear());
+    await runClientPromise(hlcStore.load());
+
+    controller.propose({ type: "SUBMIT_GRADE", grammarPointId: "gp-hlc-test", isCorrect: true });
+    
+    await new Promise((resolve) => setTimeout(resolve, 30));
+
+    const progress = grammarPointStore.state.peek().find((p) => p.id === "gp-hlc-test");
+    expect(progress).toBeDefined();
+    expect(progress!.hlc).toBeDefined();
+    expect(typeof progress!.hlc).toBe("string");
+    expect(progress!.hlc).not.toBe("0000000000000:0000:initial");
+  });
+
+  it("should write a valid HLC string to grammarPointStore on FORCE_MASTER", async () => {
+    const controller = (element as any).controller;
+    
+    await runClientPromise(grammarPointStore.clear());
+    await runClientPromise(hlcStore.clear());
+    await runClientPromise(hlcStore.load());
+
+    controller.propose({ type: "FORCE_MASTER", grammarPointId: "gp-hlc-test-force" });
+    
+    await new Promise((resolve) => setTimeout(resolve, 30));
+
+    const progress = grammarPointStore.state.peek().find((p) => p.id === "gp-hlc-test-force");
+    expect(progress).toBeDefined();
+    expect(progress!.hlc).toBeDefined();
+    expect(typeof progress!.hlc).toBe("string");
   });
 });
