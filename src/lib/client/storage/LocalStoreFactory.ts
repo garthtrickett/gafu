@@ -33,8 +33,8 @@ export function createLocalStore<T extends Identifiable>(
     return `store:${userId}:${collectionName}`;
   };
 
-    const load = ()
-    => Effect.gen(function* () {
+    const load = () =>
+      Effect.gen(function* () {
       const key = getStorageKey();
       yield* clientLog("debug", `[LocalStore:${collectionName}] Hydrating key ${key} from IndexedDB...`);
       const cached = yield* Effect.tryPromise({
@@ -113,8 +113,8 @@ export function createLocalStore<T extends Identifiable>(
       state.value = filtered;
     });
 
-    const clear = ()
-    => Effect.gen(function* () {
+    const clear = () =>
+      Effect.gen(function* () {
       const key = getStorageKey();
       yield* Effect.tryPromise({
         try: () => del(key, localDBStore),

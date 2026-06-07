@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { runClientPromise } from "../runtime.ts";
 import { grammarPointStore, grammarPointCatalogStore } from "./grammarPointStore.ts";
-import { generateExportPayload } from "./sessionSyncStore.ts";
+import { generateExportPayload, importSessionPayload } from "./sessionSyncStore.ts";
 
 describe("sessionSyncStore export payload gating integration tests", () => {
   beforeEach(async () => {
