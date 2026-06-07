@@ -4,7 +4,8 @@ import {
   grammarPointCatalogStore,
   canUnlockMoreRules,
   getDailyUnlockAllowance,
-  calculateRetrievability
+  calculateRetrievability,
+  type GrammarPointProgress
 } from "./grammarPointStore.ts";
 import { activeSessionStore, type SessionCard, type FuriganaSegment } from "./activeSessionStore.ts";
 import { clientLog } from "../clientLog.ts";
@@ -105,9 +106,9 @@ export const generateExportPayload = (options?: { isCram?: boolean }) => {
           if (eligible && nextIntroductions.length > 0) {
         yield* clientLog("info", `[SessionSync] Unlocking ${nextIntroductions.length} new grammar points.`);
         
-        const { hlcStore } = yield* Effect.promise(() => import("./hlcStore.ts"));
+                const { hlcStore } = yield* Effect.promise(() => import("./hlcStore.ts"));
 
-        const newProgressRecords: any[] = [];
+        const newProgressRecords: GrammarPointProgress[] = [];
         for (const item of nextIntroductions) {
           const currentHlc = yield* hlcStore.tick();
           newProgressRecords.push({
