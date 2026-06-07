@@ -35,10 +35,15 @@ describe("DeltaPullEngine - Client Causal Merging", () => {
       grammarPoints: []
     };
 
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      status: 200,
-      json: () => Promise.resolve(mockPayload)
+    const fetchMock = vi.fn().mockImplementation((url: string) => {
+      if (url.includes("/api/log")) {
+        return Promise.resolve({ ok: true });
+      }
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve(mockPayload)
+      });
     });
     global.fetch = fetchMock as any;
 
@@ -88,10 +93,15 @@ describe("DeltaPullEngine - Client Causal Merging", () => {
       grammarPoints: []
     };
 
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      status: 200,
-      json: () => Promise.resolve(mockPayload)
+    const fetchMock = vi.fn().mockImplementation((url: string) => {
+      if (url.includes("/api/log")) {
+        return Promise.resolve({ ok: true });
+      }
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve(mockPayload)
+      });
     });
     global.fetch = fetchMock as any;
 
@@ -109,7 +119,7 @@ describe("DeltaPullEngine - Client Causal Merging", () => {
     const oldHlc = `${Date.now() - 100000}:0001:server`;
     const { set } = await import("idb-keyval");
     await set("last_pull_hlc", oldHlc, syncMetadataStore);
-        await set("sync_epoch_id", "old-epoch-uuid", syncMetadataStore);
+    await set("sync_epoch_id", "old-epoch-uuid", syncMetadataStore);
 
     // Seed at least one deck and one catalog item to bypass self-healing full sync trigger
     await Effect.runPromise(
@@ -149,17 +159,22 @@ describe("DeltaPullEngine - Client Causal Merging", () => {
       grammarPoints: []
     };
 
-    const fetchMock = vi.fn()
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        json: () => Promise.resolve(resetPayload)
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        json: () => Promise.resolve(cleanSyncPayload)
-      });
+    let pullCallCount = 0;
+    const fetchMock = vi.fn().mockImplementation((url: string) => {
+      if (url.includes("/api/log")) {
+        return Promise.resolve({ ok: true });
+      }
+      if (url.includes("/api/sync/pull")) {
+        pullCallCount++;
+        const payload = pullCallCount === 1 ? resetPayload : cleanSyncPayload;
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve(payload)
+        });
+      }
+      return Promise.resolve({ ok: true });
+    });
     global.fetch = fetchMock as any;
 
     await Effect.runPromise(executeDeltaPull());
@@ -175,7 +190,7 @@ describe("DeltaPullEngine - Client Causal Merging", () => {
     const savedEpoch = await get<string>("sync_epoch_id", syncMetadataStore);
     expect(savedEpoch).toBe(newEpochId);
 
-        // Verify fetch was invoked exactly twice, first with the old epoch/HLC and then with the reset 'initial' state
+    // Verify fetch was invoked exactly twice, first with the old epoch/HLC and then with the reset 'initial' state
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(fetchMock.mock.calls[0]?.[0]).toContain(`since=${oldHlc}&epochId=old-epoch-uuid`);
     expect(fetchMock.mock.calls[1]?.[0]).toContain(`since=0000000000000:0000:initial&epochId=${newEpochId}`);
@@ -219,10 +234,15 @@ describe("DeltaPullEngine - Client Causal Merging", () => {
       grammarPoints: []
     };
 
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      status: 200,
-      json: () => Promise.resolve(mockPayload)
+    const fetchMock = vi.fn().mockImplementation((url: string) => {
+      if (url.includes("/api/log")) {
+        return Promise.resolve({ ok: true });
+      }
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve(mockPayload)
+      });
     });
     global.fetch = fetchMock as any;
 
