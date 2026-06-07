@@ -18,19 +18,22 @@ const SUPER_ADMIN_ID = "99999999-9999-9999-9999-999999999999" as PlatformAdminId
 const SAMPLE_LEARNER_ID = "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11" as UserId;
 const SAMPLE_CURATOR_ID = "b0eebc99-9c0b-4ef8-bb6d-6bb9bd380b22" as UserId;
 
-export const seedDb = () =>
-  Effect.gen(function* () {
-    yield* Effect.logInfo('[Seed] Commencing global database seeding...');
+export const seedDb = (options?: { clearData?: boolean })
+  => Effect.gen(function* () {
+    const clearData = options?.clearData ?? true;
+    yield* Effect.logInfo(`[Seed] Commencing global database seeding (clearData=${clearData})...`);
 
-    yield* Effect.logInfo('[Seed] Cleaning old srs_card and grammar_point records to prevent unique index conflicts...');
-    yield* Effect.tryPromise({
-      try: () => db.deleteFrom('srs_card').execute(),
-      catch: (cause) => new SeedingError({ cause })
-    });
-    yield* Effect.tryPromise({
-      try: () => db.deleteFrom('grammar_point').execute(),
-      catch: (cause) => new SeedingError({ cause })
-    });
+    if (clearData) {
+      yield* Effect.logInfo('[Seed] Cleaning old srs_card and grammar_point records to prevent unique index conflicts...');
+      yield* Effect.tryPromise({
+        try: () => db.deleteFrom('srs_card').execute(),
+        catch: (cause) => new SeedingError({ cause })
+      });
+      yield* Effect.tryPromise({
+        try: () => db.deleteFrom('grammar_point').execute(),
+        catch: (cause) => new SeedingError({ cause })
+      });
+    }
 
     const argon2id = new Argon2id();
     const hashedPassword = yield* Effect.tryPromise({

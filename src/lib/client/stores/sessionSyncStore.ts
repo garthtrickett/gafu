@@ -102,20 +102,28 @@ export const generateExportPayload = (options?: { isCram?: boolean }) => {
       });
 
             // 2. Process and save new introductions if eligible
-      if (eligible && nextIntroductions.length > 0) {
+          if (eligible && nextIntroductions.length > 0) {
         yield* clientLog("info", `[SessionSync] Unlocking ${nextIntroductions.length} new grammar points.`);
         
-        const newProgressRecords = nextIntroductions.map((item) => ({
-          id: item.id,
-          easeFactor: 2.5,
-          repetitions: 0,
-          intervalDays: 0,
-          nextReview: now.toISOString(),
-          difficulty: 5.0,
-          stability: 0.0,
-          lastReviewedAt: null,
-          unlockedAt: now.toISOString(),
-        }));
+        const { hlcStore } = yield* Effect.promise(() => import("./hlcStore.ts"));
+
+        const newProgressRecords: any[] = [];
+        for (const item of nextIntroductions) {
+          const currentHlc = yield* hlcStore.tick();
+          newProgressRecords.push({
+            id: item.id,
+            easeFactor: 2.5,
+            repetitions: 0,
+            intervalDays: 0,
+            nextReview: now.toISOString(),
+            difficulty: 5.0,
+            stability: 0.0,
+            lastReviewedAt: null,
+            unlockedAt: now.toISOString(),
+            hlc: currentHlc,
+          });
+        }
+
         
         // Save these new rules to grammarPointStore immediately so they count toward today's limit
         yield* grammarPointStore.putAll(newProgressRecords);
@@ -305,9 +313,12 @@ export const importSessionPayload = (jsonString: string) => {
 
             // GATING & ACTIVATION: If an imported card belongs to a previously locked grammar point,
       // initialize its local progress and notify the sync system of activation.
-      if (!activeIds.has(gpId)) {
+            if (!activeIds.has(gpId)) {
         yield* clientLog("info", `[SessionSync] Activating newly introduced grammar point ID: ${gpId}`);
         
+        const { hlcStore } = yield* Effect.promise(() => import("./hlcStore.ts"));
+        const currentHlc = yield* hlcStore.tick();
+
         const initialProgress = {
           id: gpId,
           easeFactor: 2.5,
@@ -317,6 +328,7 @@ export const importSessionPayload = (jsonString: string) => {
           stability: 0.0,
           lastReviewedAt: null,
           nextReview: now.toISOString(),
+          hlc: currentHlc,
         };
         
         // Persist locally

@@ -20,18 +20,25 @@ export interface Identifiable {
   readonly id: string;
 }
 
+import { userState } from "../stores/authStore";
+
 export function createLocalStore<T extends Identifiable>(
   collectionName: string,
   sortFn?: (a: T, b: T) => number
 ): LocalStore<T> {
   const state = signal<T[]>([]);
-  const storageKey = `store:${collectionName}`;
+  
+  const getStorageKey = () => {
+    const userId = userState.peek()?.id || "guest";
+    return `store:${userId}:${collectionName}`;
+  };
 
-  const load = () =>
-    Effect.gen(function* () {
-      yield* clientLog("debug", `[LocalStore:${collectionName}] Hydrating from IndexedDB...`);
+    const load = ()
+    => Effect.gen(function* () {
+      const key = getStorageKey();
+      yield* clientLog("debug", `[LocalStore:${collectionName}] Hydrating key ${key} from IndexedDB...`);
       const cached = yield* Effect.tryPromise({
-        try: () => get<T[]>(storageKey, localDBStore),
+        try: () => get<T[]>(key, localDBStore),
         catch: (e) => new Error(`Failed to read collection ${collectionName}: ${String(e)}`),
       });
 
@@ -58,8 +65,9 @@ export function createLocalStore<T extends Identifiable>(
         current.sort(sortFn);
       }
 
+            const key = getStorageKey();
       yield* Effect.tryPromise({
-        try: () => set(storageKey, current, localDBStore),
+        try: () => set(key, current, localDBStore),
         catch: (e) => new Error(`Failed to write item to ${collectionName}: ${String(e)}`),
       });
 
@@ -83,8 +91,9 @@ export function createLocalStore<T extends Identifiable>(
         current.sort(sortFn);
       }
 
+            const key = getStorageKey();
       yield* Effect.tryPromise({
-        try: () => set(storageKey, current, localDBStore),
+        try: () => set(key, current, localDBStore),
         catch: (e) => new Error(`Failed to batch write items to ${collectionName}: ${String(e)}`),
       });
 
@@ -95,18 +104,20 @@ export function createLocalStore<T extends Identifiable>(
     Effect.gen(function* () {
       const filtered = state.peek().filter((i) => i.id !== id);
 
+            const key = getStorageKey();
       yield* Effect.tryPromise({
-        try: () => set(storageKey, filtered, localDBStore),
+        try: () => set(key, filtered, localDBStore),
         catch: (e) => new Error(`Failed to delete item ${id} from ${collectionName}: ${String(e)}`),
       });
 
       state.value = filtered;
     });
 
-  const clear = () =>
-    Effect.gen(function* () {
+    const clear = ()
+    => Effect.gen(function* () {
+      const key = getStorageKey();
       yield* Effect.tryPromise({
-        try: () => del(storageKey, localDBStore),
+        try: () => del(key, localDBStore),
         catch: (e) => new Error(`Failed to clear collection ${collectionName}: ${String(e)}`),
       });
       state.value = [];

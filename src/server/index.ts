@@ -86,9 +86,9 @@ if (process.env.NODE_ENV !== "test") {
       catch: () => ({ count: "0" })
     });
     const count = parseInt(String(gpCountResult?.count || "0"), 10);
-    if (count === 0) {
+        if (count === 0) {
       yield* Effect.logWarning("⚠️ [Self-Healing] No grammar points detected. Seeding database...");
-      yield* seedDb();
+      yield* seedDb({ clearData: false });
       yield* Effect.logInfo("✅ [Self-Healing] Database seeded successfully.");
     }
   }).pipe(

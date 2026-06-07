@@ -65,9 +65,22 @@ export const initAuth = () => {
         catch: (e) => new Error(`Failed to parse user profile: ${String(e)}`),
       }).pipe(Effect.either);
 
-      if (dataResult._tag === "Right") {
+            if (dataResult._tag === "Right") {
         userState.value = dataResult.right.user;
         yield* clientLog("info", `[AuthStore] Session recovered successfully: ${dataResult.right.user.email}`);
+
+        // Hydrate local-first stores for the newly recovered user
+        const { deckStore } = yield* Effect.promise(() => import("./deckStore.ts"));
+        const { srsStore } = yield* Effect.promise(() => import("./srsStore.ts"));
+        const { grammarPointStore, grammarPointCatalogStore } = yield* Effect.promise(() => import("./grammarPointStore.ts"));
+        const { userPreferencesStore } = yield* Effect.promise(() => import("./userPreferencesStore.ts"));
+
+        yield* deckStore.load();
+        yield* srsStore.load();
+        yield* grammarPointStore.load();
+        yield* grammarPointCatalogStore.load();
+        yield* userPreferencesStore.load();
+
         const { executeDeltaPull } = yield* Effect.promise(() => import("../sync/DeltaPullEngine.ts"));
         yield* executeDeltaPull().pipe(
           Effect.catchAll((err) => clientLog("error", "[AuthStore:initAuth] Immediate delta pull failed", err))
@@ -118,11 +131,23 @@ export const login = (email: string, password: string) => {
 
     yield* clientLog("debug", `[AuthStore:login] Parsed response data. Token present: ${!!data.token}, User present: ${!!data.user}`);
 
-    tokenState.value = data.token;
+        tokenState.value = data.token;
     userState.value = data.user;
     localStorage.setItem("jwt", data.token);
 
     yield* clientLog("info", `[AuthStore] Session authenticated successfully for user: ${data.user?.email}`);
+
+    // Hydrate isolated stores for the newly logged-in user
+    const { deckStore } = yield* Effect.promise(() => import("./deckStore.ts"));
+    const { srsStore } = yield* Effect.promise(() => import("./srsStore.ts"));
+    const { grammarPointStore, grammarPointCatalogStore } = yield* Effect.promise(() => import("./grammarPointStore.ts"));
+    const { userPreferencesStore } = yield* Effect.promise(() => import("./userPreferencesStore.ts"));
+
+    yield* deckStore.load();
+    yield* srsStore.load();
+    yield* grammarPointStore.load();
+    yield* grammarPointCatalogStore.load();
+    yield* userPreferencesStore.load();
 
     const { executeDeltaPull } = yield* Effect.promise(() => import("../sync/DeltaPullEngine.ts"));
     yield* executeDeltaPull().pipe(
