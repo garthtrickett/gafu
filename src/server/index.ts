@@ -74,7 +74,7 @@ export const app = new Elysia()
     if (existsSync("./dist/index.html")) {
       return Bun.file("./dist/index.html");
     }
-    return "Development Server: Build output is not present in `./dist`. Use the Vite dev server on port 3000.";
+    return "Development Server: Build output is not present in `./dist`. Use the Vite dev server on port 3005.";
   });
 
 if (process.env.NODE_ENV !== "test") {

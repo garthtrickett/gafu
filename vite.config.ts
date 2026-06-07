@@ -73,7 +73,7 @@ export default defineConfig(({ command, mode }) => ({
   ],
     server: {
     host: true,
-    port: process.env.PORT ? parseInt(process.env.PORT) : 3000,
+    port: process.env.PORT ? parseInt(process.env.PORT) : 3005,
     allowedHosts: true,
     hmr: {
       clientPort: process.env.VITE_HMR_SECURE === "true" ? 443 : undefined,

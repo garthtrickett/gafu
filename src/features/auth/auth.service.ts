@@ -6,7 +6,7 @@ import type { Database } from "../../types";
 
 const getTenantUrl = (subdomain: string) => {
   if (config.app.nodeEnv === "development") {
-    return `http://${subdomain}.localhost:3000`;
+    return `http://${subdomain}.localhost:3005`;
   }
   return `https://${subdomain}.${config.app.rootDomain}`;
 };
