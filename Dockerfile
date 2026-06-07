@@ -21,5 +21,5 @@ COPY --from=build /usr/src/app/src ./src
 COPY --from=build /usr/src/app/package.json ./package.json
 COPY --from=build /usr/src/app/mastra.config.ts ./mastra.config.ts
 
-EXPOSE 42069
+EXPOSE 42070
 CMD ["bun", "run", "start"]

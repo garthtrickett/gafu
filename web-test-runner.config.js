@@ -15,11 +15,11 @@ export default {
   },
   middleware: [
     proxy("/api", {
-      target: "http://127.0.0.1:42069",
+      target: "http://127.0.0.1:42070",
       changeOrigin: true,
     }),
     proxy("/ws", {
-      target: "ws://127.0.0.1:42069",
+      target: "ws://127.0.0.1:42070",
       ws: true,
       changeOrigin: true,
     }),
@@ -49,8 +49,8 @@ export default {
       target: "es2022",
       tsconfig: "./tsconfig.json",
       define: {
-        "import.meta.env.VITE_API_BASE_URL": JSON.stringify(process.env.VITE_API_BASE_URL || "http://127.0.0.1:42069"),
-        "import.meta.env.VITE_WS_URL": JSON.stringify(process.env.VITE_WS_URL || "ws://127.0.0.1:42069"),
+        "import.meta.env.VITE_API_BASE_URL": JSON.stringify(process.env.VITE_API_BASE_URL || "http://127.0.0.1:42070"),
+        "import.meta.env.VITE_WS_URL": JSON.stringify(process.env.VITE_WS_URL || "ws://127.0.0.1:42070"),
         "import.meta.env.DEV": "true",
         "import.meta.env.PROD": "false",
         "import.meta.env.SSR": "false",
