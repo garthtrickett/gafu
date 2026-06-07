@@ -4,13 +4,21 @@ import { seedDb } from "./seed";
 import { db } from "./client";
 
 describe("Database Seeder", () => {
-    it("should preserve existing SRS progress cards when seedDb is executed with clearData set to false", async () => {
+  it("should preserve existing SRS progress cards when seedDb is executed with clearData set to false", async () => {
     // 1. Initial seed
     await Effect.runPromise(seedDb({ clearData: true }));
 
     // Create a mock active SRS card on a seeded grammar point
-    const sampleGp = await db.selectFrom("grammar_point").select("id").limit(1).executeTakeFirstOrThrow();
     const user = await db.selectFrom("user").select("id").limit(1).executeTakeFirstOrThrow();
+    const sampleGp = await db.selectFrom("grammar_point")
+      .select("id")
+      .where("id", "not in", (qb) => 
+        qb.selectFrom("srs_card")
+          .select("grammar_point_id")
+          .where("user_id", "=", user.id)
+      )
+      .limit(1)
+      .executeTakeFirstOrThrow();
     const sampleDeck = await db.selectFrom("deck").select("id").limit(1).executeTakeFirstOrThrow();
 
     await db.insertInto("srs_card").values({
@@ -53,7 +61,7 @@ describe("Database Seeder", () => {
     // All 250+ grammar points should exist in the catalog
     expect(Number(gpCountResult.count)).toBeGreaterThanOrEqual(250);
 
-        // Exactly 10 srs cards should be registered to prevent Day 1 cognitive fatigue
+    // Exactly 10 srs cards should be registered to prevent Day 1 cognitive fatigue
     expect(Number(srsCountResult.count)).toBe(10);
 
     // Verify baseline HLC values exist on seeded records

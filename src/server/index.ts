@@ -59,8 +59,8 @@ export const app = new Elysia()
     staticPlugin({
       assets: "./dist/assets",
       prefix: "/assets",
-    })
-  )
+        })
+      )
   .get("/manifest.webmanifest", () => Bun.file("./dist/manifest.webmanifest"))
   .get("/sw.js", () => Bun.file("./dist/sw.js"))
   .get("/favicon.ico", () => Bun.file("./dist/favicon.ico"))
@@ -82,17 +82,55 @@ if (process.env.NODE_ENV !== "test") {
 
   const startupEffect = Effect.gen(function* () {
     const gpCountResult = yield* Effect.tryPromise({
-      try: () => db.selectFrom("grammar_point").select(db.fn.count("id").as("count")).executeTakeFirst(),
-      catch: () => ({ count: "0" })
+      try: () => db.selectFrom("grammar_point").select(({ fn }) => fn.countAll().as("count")).executeTakeFirst(),
+      catch: (error) => new Error("Database query failed during self-healing check", { cause: error })
     });
     const count = parseInt(String(gpCountResult?.count || "0"), 10);
-        if (count === 0) {
+    if (count === 0) {
       yield* Effect.logWarning("⚠️ [Self-Healing] No grammar points detected. Seeding database...");
       yield* seedDb({ clearData: false });
       yield* Effect.logInfo("✅ [Self-Healing] Database seeded successfully.");
     }
   }).pipe(
-    Effect.catchAll((err) => Effect.logError("Failed to run self-healing seeder", err))
+    Effect.catchAll((err) => {
+      const serializeError = (error: unknown): Record<string, unknown> | string => {
+        if (error instanceof Error) {
+          const result: Record<string, unknown> = {
+            name: error.name,
+            message: error.message,
+            stack: error.stack,
+          };
+          const errObj = error as unknown as Record<string, unknown>;
+          const code = errObj["code"];
+          if (typeof code === "string") {
+            result["code"] = code;
+          }
+          const detail = errObj["detail"];
+          if (typeof detail === "string") {
+            result["detail"] = detail;
+          }
+          const cause = errObj["cause"];
+          if (cause !== undefined) {
+            result["cause"] = serializeError(cause);
+          }
+          return result;
+        }
+        if (typeof error === "object" && error !== null) {
+          const errObj = error as Record<string, unknown>;
+          const result: Record<string, unknown> = {};
+          for (const key of Object.keys(errObj)) {
+            const val = errObj[key];
+            result[key] = typeof val === "object" && val !== null ? serializeError(val) : val;
+          }
+          return result;
+        }
+        return String(error);
+      };
+
+      return Effect.logError("Failed to run self-healing seeder", {
+        error: serializeError(err)
+      });
+    })
   );
 
   void serverRuntime.runPromise(startupEffect).then(() => {
