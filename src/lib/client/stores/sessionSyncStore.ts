@@ -64,10 +64,11 @@ export const generateExportPayload = (options?: { isCram?: boolean }) => {
 
     let queue: ExportedGrammarProgress[] = [];
 
-        if (isCram) {
-      // Cram Session: select unmastered active learning rules (interval < 21) sorted by lowest retrievability
+            if (isCram) {
+      // Cram Session: select unmastered active learning rules (stability < 21) sorted by lowest retrievability
+      // We align the definition of "unmastered" with the FSRS-Lite criteria used in the UI gating warning
       const unmasteredActive = localProgress
-        .filter((p) => p.intervalDays < 21 && !(p.repetitions >= 3 || p.intervalDays >= 7))
+        .filter((p) => (p.stability ?? 0.0) < 21.0 && !((p.stability ?? 0.0) >= 7.0 || (p.difficulty ?? 5.0) <= 4.0))
         .sort((a, b) => calculateRetrievability(a) - calculateRetrievability(b));
 
       const unmasteredSliced = unmasteredActive.slice(0, 15);
