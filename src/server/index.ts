@@ -77,7 +77,7 @@ export const app = new Elysia()
     return "Development Server: Build output is not present in `./dist`. Use the Vite dev server on port 3005.";
   });
 
-if (process.env.NODE_ENV !== "test") {
+if (process.env.NODE_ENV !== "test" || process.env.PLAYWRIGHT_TEST === "1") {
   const port = process.env.BACKEND_PORT ? parseInt(process.env.BACKEND_PORT) : 42070;
 
   const startupEffect = Effect.gen(function* () {
