@@ -35,11 +35,7 @@ describe("DeltaPullEngine - Client Causal Merging", () => {
       grammarPoints: []
     };
 
-    const fetchMock = vi.fn().mockImplementation((url: string, options?: any) => {
-      console.log(`[TEST DEBUG - deltaPull clock update] fetch called with URL: ${url}`);
-      if (options) {
-        console.log(`[TEST DEBUG] options: ${JSON.stringify(options)}`);
-      }
+    const fetchMock = vi.fn().mockImplementation((url: string) => {
       if (url.includes("/api/log")) {
         return Promise.resolve({ ok: true });
       }
@@ -97,11 +93,7 @@ describe("DeltaPullEngine - Client Causal Merging", () => {
       grammarPoints: []
     };
 
-    const fetchMock = vi.fn().mockImplementation((url: string, options?: any) => {
-      console.log(`[TEST DEBUG - out-of-order clobber] fetch called with URL: ${url}`);
-      if (options) {
-        console.log(`[TEST DEBUG] options: ${JSON.stringify(options)}`);
-      }
+    const fetchMock = vi.fn().mockImplementation((url: string) => {
       if (url.includes("/api/log")) {
         return Promise.resolve({ ok: true });
       }
@@ -168,37 +160,19 @@ describe("DeltaPullEngine - Client Causal Merging", () => {
     };
 
     let pullCallCount = 0;
-    const fetchCallsSummary: Array<{ url: string; index: number; options?: any }> = [];
-
-    const fetchMock = vi.fn().mockImplementation((url: string, options?: any) => {
-      const callIndex = fetchCallsSummary.length + 1;
-      fetchCallsSummary.push({ url, index: callIndex, options });
-
-      console.log(`\n🚨 [FETCH CALL #${callIndex}]`);
-      console.log(`🔗 URL: ${url}`);
-      if (options) {
-        console.log(`⚙️  Method: ${options.method || "GET"}`);
-        console.log(`📦 Body: ${options.body ? options.body : "None"}`);
-        console.log(`👤 Authorization: ${options.headers?.Authorization || "None"}`);
-      }
-
+    const fetchMock = vi.fn().mockImplementation((url: string) => {
       if (url.includes("/api/log")) {
-        console.log(`📝 [LOGGING] Intercepted clientLog payload.`);
         return Promise.resolve({ ok: true });
       }
-
       if (url.includes("/api/sync/pull")) {
         pullCallCount++;
         const payload = pullCallCount === 1 ? resetPayload : cleanSyncPayload;
-        console.log(`🔄 [SYNC PULL #${pullCallCount}] Returning Mock Payload.`);
         return Promise.resolve({
           ok: true,
           status: 200,
           json: () => Promise.resolve(payload)
         });
       }
-
-      console.log(`⚠️ [FALLBACK] Returning standard default success.`);
       return Promise.resolve({ ok: true });
     });
     global.fetch = fetchMock as any;
@@ -208,22 +182,6 @@ describe("DeltaPullEngine - Client Causal Merging", () => {
     // Allow daemon fork re-trigger loop to complete
     await new Promise((resolve) => setTimeout(resolve, 50));
 
-    console.log("\n📊 --- FETCH EXECUTION SUMMARY ---");
-    console.log(`Total intercepted calls: ${fetchCallsSummary.length}`);
-    const syncCalls = fetchCallsSummary.filter(c => c.url.includes("/api/sync/pull"));
-    const logCalls = fetchCallsSummary.filter(c => c.url.includes("/api/log"));
-    const otherCalls = fetchCallsSummary.filter(c => !c.url.includes("/api/sync/pull") && !c.url.includes("/api/log"));
-
-    console.log(`  - Sync pull calls: ${syncCalls.length}`);
-    syncCalls.forEach(c => console.log(`    [#${c.index}] -> ${c.url}`));
-    console.log(`  - Client log calls: ${logCalls.length}`);
-    logCalls.forEach(c => console.log(`    [#${c.index}] -> ${c.url}`));
-    if (otherCalls.length > 0) {
-      console.log(`  - Miscellaneous calls: ${otherCalls.length}`);
-      otherCalls.forEach(c => console.log(`    [#${c.index}] -> ${c.url}`));
-    }
-    console.log("----------------------------------\n");
-
     // Verify 'last_pull_hlc' was wiped and then updated to the final HLC from the clean second pull
     const savedHlc = await get<string>("last_pull_hlc", syncMetadataStore);
     expect(savedHlc).toBe(cleanSyncPayload.serverHlc);
@@ -232,10 +190,11 @@ describe("DeltaPullEngine - Client Causal Merging", () => {
     const savedEpoch = await get<string>("sync_epoch_id", syncMetadataStore);
     expect(savedEpoch).toBe(newEpochId);
 
-    // Verify fetch was invoked exactly twice, first with the old epoch/HLC and then with the reset 'initial' state
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(fetchMock.mock.calls[0]?.[0]).toContain(`since=${oldHlc}&epochId=old-epoch-uuid`);
-    expect(fetchMock.mock.calls[1]?.[0]).toContain(`since=0000000000000:0000:initial&epochId=${newEpochId}`);
+    // Filter fetchMock calls specifically to the sync/pull endpoint to prevent background log pollution
+    const syncPullCalls = fetchMock.mock.calls.filter(([url]) => url.includes("/api/sync/pull"));
+    expect(syncPullCalls.length).toBe(2);
+    expect(syncPullCalls[0]?.[0]).toContain(`since=${oldHlc}&epochId=old-epoch-uuid`);
+    expect(syncPullCalls[1]?.[0]).toContain(`since=0000000000000:0000:initial&epochId=${newEpochId}`);
   });
 
   it("should prevent older server reviews from overwriting newer local modifications made during study session", async () => {
@@ -276,11 +235,7 @@ describe("DeltaPullEngine - Client Causal Merging", () => {
       grammarPoints: []
     };
 
-    const fetchMock = vi.fn().mockImplementation((url: string, options?: any) => {
-      console.log(`[TEST DEBUG - study session protect] fetch called with URL: ${url}`);
-      if (options) {
-        console.log(`[TEST DEBUG] options: ${JSON.stringify(options)}`);
-      }
+    const fetchMock = vi.fn().mockImplementation((url: string) => {
       if (url.includes("/api/log")) {
         return Promise.resolve({ ok: true });
       }
