@@ -86,6 +86,51 @@ describe("sessionSyncStore export payload gating integration tests", () => {
     expect(finalProgress[4]?.unlockedAt).toBeDefined();
   });
 
+    it("should stamp newly unlocked grammar points with a valid ticked HLC during generation", async () => {
+    const catalogItems = Array.from({ length: 5 }, (_, i) => ({
+      id: `gp-${i}`,
+      formal_name: `grammar-${i}`,
+      base_meaning: `meaning-${i}`,
+      difficulty_level: "N5",
+      hlc: "0000000000000:0000:initial"
+    }));
+    await runClientPromise(grammarPointCatalogStore.putAll(catalogItems));
+
+    // Trigger payload generation to unlock new rules
+    await runClientPromise(generateExportPayload());
+
+    const progress = grammarPointStore.state.peek();
+    expect(progress.length).toBeGreaterThan(0);
+    
+    // Verify that every single unlocked progress record is securely stamped with a valid ticked HLC
+    for (const record of progress) {
+      expect(record.hlc).toBeDefined();
+      expect(typeof record.hlc).toBe("string");
+      expect(record.hlc).not.toBe("0000000000000:0000:initial");
+    }
+  });
+
+  it("should stamp newly activated grammar points with a valid ticked HLC during import", async () => {
+    const mockPayload = {
+      cards: [
+        {
+          grammar_point_id: "00eebc99-9c0b-4ef8-bb6d-6bb9bd381a11",
+          english_context: "Import HLC check context.",
+          japanese_sentence: "学生です。",
+          explanation: "Copula test."
+        }
+      ]
+    };
+
+    await runClientPromise(importSessionPayload(JSON.stringify(mockPayload)));
+
+    const progress = grammarPointStore.state.peek().find(p => p.id === "00eebc99-9c0b-4ef8-bb6d-6bb9bd381a11");
+    expect(progress).toBeDefined();
+    expect(progress!.hlc).toBeDefined();
+    expect(typeof progress!.hlc).toBe("string");
+    expect(progress!.hlc).not.toBe("0000000000000:0000:initial");
+  });
+
   it("should append 0 new rules for ineligible users who do not meet the 80% mastery gate", async () => {
     const catalogItems = Array.from({ length: 5 }, (_, i) => ({
       id: `gp-${i}`,
