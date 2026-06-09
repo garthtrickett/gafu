@@ -2,7 +2,7 @@
   "name": "Gafu Dev Environment",
   "image": "mcr.microsoft.com/devcontainers/javascript-node:22",
   "features": {},
-  "postCreateCommand": "curl -fsSL https://bun.sh/install | bash && sudo ln -sf /home/node/.bun/bin/bun /usr/local/bin/bun && rm -f node_modules && bun install",
+  "postCreateCommand": "sudo apt-get update && sudo apt-get install -y libvips-dev && curl -fsSL https://bun.sh/install | bash && sudo ln -sf /home/node/.bun/bin/bun /usr/local/bin/bun && rm -f node_modules && bun install",
   "runArgs": ["--net=host"],
   "customizations": {
     "vscode": {
