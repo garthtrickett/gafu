@@ -1,7 +1,8 @@
 {
   "name": "Gafu Dev Environment",
-  "image": "oven/bun:1.1-debian",
+  "image": "oven/bun:1-debian",
   "features": {},
+  "postCreateCommand": "rm -f node_modules && bun install",
   "customizations": {
     "vscode": {
       "extensions": [
