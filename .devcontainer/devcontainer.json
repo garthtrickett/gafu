@@ -1,15 +1,12 @@
 {
   "name": "Gafu Dev Environment",
-  "image": "mcr.microsoft.com/devcontainers/javascript-node:22",
-  "features": {
-    "ghcr.io/devcontainers-extra/features/bun:1": {}
-  },
+  "image": "oven/bun:1.1-debian",
+  "features": {},
   "customizations": {
     "vscode": {
       "extensions": [
         "oven.bun-vscode"
       ]
     }
-  },
-  "remoteUser": "node"
+  }
 }
