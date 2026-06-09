@@ -3,6 +3,7 @@
   "image": "oven/bun:1-debian",
   "features": {},
   "postCreateCommand": "rm -f node_modules && bun install",
+  "runArgs": ["--net=host"], // <-- Allows container to resolve host's localhost:6543 natively
   "customizations": {
     "vscode": {
       "extensions": [
