@@ -6,6 +6,13 @@ import type { Database } from "../types";
 
 config({ path: ".env" });
 
+// Purge any contaminating PG environment variables from the host/NixOS environment
+delete process.env.PGPORT;
+delete process.env.PGHOST;
+delete process.env.PGUSER;
+delete process.env.PGPASSWORD;
+delete process.env.PGDATABASE;
+
 export const TEMPLATE_DB_NAME = "bedrock_lang_test_template";
 
 function getConnectionString(dbName: string) {
@@ -15,7 +22,9 @@ function getConnectionString(dbName: string) {
   }
   const url = new URL(base);
   url.pathname = `/${dbName}`;
-  return url.toString();
+  const result = url.toString();
+  console.error(`[DEBUG DB] getConnectionString("${dbName}") resolved to: "${result.replace(/:([^@]+)@/, ":****@")}"`);
+  return result;
 }
 
 export async function setup() {
