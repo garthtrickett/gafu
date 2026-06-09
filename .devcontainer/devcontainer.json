@@ -8,7 +8,9 @@
     "--cap-add=SYS_ADMIN"
   ],
   "containerEnv": {
-    "CHROME_PATH": "/usr/bin/chromium"
+    "CHROME_PATH": "/usr/bin/chromium",
+    "BUN_JIT": "0",
+    "JSC_useJIT": "false"
   },
   "customizations": {
     "vscode": {
