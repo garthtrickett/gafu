@@ -3,7 +3,10 @@
   "image": "mcr.microsoft.com/devcontainers/javascript-node:22",
   "features": {},
   "postCreateCommand": "sudo apt-get update && sudo apt-get install -y libvips-dev chromium && curl -fsSL https://bun.sh/install | bash && sudo ln -sf /home/node/.bun/bin/bun /usr/local/bin/bun && rm -f node_modules && bun install && npx playwright install --with-deps chromium",
-  "runArgs": ["--net=host"],
+  "runArgs": [
+    "--net=host",
+    "--cap-add=SYS_ADMIN"
+  ],
   "containerEnv": {
     "CHROME_PATH": "/usr/bin/chromium"
   },
