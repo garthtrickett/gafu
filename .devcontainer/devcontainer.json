@@ -4,7 +4,7 @@
     "dockerfile": "Dockerfile",
     "context": "."
   },
-  "postCreateCommand": "rm -f node_modules && bun install",
+  "postCreateCommand": "rm -rf node_modules && bun install",
   "runArgs": [
     "--net=host",
     "--cap-add=SYS_ADMIN"
