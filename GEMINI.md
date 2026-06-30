@@ -1,207 +1,33 @@
-# Gemini Customization File
-
+PATCHING
+### 1. Root Structure Rules
+* The root of your response MUST be a single, valid JSON object. Do NOT wrap it in a root array.
+* If you are editing multiple files, include all of them in the single `"files"` array.
+* Add a root-level `"project"` string to route downloads to the correct watcher. By default, each watcher uses the folder name of its `--cwd` as the project key. For example, a watcher running in `~/code/my-project` expects `"project": "my-project"`.
+in this case the project is gafu
 
 ---
 
-CRITICAL: SMART PATCH FORMATTING RULES
-You are equipped with a custom Python Smart Patcher (`apply_patch.py`). Follow these instructions precisely to ensure patches apply successfully.
+### 2. The `"summary"` Field (Git Commit Message)
+* The `"summary"` string at the root of your JSON is automatically extracted and used as the **Git commit message** by the pipeline.
+* Make this summary clear, concise, and professional (e.g., following Conventional Commits, such as `feat: add auth check middleware` or `fix: resolve crash in user loop`).
 
-### Golden Rule
-Your primary objective is to generate a patch that can be applied **non-interactively**. Be conservative and precise. When in doubt, prefer the more robust `smart_replace` strategy over entity replacement.
+---
 
-
-### CHECK YOUR WORK
-IMPORTANT: After you've finished writing the patches double check each one for json syntax errors before sending it out to user
-
-### Strategy Decision Guide
-Before generating an edit, ask yourself these questions in order:
-
-1.  **Is this a brand new file?**
-    *   YES: Use **one** `smart_replace` edit with an empty `\"search\": \"\"` block. The `replace` block will become the entire content of the new file.
-
-2.  **Am I replacing an entire `fun`/`fn`/`function`, `class`/`struct`, `object`/`impl`, or `interface`/`trait` that HAS curly braces `{...}`?**
-    *   YES: Use the appropriate **`replace_function`**, **`replace_class`**, **`replace_object`**, or **`replace_interface`** strategy. It is robust, language-agnostic (supports Kotlin, Rust, TS), and doesn't require a search block.
-
-3.  **Is it anything else?** (e.g., modifying imports, changing a few lines inside a function, updating a `data class` without a body, editing XML/SQL/JSON files, etc.)
-    *   YES: Use the **`smart_replace`** strategy. This should be your default choice for most modifications.
-
-4.  **Am I migrating a file, deleting a function, or gutting a file completely?**
-    *   YES: **NEVER** just rename the signature while leaving the old body intact. Orphaned code blocks will trigger "Unresolved reference" and syntax errors during compilation.
-    *   **The Protocol:**
-        *   **Option A (Whole File):** If the entire file is obsolete, use the **`delete`** strategy within the JSON patch. This is preferred over bash blocks as it ensures the deletion is part of the atomic patch transaction.
-        *   **Option B (Specific Entities):** If you must neutralize specific functions or classes within a file, use `replace_class`, `replace_object`, or `replace_function` to replace the ENTIRE entity (signature AND body) with an empty stub.
-        *   *Example Replacement:* `fun deleted_oldFunction() {}`
-        *   🚨 NEVER use multi-step `smart_replace` to inject `/*` and `*/` to comment out files. The end-of-file whitespace makes matching the bottom comment impossible.
- 5.  **Pay Strict Attention to KMP File Paths:** 
-    *   Do not rely on your training to guess file paths. Kotlin Multiplatform uses specific source sets like `commonMain`, `androidMain`, and `desktopMain`. You **must** verify the exact file path against the provided project snapshot before generating an edit. An incorrect path will cause the patcher to fail.
-6. If repairing a file that contains malformed syntax (e.g., mismatched brackets/braces from a previous bad edit), do not use entity replacement strategies (replace_class, replace_function, etc.). Always fall back to smart_replace to fix syntax errors."
-   7. Best Practice for smart_replace search blocks: Keep the search string as MINIMAL as possible. Use just 1 or 2 lines that uniquely identify the location. Do not copy-paste large chunks of code into the search block, especially when fixing malformed syntax, as invisible formatting differences will cause the match to fail.
-8. Strict Limits on Search Blocks
-
-        Keep search blocks hyper-focused (1 to 3 lines). The more lines you include, the higher the chance of a hidden formatting mismatch.
-
-        Avoid erratic indentation: If a line in the snapshot has unusual or broken indentation, do not include it in your search block. Choose adjacent, predictably-formatted lines to anchor your search instead.
-
-        Never match EOF: Do not use smart_replace to match the final closing brace } of a file. Invisible trailing newlines will almost always cause the regex/matcher to fail.
-
-9. Handling Top-Level Functions
-
-        If a legacy file contains multiple top-level functions alongside classes/objects, you must target them individually with replace_function (e.g., `fun deleted_reduce() {}`) rather than trying to perform a massive smart_replace deletion.
-10.     Context is King for Duplicate Lines: If a line of code appears multiple times in a file (e.g., if (success) return), you MUST include the uniquely identifying lines immediately above or below it in the search block. The search block must map to exactly ONE location in the file.
-
-11.     Beware of Trailing Commas & Auto-Formatting: Formatters (like ktlint) often break long arguments across multiple lines and append trailing commas. Do NOT hand-type or guess the syntax of your search blocks. Copy the text exactly as it appears in the provided project snapshot so hidden characters like trailing commas are included.
-
-12.     Track Cross-Step State: In multi-step refactoring workflows, remember what was already modified in previous steps. Do not attempt to patch the same block of code if it was already updated, as the search block will fail to find the outdated code.
-
-13.     Beware of Overlooked Comments: When building a `search` block spanning multiple lines, you MUST include any comments that exist between those lines in the original source exactly as written. LLMs naturally filter out comments when reading code, but the patcher requires exact string matching. If you miss a `// comment` inside a block, the patch will fail. To avoid this, make your search block smaller so it doesn't span across comments unless strictly necessary.
-
-14. Beware of Decorators and Macros: When replacing or inserting code directly above a struct, class, or function, your search block MUST include the decorators or macros (e.g., #[derive(...)], @Component, @Injectable) immediately preceding it. If you omit the decorators from the search block, your insertion will split the decorators from the entity they belong to, causing catastrophic compilation errors.
-
-"15. Copy, Don't Reconstruct: When creating a search block, do not re-type the code from memory or syntactic knowledge. You must copy the exact lines directly from the provided source file snapshot. This prevents subtle but fatal mismatches, such as using is MyObject when the code actually uses just MyObject in a when block for a Kotlin singleton. The patcher requires a literal string match, not syntactic equivalence."
-
-  16. The Snapshot is the Only Source of Truth: In sequential, multi-step refactoring tasks, you MUST assume your memory of the codebase is stale. The project snapshot provided at the beginning of each prompt is the only valid source for creating search blocks. Before generating an edit, always find the target file in the current snapshot and copy the necessary lines verbatim. Do not reconstruct code from memory or prior knowledge of the file. Failure to do so is the most common cause of patch failure.
-
-
-17. To prevent the patcher from matching function calls instead of their actual definitions:
-
-    Default to smart_replace: When a function's name is called earlier in the file than where its definition resides, avoid replace_function and use smart_replace instead.
-
-    Anchor the Search Block: smart_replace is highly precise because it matches a unique multiline block of code (specifically containing the signature pub fn slerp_normals), ensuring the patch applies exactly where intended.
-
-
-    ```
-
---- 
-
-### Strategy Details & Best Practices
-
-**1. `smart_replace`**
-Use this for the majority of edits. It is whitespace-agnostic.
-
-🚨 **CRITICAL EMPTY SEARCH RULE:** ONLY use an empty `"search": ""` block if you are absolutely certain the file is completely empty or does not exist yet. If you use an empty search block on an *existing* file, the patcher will **APPEND** your `replace` code to the bottom of the file, causing duplicate definition syntax errors. If you need to completely gut and overwrite an existing file, use a bash command block (e.g., `cat << 'EOF' > file...`) instead of a JSON patch.
-
-*   **Best Practice for `search` blocks:**
-    *   The `search` block **MUST be unique** within the file.
-    *   Include enough context (1-2 lines before and after your change) to guarantee uniqueness, but keep the block as small as possible.
-    *   The content must be an *exact match*, but indentation and extra blank lines **do not matter**.
+### 3. Search / Replace Blocks (`code_diff`)
+Within the `"code_diff"` string of each file entry, use Aider-style `<<<<<<< SEARCH` and `>>>>>>> REPLACE` blocks.
 
 ```json
 {
-  "type": "smart_replace",
-  "search": "val x = 1\\nval y = 2",
-  "replace": "val x = 1\\nval y = 3"
-}
-```
-
-**2. `replace_function` | `replace_class` | `replace_object` | `replace_interface`**
-Use this *only* for replacing an entire, brace-enclosed code block. 
-
-*   **Fully supports TypeScript & Rust!** The patcher automatically handles modifiers (`private`, `public`, `async`, `override`, `pub(crate)`), arrow functions (`private myFunc = () => {`), and property getters/setters (`get name() {`).
-*   🚨 **CRITICAL EXCEPTIONS:** These strategies **WILL FAIL** if the target does not have opening and closing curly braces `{ ... }`. **DO NOT** use these strategies for Kotlin `data class`es or `sealed interface`s that only have a primary constructor `(...)` and no body. You **MUST** use `smart_replace` for these.
-*   **Best Practice:**
-    *   Provide the full name of the entity in the `\"name\"` field.
-    *   Provide the full, correctly formatted code for the new entity in the `\"replace\"` field.
-    *   **DO NOT** provide a `\"search\"` field.
-
-```json
-{
-  "type": "replace_function",
-  "name": "myFunction",
-  "replace": "fun myFunction(arg: String): Int {\\n    // new implementation here\\n}"
-}
-```
-
-**3. Creating New Files**
-To create a new file, use a single `smart_replace` edit with an empty `search` string. The `replace` content will become the entire file.
-
-```json
-{
-  "type": "smart_replace",
-  "search": "",
-  "replace": "package com.aegisgatekeeper.app\\n\\nclass NewFile {\\n}"
-}
-```
-
-**4. `delete`**
-Use this to remove an obsolete file from the project. It does not require a `search` or `replace` field.
-
-```json
-{
-  "file_path": "app/src/main/java/com/aegisgatekeeper/app/OldFile.kt",
-  "edits": [
-    { "type": "delete" }
-  ]
-}
-```
-
---- 
-
-### Edit Density Limit
-*   Avoid issuing more than 3-4 `smart_replace` blocks in a single file if possible. If a file requires massive, sweeping changes across 15 different locations, it is often safer to rewrite the entire file (if it's small) or break the refactor down into smaller, sequential prompts.
-
-### Full Example Response
-```json
-{
-  "summary": "Refactor rules and add a new utility file.",
+  "project": "my-project",
+  "summary": "feat: implement rate limiting middleware",
   "files": [
     {
-      "file_path": "app/src/main/java/com/aegisgatekeeper/app/domain/Models.kt",
-      "edits": [
-        {
-          "type": "replace_function",
-          "name": "getAppName",
-          "replace": "@Composable\\nfun getAppName(packageName: String): String {\\n    // ... new implementation ...\\n}"
-        },
-        {
-          "type": "smart_replace",
-          "search": "data class TemporaryWhitelist(",
-          "replace": "data class TemporaryWhitelist(\\n    val newField: Boolean = false,"
-        }
-      ]
-    },
-    {
-      "file_path": "app/src/main/java/com/aegisgatekeeper/app/utils/NewUtil.kt",
-      "edits": [
-        {
-          "type": "smart_replace",
-          "search": "",
-          "replace": "package com.aegisgatekeeper.app.utils\\n\\nobject NewUtil {\\n    fun doSomething() {}\\n}"
-        }
-      ]
+      "file_path": "src/middleware/rate_limit.ts",
+      "code_diff": "<<<<<<< SEARCH\nexport function setup(app) {\n  // old logic\n}\n=======\nexport function setup(app) {\n  // new rate limit logic\n}\n>>>>>>> REPLACE"
     }
   ]
 }
-
-### Example Response eof approach
-cat << 'EOF' > surfer-core/src/model.rs
-use glam::Vec3;
-use serde::{Deserialize, Serialize};
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct BoardModel {
-    pub length: f32,
-    pub width: f32,
-    pub thickness: f32,
-    pub volume: f32,
-    pub fin_setup: String,
-}
-EOF
 ```
-
-### 🚨 CRITICAL: JSON STRING ESCAPE PROTOCOLS
-To prevent JSON decoding failures in `apply_patch.py`, you must strictly adhere to JSON string escaping rules for all code blocks embedded inside JSON:
-
-1. **No Raw Newlines:** Do NOT include unescaped raw newlines inside any JSON string property (e.g., `"search"` or `"replace"`). All line endings in the code must be represented by `\n` (written as `\\n` in the raw output string).
-2. **Double Quote Escaping:** All double quotes `"` in the code must be escaped as `\"`.
-3. **Backslash Escaping:** All literal backslashes `\` in the code (such as regex or escape sequences) must be escaped as `\\`.
-4. **Validation Step:** Before finalizing the response, run a validator check on your JSON. If there is a raw newline or unescaped double quote inside a string, it will crash the parser. Fix it before outputting.
-
-
-This file helps Gemini understand the project's structure, conventions, and commands to provide more accurate and helpful assistance.
-
-MOST IMPORTANT: If you have read this file and taken in whats being said write 42069 as the first line of your response.
-always write the files in full unless explicitly told not to.
 
 NEVER OMMIT ANY EXISTING CODE FOR BREVITY 
 

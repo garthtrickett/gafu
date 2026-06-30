@@ -1,0 +1,20 @@
+{
+  "tx": {
+    "id": "write-out-a-dummy-commit-to-sr-79204d7f",
+    "baseBranch": "main",
+    "ephemeralBranch": "grug-task/write-out-a-dummy-commit-to-sr-79204d7f",
+    "checkpoints": [],
+    "provider": "deepseek"
+  },
+  "tasks": [
+    {
+      "id": "1",
+      "description": "Add a dummy commit with console.info to src/server/index.ts",
+      "targetFiles": [
+        "src/server/index.ts"
+      ],
+      "status": "pending",
+      "developerNotes": "Insert a console.info statement at the top of the file or after imports, e.g., console.info('Dummy commit');"
+    }
+  ]
+}
