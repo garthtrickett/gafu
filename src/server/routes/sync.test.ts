@@ -49,6 +49,58 @@ describe("Synchronization API Endpoint Suite", () => {
     expect(response.status).toBe(401);
   });
 
+  it("should reject pulls and pushes for valid JWTs whose user row no longer exists", async () => {
+    const staleUser: PublicUser = {
+      id: "88888888-8888-8888-8888-888888888888" as UserId,
+      email: "stale-sync-user@site.com",
+      email_verified: true,
+      permissions: [],
+      created_at: new Date(),
+      avatar_url: null,
+      is_guest: false,
+      display_name: "Stale Sync User",
+      phone: null,
+      skills: []
+    };
+
+    const staleToken = await Effect.runPromise(generateToken(staleUser));
+
+    const pullResponse = await app.handle(
+      new Request("http://localhost/api/sync/pull?since=0000000000000:0000:initial", {
+        headers: {
+          Authorization: `Bearer ${staleToken}`
+        }
+      })
+    );
+    expect(pullResponse.status).toBe(401);
+
+    const pushResponse = await app.handle(
+      new Request("http://localhost/api/sync/push", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${staleToken}`
+        },
+        body: JSON.stringify({
+          id: "tx-stale-user-123",
+          type: "record_review",
+          payload: {
+            grammarPointId: "e0eebc99-9c0b-4ef8-bb6d-6bb9bd380e55",
+            easeFactor: 2.6,
+            repetitions: 1,
+            intervalDays: 1,
+            nextReview: new Date().toISOString(),
+            difficulty: 5.0,
+            stability: 1.0,
+            lastReviewedAt: new Date().toISOString()
+          },
+          hlc: "1600000000000:0000:test-client"
+        })
+      })
+    );
+    expect(pushResponse.status).toBe(401);
+  });
+
   it("should return resetSync true and the active epochId when client pulls with a mismatched or missing epoch ID", async () => {
     // 1. Fetch active epoch ID from database first to know what to compare
     const epochRecord = await db.selectFrom("sync_epoch")

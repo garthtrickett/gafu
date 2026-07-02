@@ -218,17 +218,18 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
         );
 
         const authHeader = headers["authorization"];
-        yield* Effect.logInfo(`[Sync:Push] Received Authorization header: "${authHeader}"`);
-
-        const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
-        yield* Effect.logInfo(`[Sync:Push] Parsed token value: "${token}"`);
+        const token = extractBearerToken(authHeader);
+        yield* Effect.logInfo(
+          `[Sync:Push] Authorization header present=${Boolean(authHeader)} token=${redactTokenForLog(token)}`
+        );
 
         if (!token || token === "null" || token === "undefined" || token.trim() === "") {
-          yield* Effect.logError(`[Sync:Push] Unauthorized access: Missing, null, or empty authorization token "${token}"`);
+          yield* Effect.logError("[Sync:Push] Unauthorized access: Missing, null, or empty authorization token.");
           return yield* Effect.fail(new InvalidCredentialsError());
         }
 
         const user = yield* validateToken(token);
+        yield* requirePersistedSyncUser("Push", user);
         yield* Effect.logInfo(`[Sync:Push] Authorized session for subscriber: ${user.email} (ID: ${user.id})`);
 
         // Clock Convergence: Merge server wall clock with client's incoming HLC
