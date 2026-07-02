@@ -164,7 +164,7 @@ if (process.env.NODE_ENV !== "test" || process.env.PLAYWRIGHT_TEST === "1") {
   );
 
   const startServer = () => {
-    app.listen(port);
+    app.listen({ hostname: "0.0.0.0", port });
     console.info(`🦊 Elysia is running at ${app.server?.hostname}:${app.server?.port}`);
   };
 
