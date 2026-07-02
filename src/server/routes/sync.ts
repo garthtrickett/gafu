@@ -21,17 +21,18 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
         yield* Effect.logInfo(`[Sync:Pull] Executing pull requests. sinceHlc=${since}, clientEpochId=${query.epochId}`);
 
         const authHeader = headers["authorization"];
-        yield* Effect.logInfo(`[Sync:Pull] Received Authorization header: "${authHeader}"`);
-
-        const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
-        yield* Effect.logInfo(`[Sync:Pull] Parsed token value: "${token}"`);
+        const token = extractBearerToken(authHeader);
+        yield* Effect.logInfo(
+          `[Sync:Pull] Authorization header present=${Boolean(authHeader)} token=${redactTokenForLog(token)}`
+        );
 
         if (!token || token === "null" || token === "undefined" || token.trim() === "") {
-          yield* Effect.logError(`[Sync:Pull] Unauthorized access: Missing, null, or empty authorization token "${token}"`);
+          yield* Effect.logError("[Sync:Pull] Unauthorized access: Missing, null, or empty authorization token.");
           return yield* Effect.fail(new InvalidCredentialsError());
         }
 
         const user = yield* validateToken(token);
+        yield* requirePersistedSyncUser("Pull", user);
         yield* Effect.logInfo(`[Sync:Pull] Authorized session for subscriber: ${user.email} (ID: ${user.id})`);
 
         // Retrieve active database sync epoch
