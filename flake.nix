@@ -15,7 +15,13 @@
     in
     {
       devShells = forEachSystem (pkgs: {
-        default = pkgs.mkShell {
+        default =
+          let
+            railwayCli = pkgs.writeShellScriptBin "railway" ''
+              exec ${pkgs.nodejs_22}/bin/npx -y @railway/cli@latest "$@"
+            '';
+          in
+          pkgs.mkShell {
           nativeBuildInputs = with pkgs; [
             bashInteractive
             pkg-config
@@ -28,6 +34,7 @@
             chromium
             unzip
             curl
+            railwayCli
             python3
           ];
 
