@@ -357,7 +357,8 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
         );
         if (error && typeof error === "object" && "_tag" in error && error._tag === "BadRequest") {
           set.status = 400;
-          return { error: "Bad Request", message: (error as { readonly message: string }).message };
+          const message = "message" in error && typeof error.message === "string" ? error.message : "Bad Request";
+          return { error: "Bad Request", message };
         }
         if (error instanceof InvalidCredentialsError || (error && typeof error === "object" && "_tag" in error && (error._tag === "Unauthorized" || error._tag === "Forbidden" || (error as { _tag?: string })._tag === "AuthError"))) {
           set.status = 401;
