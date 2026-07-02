@@ -42,7 +42,7 @@
             echo "🚀 Bedrock Language App Development Environment Loaded"
             echo "Bun: $(bun --version)"
             echo "Node: $(node --version)"
-            echo "Railway: available via npx @railway/cli wrapper"
+            echo "Railway: $(railway --version)"
             
             # Playwright Configurations
             export PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
