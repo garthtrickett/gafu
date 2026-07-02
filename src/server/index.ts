@@ -159,10 +159,17 @@ if (process.env.NODE_ENV !== "test" || process.env.PLAYWRIGHT_TEST === "1") {
     })
   );
 
-  void serverRuntime.runPromise(startupEffect).then(() => {
+  const startServer = () => {
     app.listen(port);
     console.info(`🦊 Elysia is running at ${app.server?.hostname}:${app.server?.port}`);
-  });
+  };
+
+  if (process.env.PLAYWRIGHT_TEST === "1") {
+    console.info("[Self-Healing] Skipping startup seed check during Playwright; E2E globalSetup owns migration and seeding.");
+    startServer();
+  } else {
+    void serverRuntime.runPromise(startupEffect).then(startServer);
+  }
 }
 
 export type App = typeof app;

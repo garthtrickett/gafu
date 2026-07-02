@@ -47,7 +47,6 @@ export const test = base.extend({
   page: async ({ context, page }, use) => {
     await context.clearCookies();
     attachLogs(page, "Default");
-    await clearBrowserState(page);
     await use(page);
   },
   browser: async ({ browser }, use) => {
