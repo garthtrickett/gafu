@@ -9,6 +9,7 @@ export default defineConfig(({ command, mode }) => ({
     VitePWA({
       strategies: "injectManifest",
       srcDir: "src",
+      injectRegister: false,
       injectManifest: {
         maximumFileSizeToCacheInBytes: 15 * 1024 * 1024, // High threshold to support pre-cached audio assets
       },

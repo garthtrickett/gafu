@@ -15,10 +15,10 @@ describe("progress restore seed partitioning", () => {
     expect(result.mastered).toHaveLength(270);
     expect(result.learning).toHaveLength(25);
     expect(result.ignoredAfterLearningWindow).toHaveLength(1);
-    expect(result.mastered[0].sequence_order).toBe(1);
-    expect(result.mastered[269].sequence_order).toBe(270);
-    expect(result.learning[0].sequence_order).toBe(271);
-    expect(result.learning[24].sequence_order).toBe(295);
-    expect(result.ignoredAfterLearningWindow[0].sequence_order).toBe(296);
+    expect(result.mastered[0]?.sequence_order).toBe(1);
+    expect(result.mastered[269]?.sequence_order).toBe(270);
+    expect(result.learning[0]?.sequence_order).toBe(271);
+    expect(result.learning[24]?.sequence_order).toBe(295);
+    expect(result.ignoredAfterLearningWindow[0]?.sequence_order).toBe(296);
   });
 });

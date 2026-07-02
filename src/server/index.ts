@@ -67,13 +67,39 @@ export const app = new Elysia()
   .get("/icon-192.png", () => Bun.file("./dist/icon-192.png"))
   .get("/icon-512.png", () => Bun.file("./dist/icon-512.png"))
   .get("/apple-touch-icon.png", () => Bun.file("./dist/apple-touch-icon.png"))
-    .get("*", ({ set }) => {
+  .get("*", ({ request, set }) => {
+    const url = new URL(request.url);
+    const pathname = url.pathname;
+
     set.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, proxy-revalidate";
     set.headers["Pragma"] = "no-cache";
     set.headers["Expires"] = "0";
+
+    const looksLikeStaticAsset =
+      pathname.endsWith(".js") ||
+      pathname.endsWith(".css") ||
+      pathname.endsWith(".map") ||
+      pathname.endsWith(".json") ||
+      pathname.endsWith(".webmanifest") ||
+      pathname.endsWith(".png") ||
+      pathname.endsWith(".jpg") ||
+      pathname.endsWith(".jpeg") ||
+      pathname.endsWith(".svg") ||
+      pathname.endsWith(".ico") ||
+      pathname.endsWith(".wasm");
+
+    if (looksLikeStaticAsset) {
+      set.status = 404;
+      console.info(`[Static Fallback] Missing static asset requested: ${pathname}`);
+      return "Static asset not found";
+    }
+
     if (existsSync("./dist/index.html")) {
+      console.info(`[Static Fallback] Serving SPA shell for route: ${pathname}`);
       return Bun.file("./dist/index.html");
     }
+
+    console.warn(`[Static Fallback] Build output missing while handling route: ${pathname}`);
     return "Development Server: Build output is not present in `./dist`. Use the Vite dev server on port 3005.";
   });
 
