@@ -379,3 +379,48 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
       })
     }
   );
+
+function redactTokenForLog(token: string | null): string {
+  if (!token) {
+    return "null";
+  }
+
+  if (token.length <= 20) {
+    return `${token.slice(0, 4)}...redacted`;
+  }
+
+  return `${token.slice(0, 12)}...${token.slice(-8)}`;
+}
+
+function extractBearerToken(authHeader: string | undefined): string | null {
+  return authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
+}
+
+function requirePersistedSyncUser(
+  scope: "Pull" | "Push",
+  user: { readonly id: string; readonly email: string }
+) {
+  return Effect.gen(function* () {
+    yield* Effect.logInfo(`[Sync:${scope}] Verifying token subject exists in user table. user_id=${user.id}`);
+
+    const persistedUser = yield* Effect.tryPromise({
+      try: () =>
+        db
+          .selectFrom("user")
+          .select(["id", "email"])
+          .where("id", "=", user.id as UserId)
+          .executeTakeFirst(),
+      catch: (cause) => new AuthDatabaseError({ cause }),
+    });
+
+    if (!persistedUser) {
+      yield* Effect.logWarning(
+        `[Sync:${scope}] Rejecting valid JWT for missing user_id=${user.id}. Client likely has stale auth or queued outbox state.`
+      );
+      return yield* Effect.fail(new InvalidCredentialsError());
+    }
+
+    yield* Effect.logInfo(`[Sync:${scope}] Token subject exists in user table. user_id=${persistedUser.id}`);
+    return persistedUser;
+  });
+}
