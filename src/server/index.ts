@@ -128,11 +128,22 @@ export const app = new Elysia()
   });
 
 if (process.env.NODE_ENV !== "test" || process.env.PLAYWRIGHT_TEST === "1") {
-    const port = process.env.PORT
-    ? parseInt(process.env.PORT, 10)
-    : process.env.BACKEND_PORT
-      ? parseInt(process.env.BACKEND_PORT, 10)
+  const port = process.env.BACKEND_PORT
+    ? parseInt(process.env.BACKEND_PORT, 10)
+    : process.env.PORT
+      ? parseInt(process.env.PORT, 10)
       : 42070;
+  const portSource = process.env.BACKEND_PORT
+    ? "BACKEND_PORT"
+    : process.env.PORT
+      ? "PORT"
+      : "default";
+
+  void serverRuntime.runPromise(
+    Effect.logInfo(
+      `[Server] Resolved backend listen port=${port} source=${portSource}.`,
+    ),
+  );
 
   const startupEffect = Effect.gen(function* () {
     const gpCountResult = yield* Effect.tryPromise({
