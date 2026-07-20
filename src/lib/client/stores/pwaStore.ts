@@ -25,6 +25,30 @@ const shouldRegisterServiceWorker = (): boolean =>
 const serviceWorkerUrl = (): string =>
   import.meta.env.PROD ? "/sw.js" : "/dev-sw.js?dev-sw";
 
+export const handleServiceWorkerControlling = (
+  hadControllerAtRegistration: boolean,
+  reloadPage: () => void = () => window.location.reload(),
+) => {
+  if (!hadControllerAtRegistration) {
+    runClientUnscoped(
+      clientLog(
+        "info",
+        "[PWA] Initial service worker control acquired. Continuing without a page reload.",
+      ),
+    );
+    return;
+  }
+
+  isUpdateAvailableState.value = false;
+  runClientUnscoped(
+    clientLog(
+      "info",
+      "[PWA] Updated service worker has taken control. Reloading the page once.",
+    ),
+  );
+  reloadPage();
+};
+
 export const initPWA = () => {
   if (typeof window === "undefined") return;
 
@@ -72,6 +96,8 @@ export const initPWA = () => {
   const workerType = import.meta.env.PROD
     ? "classic"
     : "module";
+  const hadControllerAtRegistration =
+    navigator.serviceWorker.controller !== null;
 
   runClientUnscoped(
     clientLog(
@@ -95,13 +121,9 @@ export const initPWA = () => {
   });
 
   wbInstance.addEventListener("controlling", () => {
-    runClientUnscoped(
-      clientLog(
-        "info",
-        "[PWA] New service worker has taken control. Reloading page...",
-      ),
+    handleServiceWorkerControlling(
+      hadControllerAtRegistration,
     );
-    window.location.reload();
   });
 
   wbInstance.register().catch((error: unknown) => {

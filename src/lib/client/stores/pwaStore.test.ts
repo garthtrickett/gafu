@@ -1,5 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { isUpdateAvailableState, initPWA, applyAppUpdate } from "./pwaStore";
+import {
+  isUpdateAvailableState,
+  initPWA,
+  applyAppUpdate,
+  handleServiceWorkerControlling,
+} from "./pwaStore";
 
 const mocks = vi.hoisted(() => {
   return {
@@ -97,6 +102,25 @@ describe("pwaStore - PWA and Service Worker Update Lifecycle", () => {
     waitingCallback();
 
     expect(isUpdateAvailableState.value).toBe(true);
+  });
+
+  it("should not reload when the first installed worker takes control", () => {
+    const reloadPage = vi.fn();
+
+    handleServiceWorkerControlling(false, reloadPage);
+
+    expect(reloadPage).not.toHaveBeenCalled();
+    expect(isUpdateAvailableState.value).toBe(false);
+  });
+
+  it("should reload once when a replacement worker takes control", () => {
+    const reloadPage = vi.fn();
+    isUpdateAvailableState.value = true;
+
+    handleServiceWorkerControlling(true, reloadPage);
+
+    expect(reloadPage).toHaveBeenCalledTimes(1);
+    expect(isUpdateAvailableState.value).toBe(false);
   });
 
   it("should trigger messageSkipWaiting on Workbox instance when applyAppUpdate is executed", async () => {
