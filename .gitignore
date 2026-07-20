@@ -14,6 +14,7 @@ a.txt
 context_testing.txt
 test_results.txt
 test_results_detailed.txt
+tmp/tts-smoke/
 
 # --- Dependencies & Build Outputs ---
 node_modules

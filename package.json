@@ -17,6 +17,7 @@
     "db:seed": "bun run src/db/seed.ts",
     "db:restore-progress": "bun run src/db/seed-progress-restore.ts",
     "kaishi:parse": "bun run scripts/parse-kaishi.ts",
+    "tts:smoke": "bun run scripts/tts-smoke.ts",
     "db:generate": "bunx kanel --config .kanelrc.cjs",
     "migrate": "bun run db:migrate && bun run db:generate && bun run db:seed",
     "test": "vitest run",
@@ -72,6 +73,7 @@
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.995.0",
+    "@google-cloud/text-to-speech": "^6.4.1",
     "@aws-sdk/lib-storage": "^3.844.0",
     "@aws-sdk/s3-request-presigner": "^3.995.0",
     "@effect/opentelemetry": "^0.54.0",
