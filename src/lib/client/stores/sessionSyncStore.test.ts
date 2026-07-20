@@ -1,10 +1,31 @@
+import { Effect } from "effect";
 import { describe, it, expect, beforeEach } from "vitest";
 import { runClientPromise } from "../runtime.ts";
+import { activeSessionStore } from "./activeSessionStore.ts";
 import { grammarPointStore, grammarPointCatalogStore } from "./grammarPointStore.ts";
-import { generateExportPayload, importSessionPayload } from "./sessionSyncStore.ts";
+import {
+  generateExportPayload,
+  importSessionPayload,
+  type SessionAudioEnricher,
+  type SessionAudioEnrichmentRequestItem,
+} from "./sessionSyncStore.ts";
+
+const successfulAudioEnricher: SessionAudioEnricher = {
+  enrich: (items) =>
+    Effect.succeed({
+      items: items.map((item) => ({
+        requestId: item.requestId,
+        audioUrl: `https://media.example.test/${item.requestId}.mp3`,
+      })),
+      requestedCount: items.length,
+      enrichedCount: items.length,
+      failedCount: 0,
+    }),
+};
 
 describe("sessionSyncStore export payload gating integration tests", () => {
   beforeEach(async () => {
+    activeSessionStore.clear();
     await runClientPromise(grammarPointStore.clear());
     await runClientPromise(grammarPointCatalogStore.clear());
   });
@@ -122,7 +143,11 @@ describe("sessionSyncStore export payload gating integration tests", () => {
       ]
     };
 
-    await runClientPromise(importSessionPayload(JSON.stringify(mockPayload)));
+    await runClientPromise(
+      importSessionPayload(JSON.stringify(mockPayload), {
+        audioEnricher: successfulAudioEnricher,
+      }),
+    );
 
     const progress = grammarPointStore.state.peek().find(p => p.id === "00eebc99-9c0b-4ef8-bb6d-6bb9bd381a11");
     expect(progress).toBeDefined();
@@ -235,4 +260,254 @@ describe("sessionSyncStore export payload gating integration tests", () => {
     const finalProgress = grammarPointStore.state.peek();
     expect(finalProgress).toHaveLength(2);
   });
+
+it("enriches fifteen null-audio cards before loading activeSessionStore", async () => {
+  const requestedBatches: SessionAudioEnrichmentRequestItem[][] = [];
+  const audioEnricher: SessionAudioEnricher = {
+    enrich: (items) =>
+      Effect.sync(() => {
+        requestedBatches.push([...items]);
+        return {
+          items: items.map((item) => ({
+            requestId: item.requestId,
+            audioUrl: `https://media.example.test/${item.requestId}.mp3`,
+          })),
+          requestedCount: items.length,
+          enrichedCount: items.length,
+          failedCount: 0,
+        };
+      }),
+  };
+  const mockPayload = {
+    cards: Array.from({ length: 15 }, (_, index) => ({
+      grammar_point_id: `gp-audio-${index}`,
+      english_context: `Context ${index}`,
+      japanese_sentence: `例文${index}です。`,
+      audio_url: null,
+    })),
+  };
+
+  const result = await runClientPromise(
+    importSessionPayload(JSON.stringify(mockPayload), {
+      audioEnricher,
+    }),
+  );
+
+  expect(result).toEqual({
+    importedCount: 15,
+    audioRequestedCount: 15,
+    audioFailedCount: 0,
+  });
+  expect(requestedBatches).toHaveLength(1);
+  expect(requestedBatches[0]).toHaveLength(15);
+  expect(activeSessionStore.masterList.value).toHaveLength(15);
+  expect(
+    activeSessionStore.masterList.value.every(
+      (card) =>
+        typeof card.audioUrl === "string" &&
+        card.audioUrl.startsWith("https://"),
+    ),
+  ).toBe(true);
+  expect(activeSessionStore.audioWarning.value).toBeNull();
+});
+
+it("preserves supplied audio URLs and excludes them from enrichment", async () => {
+  const requestedBatches: SessionAudioEnrichmentRequestItem[][] = [];
+  const audioEnricher: SessionAudioEnricher = {
+    enrich: (items) =>
+      Effect.sync(() => {
+        requestedBatches.push([...items]);
+        return {
+          items: items.map((item) => ({
+            requestId: item.requestId,
+            audioUrl: "https://media.example.test/generated.mp3",
+          })),
+          requestedCount: items.length,
+          enrichedCount: items.length,
+          failedCount: 0,
+        };
+      }),
+  };
+  const existingUrl =
+    "https://media.example.test/existing.mp3";
+  const mockPayload = {
+    cards: [
+      {
+        grammar_point_id: "gp-existing",
+        english_context: "Existing context",
+        japanese_sentence: "既存です。",
+        audio_url: existingUrl,
+      },
+      {
+        grammar_point_id: "gp-generated",
+        english_context: "Generated context",
+        japanese_sentence: "生成です。",
+        audio_url: null,
+      },
+    ],
+  };
+
+  await runClientPromise(
+    importSessionPayload(JSON.stringify(mockPayload), {
+      audioEnricher,
+    }),
+  );
+
+  expect(requestedBatches).toHaveLength(1);
+  expect(requestedBatches[0]).toEqual([
+    {
+      requestId: "card-1",
+      japaneseSentence: "生成です。",
+    },
+  ]);
+
+  const existingCard =
+    activeSessionStore.masterList.value.find(
+      (card) => card.grammarPointId === "gp-existing",
+    );
+  const generatedCard =
+    activeSessionStore.masterList.value.find(
+      (card) => card.grammarPointId === "gp-generated",
+    );
+
+  expect(existingCard?.audioUrl).toBe(existingUrl);
+  expect(generatedCard?.audioUrl).toBe(
+    "https://media.example.test/generated.mp3",
+  );
+});
+
+it("keeps the session usable and records a warning when one synthesis fails", async () => {
+  const audioEnricher: SessionAudioEnricher = {
+    enrich: (items) =>
+      Effect.succeed({
+        items: items.map((item, index) =>
+          index === 1
+            ? {
+                requestId: item.requestId,
+                audioUrl: null,
+                failureKind: "provider" as const,
+              }
+            : {
+                requestId: item.requestId,
+                audioUrl: `https://media.example.test/${item.requestId}.mp3`,
+              },
+        ),
+        requestedCount: items.length,
+        enrichedCount: items.length - 1,
+        failedCount: 1,
+      }),
+  };
+  const mockPayload = {
+    cards: [
+      {
+        grammar_point_id: "gp-success-1",
+        english_context: "Context 1",
+        japanese_sentence: "成功一です。",
+        audio_url: null,
+      },
+      {
+        grammar_point_id: "gp-failure",
+        english_context: "Context 2",
+        japanese_sentence: "失敗です。",
+        audio_url: null,
+      },
+      {
+        grammar_point_id: "gp-success-2",
+        english_context: "Context 3",
+        japanese_sentence: "成功二です。",
+        audio_url: null,
+      },
+    ],
+  };
+
+  const result = await runClientPromise(
+    importSessionPayload(JSON.stringify(mockPayload), {
+      audioEnricher,
+    }),
+  );
+
+  expect(result.audioFailedCount).toBe(1);
+  expect(activeSessionStore.masterList.value).toHaveLength(3);
+  expect(
+    activeSessionStore.masterList.value.filter(
+      (card) => card.audioUrl === null,
+    ),
+  ).toHaveLength(1);
+  expect(activeSessionStore.audioWarning.value).toEqual({
+    missingCount: 1,
+    totalCount: 3,
+  });
+});
+
+it("rejects malformed JSON before invoking audio enrichment", async () => {
+  let enrichmentCallCount = 0;
+  const audioEnricher: SessionAudioEnricher = {
+    enrich: () =>
+      Effect.sync(() => {
+        enrichmentCallCount += 1;
+        return {
+          items: [],
+          requestedCount: 0,
+          enrichedCount: 0,
+          failedCount: 0,
+        };
+      }),
+  };
+
+  const result = await runClientPromise(
+    Effect.either(
+      importSessionPayload("{ malformed json", {
+        audioEnricher,
+      }),
+    ),
+  );
+
+  expect(result._tag).toBe("Left");
+  expect(enrichmentCallCount).toBe(0);
+  expect(activeSessionStore.masterList.value).toEqual([]);
+});
+
+it("validates every card before invoking audio enrichment", async () => {
+  let enrichmentCallCount = 0;
+  const audioEnricher: SessionAudioEnricher = {
+    enrich: () =>
+      Effect.sync(() => {
+        enrichmentCallCount += 1;
+        return {
+          items: [],
+          requestedCount: 0,
+          enrichedCount: 0,
+          failedCount: 0,
+        };
+      }),
+  };
+  const mockPayload = {
+    cards: [
+      {
+        grammar_point_id: "gp-valid",
+        english_context: "Valid context",
+        japanese_sentence: "有効です。",
+        audio_url: null,
+      },
+      {
+        grammar_point_id: "gp-invalid",
+        english_context: "Missing sentence",
+        audio_url: null,
+      },
+    ],
+  };
+
+  const result = await runClientPromise(
+    Effect.either(
+      importSessionPayload(JSON.stringify(mockPayload), {
+        audioEnricher,
+      }),
+    ),
+  );
+
+  expect(result._tag).toBe("Left");
+  expect(enrichmentCallCount).toBe(0);
+  expect(activeSessionStore.masterList.value).toEqual([]);
+});
+
 });

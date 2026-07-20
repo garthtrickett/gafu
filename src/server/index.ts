@@ -11,6 +11,7 @@ import { effectPlugin } from "./middleware/effect-plugin";
 import { authRoutes } from "./routes/auth";
 import { syncRoutes } from "./routes/sync.ts";
 import { aiRoutes } from "./routes/ai";
+import { ttsRoutes } from "./routes/tts.ts";
 import { db } from "../db/client";
 import { seedDb } from "../db/seed";
 import { serverRuntime } from "../lib/server/server-runtime";
@@ -41,6 +42,7 @@ export const app = new Elysia()
   .use(authRoutes)
   .use(syncRoutes)
   .use(aiRoutes)
+  .use(ttsRoutes)
   .use(cors({
     origin: [
       /localhost.*/,

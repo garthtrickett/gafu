@@ -243,16 +243,73 @@ CRITICAL CONSTRAINTS:
 };
 
 interface ImportedCard {
-  readonly grammar_point_id?: string;
-  readonly english_context?: string;
-  readonly japanese_sentence?: string;
-  readonly furigana?: readonly FuriganaSegment[];
-  readonly audio_url?: string | null;
-  readonly explanation?: string;
+  readonly grammar_point_id?: unknown;
+  readonly english_context?: unknown;
+  readonly japanese_sentence?: unknown;
+  readonly furigana?: unknown;
+  readonly audio_url?: unknown;
+  readonly explanation?: unknown;
 }
 
 interface ImportedPayload {
-  readonly cards?: readonly ImportedCard[];
+  readonly cards?: readonly unknown[];
+}
+
+interface ValidatedImportedCard {
+  readonly sourceIndex: number;
+  readonly grammarPointId: string;
+  readonly englishContext: string;
+  readonly japaneseSentence: string;
+  readonly furigana: readonly FuriganaSegment[];
+  readonly audioUrl: string | null;
+  readonly explanation?: string;
+}
+
+export interface SessionAudioEnrichmentRequestItem {
+  readonly requestId: string;
+  readonly japaneseSentence: string;
+}
+
+export interface SessionAudioEnrichmentResultItem {
+  readonly requestId: string;
+  readonly audioUrl: string | null;
+  readonly failureKind?:
+    | "input"
+    | "configuration"
+    | "authentication"
+    | "provider"
+    | "audio"
+    | "storage";
+}
+
+export interface SessionAudioEnrichmentResult {
+  readonly items: readonly SessionAudioEnrichmentResultItem[];
+  readonly requestedCount: number;
+  readonly enrichedCount: number;
+  readonly failedCount: number;
+}
+
+export interface SessionAudioEnricher {
+  readonly enrich: (
+    items: readonly SessionAudioEnrichmentRequestItem[],
+  ) => Effect.Effect<SessionAudioEnrichmentResult, Error>;
+}
+
+export interface ImportSessionPayloadOptions {
+  readonly audioEnricher?: SessionAudioEnricher;
+}
+
+export interface ImportSessionPayloadResult {
+  readonly importedCount: number;
+  readonly audioRequestedCount: number;
+  readonly audioFailedCount: number;
+}
+
+interface SessionAudioEnrichmentApiResponse {
+  readonly success?: boolean;
+  readonly data?: SessionAudioEnrichmentResult;
+  readonly error?: string;
+  readonly message?: string;
 }
 
 /**
@@ -269,60 +326,395 @@ const cleanJsonString = (raw: string): string => {
   return cleaned.trim();
 };
 
-/**
- * Validates the imported dynamic study payload and hydrates activeSessionStore
- */
-export const importSessionPayload = (jsonString: string) => {
-  const effect = Effect.gen(function* () {
-    yield* clientLog("info", "[SessionSync] Parsing imported study session payload...");
-    
-    const cleanedString = cleanJsonString(jsonString);
-    yield* clientLog("debug", "[SessionSync] Cleaned JSON string prepared for parsing:", cleanedString.substring(0, 100) + "...");
+const isFuriganaSegment = (
+  value: unknown,
+): value is FuriganaSegment => {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
 
-    const parsed = yield* Effect.tryPromise({
-      try: () => Promise.resolve(JSON.parse(cleanedString) as ImportedPayload),
-      catch: (e) => new Error(`Invalid JSON syntax in imported study session. Make sure you copied the entire JSON block. Error: ${String(e)}`),
-    });
+  if (!("kanji" in value) || typeof value.kanji !== "string") {
+    return false;
+  }
 
-    const cards = parsed?.cards;
-    if (!Array.isArray(cards)) {
-      return yield* Effect.fail(new Error("Invalid session payload: 'cards' array is missing or empty."));
+  if (
+    "kana" in value &&
+    value.kana !== undefined &&
+    typeof value.kana !== "string"
+  ) {
+    return false;
+  }
+
+  return true;
+};
+
+const isFuriganaSegments = (
+  value: unknown,
+): value is readonly FuriganaSegment[] =>
+  Array.isArray(value) &&
+  value.every(isFuriganaSegment);
+
+const validateImportedCards = (
+  rawCards: readonly unknown[],
+): Effect.Effect<readonly ValidatedImportedCard[], Error> =>
+  Effect.gen(function* () {
+    const validatedCards: ValidatedImportedCard[] = [];
+
+    for (const [sourceIndex, rawCard] of rawCards.entries()) {
+      if (typeof rawCard !== "object" || rawCard === null) {
+        yield* clientLog(
+          "error",
+          `[SessionSync] Card ${sourceIndex + 1} is not an object.`,
+        );
+        return yield* Effect.fail(
+          new Error(
+            `Invalid card schema at index ${sourceIndex}: card must be an object.`,
+          ),
+        );
+      }
+
+      const card = rawCard as ImportedCard;
+      const grammarPointId =
+        typeof card.grammar_point_id === "string"
+          ? card.grammar_point_id.trim()
+          : "";
+      const englishContext =
+        typeof card.english_context === "string"
+          ? card.english_context.trim()
+          : "";
+      const japaneseSentence =
+        typeof card.japanese_sentence === "string"
+          ? card.japanese_sentence.trim()
+          : "";
+
+      if (
+        grammarPointId.length === 0 ||
+        englishContext.length === 0 ||
+        japaneseSentence.length === 0
+      ) {
+        yield* clientLog(
+          "error",
+          `[SessionSync] Card ${sourceIndex + 1} is missing a required string field.`,
+        );
+        return yield* Effect.fail(
+          new Error(
+            `Invalid card schema at index ${sourceIndex}: each card requires non-empty 'grammar_point_id', 'english_context', and 'japanese_sentence' strings.`,
+          ),
+        );
+      }
+
+      const furiganaValue = card.furigana;
+      if (
+        furiganaValue !== undefined &&
+        !isFuriganaSegments(furiganaValue)
+      ) {
+        yield* clientLog(
+          "error",
+          `[SessionSync] Card ${sourceIndex + 1} contains malformed furigana segments.`,
+        );
+        return yield* Effect.fail(
+          new Error(
+            `Invalid card schema at index ${sourceIndex}: 'furigana' must be an array of { kanji, kana? } segments.`,
+          ),
+        );
+      }
+
+      if (
+        card.audio_url !== undefined &&
+        card.audio_url !== null &&
+        typeof card.audio_url !== "string"
+      ) {
+        return yield* Effect.fail(
+          new Error(
+            `Invalid card schema at index ${sourceIndex}: 'audio_url' must be a string or null.`,
+          ),
+        );
+      }
+
+      if (
+        card.explanation !== undefined &&
+        typeof card.explanation !== "string"
+      ) {
+        return yield* Effect.fail(
+          new Error(
+            `Invalid card schema at index ${sourceIndex}: 'explanation' must be a string when supplied.`,
+          ),
+        );
+      }
+
+      const suppliedAudioUrl =
+        typeof card.audio_url === "string" &&
+        card.audio_url.trim().length > 0
+          ? card.audio_url.trim()
+          : null;
+
+      validatedCards.push({
+        sourceIndex,
+        grammarPointId,
+        englishContext,
+        japaneseSentence,
+        furigana: isFuriganaSegments(furiganaValue)
+          ? furiganaValue
+          : [],
+        audioUrl: suppliedAudioUrl,
+        ...(typeof card.explanation === "string"
+          ? { explanation: card.explanation }
+          : {}),
+      });
     }
 
-    // Load the local progress store state to identify unrecognized incoming grammar points
-    yield* grammarPointStore.load();
-    const localProgress = grammarPointStore.state.peek();
-    const activeIds = new Set(localProgress.map((p) => p.id));
-    const now = new Date();
+    return validatedCards;
+  });
 
-    const sessionCards: SessionCard[] = [];
-    for (const card of cards as readonly ImportedCard[]) {
-      if (!card.grammar_point_id || !card.english_context || !card.japanese_sentence) {
-        yield* clientLog("error", "[SessionSync] Skipping malformed card:", card);
-        return yield* Effect.fail(new Error("Invalid card schema: each card requires 'grammar_point_id', 'english_context', and 'japanese_sentence'."));
+const requestSessionAudioEnrichment: SessionAudioEnricher = {
+  enrich: (items) =>
+    Effect.gen(function* () {
+      if (items.length === 0) {
+        return {
+          items: [],
+          requestedCount: 0,
+          enrichedCount: 0,
+          failedCount: 0,
+        };
       }
-      
-      const gpId = card.grammar_point_id;
 
-      // Validate that the grammar_point_id is a valid UUID to prevent downstream outbox sync failures (allow mock/test IDs in test environments)
-      const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-      const isTest = typeof process !== "undefined" && (process.env?.NODE_ENV === "test" || process.env?.VITEST_WORKER_ID);
-      const isMockId = gpId.startsWith("gp-") || gpId.startsWith("gp");
-      if (!isTest && !isMockId && !UUID_REGEX.test(gpId)) {
-        yield* clientLog("warn", `[SessionSync] Skipping card with non-UUID grammar_point_id: "${gpId}"`);
+      const { tokenState } = yield* Effect.promise(
+        () => import("./authStore.ts"),
+      );
+      const token = tokenState.peek();
+
+      if (!token) {
+        return yield* Effect.fail(
+          new Error(
+            "Audio generation requires an authenticated session.",
+          ),
+        );
+      }
+
+      yield* clientLog(
+        "info",
+        `[SessionSync] Requesting server-side audio enrichment for ${items.length} cards.`,
+      );
+
+      const response = yield* Effect.tryPromise({
+        try: () =>
+          fetch("/api/tts/enrich-session", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({ items }),
+          }),
+        catch: (cause) =>
+          new Error(
+            `Audio enrichment request could not reach the server: ${String(cause)}`,
+          ),
+      });
+
+      const payload = yield* Effect.tryPromise({
+        try: () =>
+          response.json() as Promise<SessionAudioEnrichmentApiResponse>,
+        catch: (cause) =>
+          new Error(
+            `Audio enrichment response was not valid JSON: ${String(cause)}`,
+          ),
+      });
+
+      if (!response.ok) {
+        return yield* Effect.fail(
+          new Error(
+            payload.message ??
+              payload.error ??
+              `Audio enrichment failed with HTTP ${response.status}.`,
+          ),
+        );
+      }
+
+      if (
+        payload.success !== true ||
+        !payload.data ||
+        !Array.isArray(payload.data.items)
+      ) {
+        return yield* Effect.fail(
+          new Error(
+            "Audio enrichment response did not contain a valid result.",
+          ),
+        );
+      }
+
+      return payload.data;
+    }),
+};
+
+const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+const isAcceptedGrammarPointId = (grammarPointId: string): boolean => {
+  const isTest =
+    typeof process !== "undefined" &&
+    (
+      process.env?.NODE_ENV === "test" ||
+      process.env?.VITEST_WORKER_ID
+    );
+  const isMockId =
+    grammarPointId.startsWith("gp-") ||
+    grammarPointId.startsWith("gp");
+
+  return Boolean(
+    isTest ||
+      isMockId ||
+      UUID_REGEX.test(grammarPointId),
+  );
+};
+
+/**
+ * Validates the complete imported payload, enriches missing audio on a
+ * best-effort basis, and only then hydrates activeSessionStore.
+ */
+export const importSessionPayload = (
+  jsonString: string,
+  options: ImportSessionPayloadOptions = {},
+) => {
+  const effect = Effect.gen(function* () {
+    yield* clientLog(
+      "info",
+      "[SessionSync] Parsing imported study session payload...",
+    );
+
+    const cleanedString = cleanJsonString(jsonString);
+    yield* clientLog(
+      "debug",
+      "[SessionSync] Cleaned JSON string prepared for parsing:",
+      `${cleanedString.substring(0, 100)}...`,
+    );
+
+    const parsed = yield* Effect.tryPromise({
+      try: () =>
+        Promise.resolve(
+          JSON.parse(cleanedString) as ImportedPayload,
+        ),
+      catch: (cause) =>
+        new Error(
+          `Invalid JSON syntax in imported study session. Make sure you copied the entire JSON block. Error: ${String(cause)}`,
+        ),
+    });
+
+    const rawCards = parsed?.cards;
+    if (!Array.isArray(rawCards) || rawCards.length === 0) {
+      return yield* Effect.fail(
+        new Error(
+          "Invalid session payload: 'cards' array is missing or empty.",
+        ),
+      );
+    }
+
+    yield* clientLog(
+      "info",
+      `[SessionSync] Validating all ${rawCards.length} imported cards before audio generation.`,
+    );
+    const validatedCards = yield* validateImportedCards(rawCards);
+
+    const acceptedCards: ValidatedImportedCard[] = [];
+    for (const card of validatedCards) {
+      if (!isAcceptedGrammarPointId(card.grammarPointId)) {
+        yield* clientLog(
+          "warn",
+          `[SessionSync] Skipping card with non-UUID grammar_point_id: "${card.grammarPointId}"`,
+        );
         continue;
       }
 
-            // GATING & ACTIVATION: If an imported card belongs to a previously locked grammar point,
-      // initialize its local progress and notify the sync system of activation.
-            if (!activeIds.has(gpId)) {
-        yield* clientLog("info", `[SessionSync] Activating newly introduced grammar point ID: ${gpId}`);
-        
-        const { hlcStore } = yield* Effect.promise(() => import("./hlcStore.ts"));
+      acceptedCards.push(card);
+    }
+
+    if (acceptedCards.length === 0) {
+      return yield* Effect.fail(
+        new Error(
+          "Invalid session payload: no cards remained after grammar point ID validation.",
+        ),
+      );
+    }
+
+    const audioRequests =
+      acceptedCards
+        .filter((card) => card.audioUrl === null)
+        .map((card) => ({
+          requestId: `card-${card.sourceIndex}`,
+          japaneseSentence: card.japaneseSentence,
+        }));
+
+    const audioUrlByRequestId = new Map<string, string>();
+    const audioEnricher =
+      options.audioEnricher ?? requestSessionAudioEnrichment;
+
+    if (audioRequests.length > 0) {
+      const enrichmentAttempt = yield* Effect.either(
+        audioEnricher.enrich(audioRequests),
+      );
+
+      if (enrichmentAttempt._tag === "Left") {
+        yield* clientLog(
+          "warn",
+          `[SessionSync] System-wide audio enrichment failure. Continuing with ${audioRequests.length} cards without generated audio.`,
+          enrichmentAttempt.left,
+        );
+      } else {
+        for (const resultItem of enrichmentAttempt.right.items) {
+          if (
+            typeof resultItem.audioUrl === "string" &&
+            resultItem.audioUrl.trim().length > 0
+          ) {
+            audioUrlByRequestId.set(
+              resultItem.requestId,
+              resultItem.audioUrl,
+            );
+          }
+        }
+
+        yield* clientLog(
+          enrichmentAttempt.right.failedCount > 0
+            ? "warn"
+            : "info",
+          `[SessionSync] Audio enrichment completed. enriched=${enrichmentAttempt.right.enrichedCount}, failed=${enrichmentAttempt.right.failedCount}, requested=${enrichmentAttempt.right.requestedCount}.`,
+        );
+      }
+    } else {
+      yield* clientLog(
+        "info",
+        "[SessionSync] Every imported card already supplied audio; server enrichment was skipped.",
+      );
+    }
+
+    const audioFailedCount = audioRequests.filter(
+      (request) =>
+        !audioUrlByRequestId.has(request.requestId),
+    ).length;
+
+    // Load the local progress store state only after the entire payload has
+    // passed schema validation and audio enrichment has completed.
+    yield* grammarPointStore.load();
+    const localProgress = grammarPointStore.state.peek();
+    const activeIds = new Set(localProgress.map((progress) => progress.id));
+    const now = new Date();
+
+    const sessionCards: SessionCard[] = [];
+    for (const card of acceptedCards) {
+      const grammarPointId = card.grammarPointId;
+
+      if (!activeIds.has(grammarPointId)) {
+        yield* clientLog(
+          "info",
+          `[SessionSync] Activating newly introduced grammar point ID: ${grammarPointId}`,
+        );
+
+        const { hlcStore } = yield* Effect.promise(
+          () => import("./hlcStore.ts"),
+        );
         const currentHlc = yield* hlcStore.tick();
 
         const initialProgress = {
-          id: gpId,
+          id: grammarPointId,
           easeFactor: 2.5,
           repetitions: 0,
           intervalDays: 0,
@@ -332,36 +724,59 @@ export const importSessionPayload = (jsonString: string) => {
           nextReview: now.toISOString(),
           hlc: currentHlc,
         };
-        
-        // Persist locally
+
         yield* grammarPointStore.put(initialProgress);
 
-        // Notify backend through outbox sync transaction
-        const { enqueueTransaction } = yield* Effect.promise(() => import("../sync/OutboxQueue"));
+        const { enqueueTransaction } = yield* Effect.promise(
+          () => import("../sync/OutboxQueue"),
+        );
         yield* enqueueTransaction("record_review", {
-          grammarPointId: gpId,
+          grammarPointId,
           easeFactor: 2.5,
           repetitions: 0,
           intervalDays: 0,
           nextReview: initialProgress.nextReview,
         });
 
-        // Prevent multiple initializations if multiple cards reference the same ID in this payload
-        activeIds.add(gpId);
+        activeIds.add(grammarPointId);
       }
 
+      const generatedAudioUrl = audioUrlByRequestId.get(
+        `card-${card.sourceIndex}`,
+      );
+
       sessionCards.push({
-        grammarPointId: gpId,
-        englishContext: card.english_context,
-        japaneseSentence: card.japanese_sentence,
-        furigana: card.furigana || [],
-        audioUrl: card.audio_url || null,
-        explanation: card.explanation,
+        grammarPointId,
+        englishContext: card.englishContext,
+        japaneseSentence: card.japaneseSentence,
+        furigana: card.furigana,
+        audioUrl: card.audioUrl ?? generatedAudioUrl ?? null,
+        ...(card.explanation
+          ? { explanation: card.explanation }
+          : {}),
       });
     }
 
-    activeSessionStore.loadSession(sessionCards);
-    yield* clientLog("info", `[SessionSync] Successfully imported ${sessionCards.length} dynamic cards into active session.`);
+    activeSessionStore.loadSession(sessionCards, {
+      audioWarning:
+        audioFailedCount > 0
+          ? {
+              missingCount: audioFailedCount,
+              totalCount: sessionCards.length,
+            }
+          : null,
+    });
+
+    yield* clientLog(
+      "info",
+      `[SessionSync] Successfully imported ${sessionCards.length} dynamic cards into active session. audioFailures=${audioFailedCount}.`,
+    );
+
+    return {
+      importedCount: sessionCards.length,
+      audioRequestedCount: audioRequests.length,
+      audioFailedCount,
+    } satisfies ImportSessionPayloadResult;
   });
 
   return effect;

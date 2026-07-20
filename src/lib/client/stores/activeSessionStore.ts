@@ -19,6 +19,15 @@ export interface SessionCard {
   readonly explanation?: string;
 }
 
+export interface SessionAudioWarning {
+  readonly missingCount: number;
+  readonly totalCount: number;
+}
+
+export interface LoadSessionOptions {
+  readonly audioWarning?: SessionAudioWarning | null;
+}
+
 const BATCH_SIZE = 15;
 const SESSION_STORE = createStore("bedrock-lang-session-v1", "session");
 const SESSION_KEY = "active_session_state";
@@ -27,6 +36,7 @@ const masterList = signal<readonly SessionCard[]>([]);
 const state = signal<readonly SessionCard[]>([]);
 const currentIndex = signal<number>(0);
 const batchIndex = signal<number>(0);
+const audioWarning = signal<SessionAudioWarning | null>(null);
 
 const saveSessionState = () =>
   Effect.gen(function* () {
@@ -39,6 +49,7 @@ const saveSessionState = () =>
             state: state.peek(),
             currentIndex: currentIndex.peek(),
             batchIndex: batchIndex.peek(),
+            audioWarning: audioWarning.peek(),
           },
           SESSION_STORE
         ),
@@ -140,6 +151,7 @@ export const activeSessionStore = {
   currentIndex,
   masterList,
   batchIndex,
+  audioWarning,
   
   isFinished: computed(() => {
     const cards = state.value;
@@ -166,6 +178,7 @@ export const activeSessionStore = {
             state: readonly SessionCard[];
             currentIndex: number;
             batchIndex: number;
+            audioWarning?: SessionAudioWarning | null;
           }>(SESSION_KEY, SESSION_STORE),
         catch: (e) => new Error(`Failed to load active session state: ${String(e)}`),
       });
@@ -175,6 +188,7 @@ export const activeSessionStore = {
         state.value = cached.state;
         currentIndex.value = cached.currentIndex;
         batchIndex.value = cached.batchIndex;
+        audioWarning.value = cached.audioWarning ?? null;
         yield* clientLog(
           "info",
           `[activeSessionStore] Session state successfully hydrated. currentIndex: ${cached.currentIndex}, state.length: ${cached.state.length}`
@@ -184,7 +198,10 @@ export const activeSessionStore = {
       }
     }),
   
-  loadSession: (cards: readonly SessionCard[]) => {
+  loadSession: (
+    cards: readonly SessionCard[],
+    options: LoadSessionOptions = {},
+  ) => {
     const weaved = weaveSessionCards(cards);
     const limit = userPreferencesStore.dailyReviewLimit.value;
     const cappedCards = weaved.slice(0, limit);
@@ -192,6 +209,26 @@ export const activeSessionStore = {
     batchIndex.value = 0;
     state.value = cappedCards.slice(0, BATCH_SIZE);
     currentIndex.value = 0;
+    audioWarning.value = options.audioWarning ?? null;
+    if (audioWarning.value) {
+      runClientUnscoped(
+        clientLog(
+          "warn",
+          `[activeSessionStore] Session loaded with ${audioWarning.value.missingCount} of ${audioWarning.value.totalCount} cards missing audio.`,
+        ),
+      );
+    }
+    triggerSave();
+  },
+
+  dismissAudioWarning: () => {
+    audioWarning.value = null;
+    runClientUnscoped(
+      clientLog(
+        "info",
+        "[activeSessionStore] Audio generation warning dismissed.",
+      ),
+    );
     triggerSave();
   },
   
@@ -218,6 +255,7 @@ export const activeSessionStore = {
     state.value = [];
     currentIndex.value = 0;
     batchIndex.value = 0;
+    audioWarning.value = null;
     runClientUnscoped(
       Effect.tryPromise({
         try: () => del(SESSION_KEY, SESSION_STORE),

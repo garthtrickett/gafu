@@ -131,6 +131,7 @@ export class StudySession extends LitElement {
       void activeSessionStore.state.value;
       void activeSessionStore.currentIndex.value;
       void activeSessionStore.batchIndex.value;
+      void activeSessionStore.audioWarning.value;
       this.requestUpdate();
     });
 
@@ -320,6 +321,7 @@ export class StudySession extends LitElement {
     const currentIndex = activeSessionStore.currentIndex.value;
     const isFinished = activeSessionStore.isFinished.value;
     const currentCard = activeSessionStore.currentCard.value;
+    const audioWarning = activeSessionStore.audioWarning.value;
     const { explanationVisible } = this.controller.model;
 
     if (isFinished) {
@@ -381,6 +383,30 @@ export class StudySession extends LitElement {
 
     return html`
       <div class="max-w-xl mx-auto space-y-6">
+        ${audioWarning
+          ? html`
+              <div
+                role="status"
+                class="flex items-start justify-between gap-4 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100"
+              >
+                <p>
+                  Audio could not be generated for
+                  <strong>${audioWarning.missingCount}</strong>
+                  of
+                  <strong>${audioWarning.totalCount}</strong>
+                  imported cards. Reading review is still available.
+                </p>
+                <button
+                  type="button"
+                  @click=${() => activeSessionStore.dismissAudioWarning()}
+                  class="shrink-0 text-xs font-semibold text-amber-200 hover:text-white cursor-pointer"
+                  aria-label="Dismiss audio generation warning"
+                >
+                  Dismiss
+                </button>
+              </div>
+            `
+          : ""}
         <div class="flex items-center justify-between text-xs text-zinc-500">
           <span>Card ${currentIndex + 1} of ${cards.length}</span>
           <span>Progress: ${Math.round((currentIndex / cards.length) * 100)}%</span>

@@ -69,3 +69,32 @@ pnpm tts:smoke
 The canonical cached asset lives beneath `tmp/tts-smoke/assets/tts/`. Its
 identity includes normalized text, language, voice, speaking rate, encoding,
 and synthesis version.
+
+## Step 3 session-import enrichment
+
+The client validates the complete payload before requesting audio. Cards with an
+existing `audio_url` bypass synthesis. Missing audio is sent to the authenticated
+`POST /api/tts/enrich-session` endpoint, where duplicate sentences are collapsed
+before the deterministic TTS asset service is called.
+
+Run the Step 3 checks with Bun:
+
+```bash
+bun run check-types
+bunx vitest run src/lib/client/stores/activeSessionStore.test.ts
+bunx vitest run src/lib/client/stores/sessionSyncStore.test.ts
+bun run test:node
+bun run test:client
+```
+
+Then start the app:
+
+```bash
+bun run dev
+```
+
+Import a representative 15-card payload. Every successful card should expose the
+Listen button. If Google TTS or object storage fails for part of the batch, the
+study session must still load and display one warning summarizing how many cards
+have no audio.
+

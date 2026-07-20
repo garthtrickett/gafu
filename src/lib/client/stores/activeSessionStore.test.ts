@@ -1,7 +1,24 @@
+import { Effect } from "effect";
 import { describe, it, expect, beforeEach } from "vitest";
 import { activeSessionStore, weaveSessionCards, type SessionCard } from "./activeSessionStore.ts";
-import { importSessionPayload } from "./sessionSyncStore.ts";
+import {
+  importSessionPayload,
+  type SessionAudioEnricher,
+} from "./sessionSyncStore.ts";
 import { runClientPromise } from "../runtime.ts";
+
+const successfulAudioEnricher: SessionAudioEnricher = {
+  enrich: (items) =>
+    Effect.succeed({
+      items: items.map((item) => ({
+        requestId: item.requestId,
+        audioUrl: `https://media.example.test/${item.requestId}.mp3`,
+      })),
+      requestedCount: items.length,
+      enrichedCount: items.length,
+      failedCount: 0,
+    }),
+};
 
 const createMockCard = (grammarPointId: string, index: number): SessionCard => ({
   grammarPointId,
@@ -186,7 +203,11 @@ describe("activeSessionStore & weaveSessionCards unit tests", () => {
 
     const jsonString = JSON.stringify(mockPayload);
 
-    await runClientPromise(importSessionPayload(jsonString));
+    await runClientPromise(
+      importSessionPayload(jsonString, {
+        audioEnricher: successfulAudioEnricher,
+      }),
+    );
 
     const masterList = activeSessionStore.masterList.value;
     expect(masterList).toHaveLength(3);
@@ -194,4 +215,28 @@ describe("activeSessionStore & weaveSessionCards unit tests", () => {
     expect(masterList[0]?.grammarPointId).not.toBe(masterList[1]?.grammarPointId);
     expect(masterList[1]?.grammarPointId).not.toBe(masterList[2]?.grammarPointId);
   });
+
+it("stores and dismisses the imported-session audio warning", () => {
+  const cards = [
+    createMockCard("A", 1),
+    createMockCard("B", 1),
+  ];
+
+  activeSessionStore.loadSession(cards, {
+    audioWarning: {
+      missingCount: 1,
+      totalCount: 2,
+    },
+  });
+
+  expect(activeSessionStore.audioWarning.value).toEqual({
+    missingCount: 1,
+    totalCount: 2,
+  });
+
+  activeSessionStore.dismissAudioWarning();
+
+  expect(activeSessionStore.audioWarning.value).toBeNull();
+});
+
 });
