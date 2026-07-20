@@ -1,7 +1,8 @@
-# Google Cloud TTS smoke probe
+# Google Cloud TTS deterministic asset smoke test
 
-The probe is server-only and fixed to `ja-JP-Neural2-B`, MP3, and a
-`0.95` speaking rate. Never place Google credentials in a `VITE_` variable.
+The server-side synthesis path is fixed initially to `ja-JP-Neural2-B`,
+MP3, a `0.95` speaking rate, and synthesis version `1`. Never place Google
+credentials in a `VITE_` variable.
 
 ## One-time setup
 
@@ -27,17 +28,36 @@ curl -sS \
   | grep -F "ja-JP-Neural2-B"
 ```
 
-## Tests
+## Step 2 tests
 
 ```bash
 pnpm install
 pnpm check-types
+pnpm vitest run src/lib/server/media
 pnpm test:node
+```
+
+The optional real-provider integration test is disabled by default:
+
+```bash
+pnpm tts:test:integration
+```
+
+## Deterministic smoke run
+
+Run the same sentence twice:
+
+```bash
+pnpm tts:smoke
 pnpm tts:smoke
 ```
 
-Play `tmp/tts-smoke/ja-JP-Neural2-B.mp3` and confirm the complete sentence
-`今日は日本語の勉強を続けます。` is pronounced correctly.
+The first run should report `miss`. The second should report `hit` and should
+not call Google again. Both runs maintain a playable convenience copy at
+`tmp/tts-smoke/ja-JP-Neural2-B.mp3`.
+
+Confirm the complete sentence `今日は日本語の勉強を続けます。` is pronounced
+correctly.
 
 The probe must fail clearly without exposing the credential path:
 
@@ -45,3 +65,7 @@ The probe must fail clearly without exposing the credential path:
 GOOGLE_APPLICATION_CREDENTIALS=/definitely/missing/google.json \
 pnpm tts:smoke
 ```
+
+The canonical cached asset lives beneath `tmp/tts-smoke/assets/tts/`. Its
+identity includes normalized text, language, voice, speaking rate, encoding,
+and synthesis version.
