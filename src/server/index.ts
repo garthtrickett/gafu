@@ -1,4 +1,5 @@
 import { Elysia } from "elysia";
+import { Buffer } from "node:buffer";
 import { existsSync, mkdirSync } from "node:fs";
 
 // Ensure the dist/assets directory exists so @elysiajs/static doesn't crash on startup during development
@@ -69,6 +70,27 @@ export const app = new Elysia()
   .get("/icon-192.png", () => Bun.file("./dist/icon-192.png"))
   .get("/icon-512.png", () => Bun.file("./dist/icon-512.png"))
   .get("/apple-touch-icon.png", () => Bun.file("./dist/apple-touch-icon.png"))
+  .get("/api/__e2e__/tts-audio.mp3", ({ set }) => {
+    if (process.env.PLAYWRIGHT_TEST !== "1") {
+      set.status = 404;
+      return "Not found";
+    }
+
+    return new Response(
+      Buffer.from(
+        "SUQzBAAAAAAAIlRTU0UAAAAOAAADTGF2ZjYxLjcuMTAwAAAAAAAAAAAAAAD/84TAAAAAAAAAAAAASW5mbwAAAA8AAAANAAAB+ABtbW1tbW1teXl5eXl5eXmGhoaGhoaGhpKSkpKSkpKenp6enp6enqqqqqqqqqqqtra2tra2tsPDw8PDw8PDz8/Pz8/Pz8/b29vb29vb5+fn5+fn5+fz8/Pz8/Pz8/////////8AAAAATGF2YzYxLjE5AAAAAAAAAAAAAAAAJAOQAAAAAAAAAfjBOg2nAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/8xTEAAAAA0gAAAAATEFNRTMuMTAwVVX/8xTECwAAA0gAAAAAVVVVVVVVVVVVVVX/8xTEFgAAA0gAAAAAVVVVVVVVVVVVVVX/8xTEIQAAA0gAAAAAVVVVVVVVVVVVVVX/8xTELAAAA0gAAAAAVVVVVVVVVVVVVVX/8xTENwAAA0gAAAAAVVVVVVVVVVVVVVX/8xTEQgAAA0gAAAAAVVVVVVVVVVVVVVX/8xTETQAAA0gAAAAAVVVVVVVVVVVVVVX/8xTEWAAAA0gAAAAAVVVVVVVVVVVVVVX/8xTEYwAAA0gAAAAAVVVVVVVVVVVVVVX/8xTEbgAAA0gAAAAAVVVVVVVVVVVVVVX/8xTEeQAAA0gAAAAAVVVVVVVVVVVVVVX/8xTEhAAAA0gAAAAAVVVVVVVVVVVVVVU=",
+        "base64",
+      ),
+      {
+        status: 200,
+        headers: {
+          "Content-Type": "audio/mpeg",
+          "Cache-Control":
+            "public, max-age=31536000, immutable",
+        },
+      },
+    );
+  })
   .get("*", ({ request, set }) => {
     const url = new URL(request.url);
     const pathname = url.pathname;

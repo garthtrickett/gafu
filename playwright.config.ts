@@ -46,7 +46,7 @@ export default defineConfig({
   ],
 
   webServer: {
-    command: "npm run dev",
+    command: "bun run dev:offline",
     url: "http://127.0.0.1:3001",
     reuseExistingServer: false,
     stdout: "pipe",
@@ -57,7 +57,9 @@ export default defineConfig({
       DATABASE_URL: TEST_DB_URL,
       PORT: "3001",
       BACKEND_PORT: "42070",
-      VITE_SILENT_CLIENT_LOGGING: "true"
+      VITE_SILENT_CLIENT_LOGGING: "true",
+      VITE_PWA_DEV: "true",
+      PLAYWRIGHT_TEST: "1"
     }
   },
 });

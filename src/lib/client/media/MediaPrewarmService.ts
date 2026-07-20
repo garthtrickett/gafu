@@ -3,104 +3,333 @@ import { isOnlineState } from "../stores/syncStore";
 import { clientLog } from "../clientLog";
 import { runClientUnscoped } from "../runtime";
 
-const PREWARM_WINDOW_SIZE = 10; // Number of future review cards to prewarm
-const CACHE_NAME = "learning-audio-media";
+const PREWARM_WINDOW_SIZE = 30;
+export const AUDIO_CACHE_NAME = "learning-audio-media";
 
 interface CardMetadata {
-  readonly id: string;
-  readonly audioUrl?: string;
+  readonly audioUrl?: string | null;
   readonly nextReview: string;
 }
 
+interface AudioCacheLike {
+  readonly match: (
+    request: string,
+  ) => Promise<Response | undefined>;
+  readonly put: (
+    request: string,
+    response: Response,
+  ) => Promise<void>;
+}
+
+export interface AudioPrewarmDependencies {
+  readonly openCache: (
+    cacheName: string,
+  ) => Promise<AudioCacheLike>;
+  readonly fetchAudio: (
+    url: string,
+    init: RequestInit,
+  ) => Promise<Response>;
+}
+
+export interface AudioPrewarmSummary {
+  readonly targetCount: number;
+  readonly alreadyCachedCount: number;
+  readonly cachedCount: number;
+  readonly failedCount: number;
+  readonly skipped: boolean;
+}
+
+const browserDependencies =
+  (): AudioPrewarmDependencies | null => {
+    if (
+      typeof caches === "undefined" ||
+      typeof fetch === "undefined"
+    ) {
+      return null;
+    }
+
+    return {
+      openCache: (cacheName) =>
+        caches.open(cacheName),
+      fetchAudio: (url, init) =>
+        fetch(url, init),
+    };
+  };
+
+const normalizedAudioUrls = (
+  urls: readonly string[],
+): readonly string[] =>
+  [
+    ...new Set(
+      urls
+        .map((url) => url.trim())
+        .filter(
+          (url) =>
+            URL.canParse(url) &&
+            (
+              new URL(url).protocol === "http:" ||
+              new URL(url).protocol === "https:"
+            ),
+        ),
+    ),
+  ];
+
+const normalizedContentType = (
+  response: Response,
+): string =>
+  response.headers
+    .get("content-type")
+    ?.split(";", 1)[0]
+    ?.trim()
+    .toLowerCase() ?? "";
+
+export const prewarmAudioUrls = (
+  urls: readonly string[],
+  dependencies?: AudioPrewarmDependencies,
+): Effect.Effect<AudioPrewarmSummary, Error> =>
+  Effect.gen(function* () {
+    const targetUrls = normalizedAudioUrls(urls);
+    const resolvedDependencies =
+      dependencies ?? browserDependencies();
+
+    if (!resolvedDependencies) {
+      yield* clientLog(
+        "debug",
+        "[MediaPrewarm] Cache API unavailable; audio prewarm skipped.",
+      );
+      return {
+        targetCount: targetUrls.length,
+        alreadyCachedCount: 0,
+        cachedCount: 0,
+        failedCount: 0,
+        skipped: true,
+      };
+    }
+
+    if (targetUrls.length === 0) {
+      return {
+        targetCount: 0,
+        alreadyCachedCount: 0,
+        cachedCount: 0,
+        failedCount: 0,
+        skipped: false,
+      };
+    }
+
+    const cache = yield* Effect.tryPromise({
+      try: () =>
+        resolvedDependencies.openCache(
+          AUDIO_CACHE_NAME,
+        ),
+      catch: (cause) =>
+        new Error(
+          `Failed to open the audio Cache API store: ${String(cause)}`,
+        ),
+    });
+
+    let alreadyCachedCount = 0;
+    const missingUrls: string[] = [];
+
+    for (const url of targetUrls) {
+      const match = yield* Effect.tryPromise({
+        try: () => cache.match(url),
+        catch: (cause) =>
+          new Error(
+            `Failed to inspect the audio cache: ${String(cause)}`,
+          ),
+      });
+
+      if (match) {
+        alreadyCachedCount += 1;
+      } else {
+        missingUrls.push(url);
+      }
+    }
+
+    yield* clientLog(
+      "info",
+      `[MediaPrewarm] Preparing ${missingUrls.length} uncached audio assets from ${targetUrls.length} targets.`,
+    );
+
+    const outcomes = yield* Effect.forEach(
+      missingUrls,
+      (url) =>
+        Effect.gen(function* () {
+          const result = yield* Effect.either(
+            Effect.tryPromise({
+              try: () =>
+                resolvedDependencies.fetchAudio(url, {
+                  mode: "cors",
+                  credentials: "omit",
+                  priority: "low",
+                }),
+              catch: (cause) =>
+                new Error(
+                  `Audio fetch failed: ${String(cause)}`,
+                ),
+            }),
+          );
+
+          if (result._tag === "Left") {
+            yield* clientLog(
+              "warn",
+              `[MediaPrewarm] Network failure while prewarming ${url}.`,
+              result.left,
+            );
+            return false;
+          }
+
+          const response = result.right;
+          const contentType =
+            normalizedContentType(response);
+
+          if (
+            !response.ok ||
+            response.type === "opaque" ||
+            contentType !== "audio/mpeg"
+          ) {
+            yield* clientLog(
+              "warn",
+              `[MediaPrewarm] Rejected audio response url=${url} status=${response.status} type=${response.type} contentType=${contentType || "missing"}.`,
+            );
+            return false;
+          }
+
+          const cacheResult = yield* Effect.either(
+            Effect.tryPromise({
+              try: () =>
+                cache.put(url, response.clone()),
+              catch: (cause) =>
+                new Error(
+                  `Failed to cache audio: ${String(cause)}`,
+                ),
+            }),
+          );
+
+          if (cacheResult._tag === "Left") {
+            yield* clientLog(
+              "warn",
+              `[MediaPrewarm] Cache write failed for ${url}.`,
+              cacheResult.left,
+            );
+            return false;
+          }
+
+          yield* clientLog(
+            "info",
+            `[MediaPrewarm] Cached audio asset ${url}.`,
+          );
+          return true;
+        }),
+      { concurrency: 3 },
+    );
+
+    const cachedCount = outcomes.filter(Boolean).length;
+    const failedCount =
+      outcomes.length - cachedCount;
+
+    yield* clientLog(
+      failedCount > 0 ? "warn" : "info",
+      `[MediaPrewarm] Cycle complete. targets=${targetUrls.length}, existing=${alreadyCachedCount}, cached=${cachedCount}, failed=${failedCount}.`,
+    );
+
+    return {
+      targetCount: targetUrls.length,
+      alreadyCachedCount,
+      cachedCount,
+      failedCount,
+      skipped: false,
+    };
+  });
+
 const getUpcomingReviewAudioUrls = () =>
   Effect.gen(function* () {
-    const { srsStore } = yield* Effect.promise(() => import("../stores/srsStore"));
+    const { srsStore } = yield* Effect.promise(
+      () => import("../stores/srsStore"),
+    );
+    const { activeSessionStore } =
+      yield* Effect.promise(
+        () =>
+          import(
+            "../stores/activeSessionStore.ts"
+          ),
+      );
 
-    const srsList = srsStore.state.peek() as CardMetadata[];
+    const srsList =
+      srsStore.state.peek() as CardMetadata[];
     const now = Date.now();
 
-    const sortedUpcoming = [...srsList]
-      .filter((c) => c.audioUrl && new Date(c.nextReview).getTime() > now - 86400000)
-      .sort((a, b) => new Date(a.nextReview).getTime() - new Date(b.nextReview).getTime())
-      .slice(0, PREWARM_WINDOW_SIZE);
+    const upcomingSrsUrls = [...srsList]
+      .filter(
+        (card) =>
+          card.audioUrl &&
+          new Date(card.nextReview).getTime() >
+            now - 86_400_000,
+      )
+      .sort(
+        (left, right) =>
+          new Date(left.nextReview).getTime() -
+          new Date(right.nextReview).getTime(),
+      )
+      .flatMap((card) =>
+        typeof card.audioUrl === "string"
+          ? [card.audioUrl]
+          : [],
+      );
 
-    const urls = sortedUpcoming
-      .map((c) => c.audioUrl)
-      .filter((url): url is string => typeof url === "string" && url.startsWith("http"));
+    const activeSessionUrls =
+      activeSessionStore.masterList
+        .peek()
+        .flatMap((card) =>
+          typeof card.audioUrl === "string"
+            ? [card.audioUrl]
+            : [],
+        );
 
-    return urls;
+    return normalizedAudioUrls([
+      ...activeSessionUrls,
+      ...upcomingSrsUrls,
+    ]).slice(0, PREWARM_WINDOW_SIZE);
   });
 
 export const runPrewarmCycle = () =>
   Effect.gen(function* () {
     if (!isOnlineState.value) {
-      yield* clientLog("debug", "[MediaPrewarm] Offline. Skipping prewarm loop.");
+      yield* clientLog(
+        "debug",
+        "[MediaPrewarm] Offline. Skipping prewarm loop.",
+      );
       return;
     }
 
-    if (!('caches' in window)) {
+    const targetUrls =
+      yield* getUpcomingReviewAudioUrls();
+
+    if (targetUrls.length === 0) {
+      yield* clientLog(
+        "debug",
+        "[MediaPrewarm] No audio targets are currently eligible for prewarming.",
+      );
       return;
     }
 
-    const targetUrls = yield* getUpcomingReviewAudioUrls();
-    if (targetUrls.length === 0) return;
-
-    yield* clientLog("info", `[MediaPrewarm] Scanning queue. Validating ${targetUrls.length} assets...`);
-
-    const cache = yield* Effect.tryPromise({
-      try: () => caches.open(CACHE_NAME),
-      catch: (e) => new Error(`Failed to open Cache API: ${String(e)}`),
-    });
-
-    const missingUrls: string[] = [];
-
-    for (const url of targetUrls) {
-      const match = yield* Effect.promise(() => cache.match(url));
-      if (!match) {
-        missingUrls.push(url);
-      }
-    }
-
-    if (missingUrls.length === 0) {
-      yield* clientLog("debug", "[MediaPrewarm] All upcoming audio assets are cached locally.");
-      return;
-    }
-
-    yield* clientLog("info", `[MediaPrewarm] Prefetching ${missingUrls.length} missing audio assets...`);
-
-        yield* Effect.forEach(
-      missingUrls,
-      (url) =>
-        Effect.tryPromise({
-          try: () =>
-            fetch(url, { mode: "cors", priority: "low" }).then(async (res) => {
-              if (res.ok) {
-                await cache.put(url, res);
-              } else {
-                throw new Error(`Server returned HTTP status ${res.status}`);
-              }
-            }),
-          catch: (e) => new Error(`Fetch failed for ${url}: ${String(e)}`),
-        }).pipe(
-          Effect.catchAll((err) =>
-            clientLog("warn", `[MediaPrewarm] Failed to prewarm asset: ${url}`, err)
-          )
-        ),
-      { concurrency: 3 }
-    );
-
-    yield* clientLog("info", "[MediaPrewarm] Prefetching cycle complete.");
+    yield* prewarmAudioUrls(targetUrls);
   });
 
 export const startMediaPrewarmEngine = () => {
-  const prewarmSchedule = Schedule.spaced("5 minutes");
+  const prewarmSchedule =
+    Schedule.spaced("5 minutes");
   const prewarmLoop = Effect.gen(function* () {
     yield* runPrewarmCycle();
   }).pipe(
-    Effect.catchAll((err) =>
-      clientLog("error", "[MediaPrewarm] Prewarm loop failed", err)
+    Effect.catchAll((error) =>
+      clientLog(
+        "error",
+        "[MediaPrewarm] Prewarm loop failed",
+        error,
+      ),
     ),
-    Effect.repeat(prewarmSchedule)
+    Effect.repeat(prewarmSchedule),
   );
 
   runClientUnscoped(prewarmLoop);

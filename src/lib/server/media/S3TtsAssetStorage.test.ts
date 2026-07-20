@@ -10,16 +10,22 @@ import {
   it,
   vi,
 } from "vitest";
+import {
+  TtsAssetStorageError,
+} from "./TtsAssetService.ts";
 import { makeS3TtsAssetStorage } from "./S3TtsAssetStorage.ts";
 
 describe("S3TtsAssetStorage", () => {
-  it("returns the deterministic public URL when the object exists", async () => {
+  it("returns an absolute deterministic HTTP URL when the MP3 object exists", async () => {
     const send = vi.fn(
       (
         _command:
           | HeadObjectCommand
           | PutObjectCommand,
-      ) => Promise.resolve({}),
+      ) =>
+        Promise.resolve({
+          ContentType: "audio/mpeg",
+        }),
     );
     const storage = makeS3TtsAssetStorage({
       bucketName: "test-bucket",
@@ -49,7 +55,9 @@ describe("S3TtsAssetStorage", () => {
       ) =>
         Promise.reject({
           name: "NotFound",
-          $metadata: { httpStatusCode: 404 },
+          $metadata: {
+            httpStatusCode: 404,
+          },
         }),
     );
     const storage = makeS3TtsAssetStorage({
@@ -65,7 +73,53 @@ describe("S3TtsAssetStorage", () => {
     expect(result).toBeNull();
   });
 
-  it("writes immutable MP3 content at the supplied key", async () => {
+  it("rejects persisted objects with the wrong content type", async () => {
+    const storage = makeS3TtsAssetStorage({
+      bucketName: "test-bucket",
+      publicBaseUrl: "https://media.test",
+      send: vi.fn(() =>
+        Promise.resolve({
+          ContentType: "application/octet-stream",
+        }),
+      ),
+    });
+
+    const result = await Effect.runPromise(
+      Effect.either(
+        storage.find("tts/ja-JP/bad.mp3"),
+      ),
+    );
+
+    expect(result._tag).toBe("Left");
+    if (result._tag === "Left") {
+      expect(result.left).toBeInstanceOf(
+        TtsAssetStorageError,
+      );
+      expect(result.left.message).toContain(
+        "audio/mpeg",
+      );
+    }
+  });
+
+  it("rejects non-HTTP public asset bases", async () => {
+    const send = vi.fn(() => Promise.resolve({}));
+    const storage = makeS3TtsAssetStorage({
+      bucketName: "test-bucket",
+      publicBaseUrl: "s3://private-bucket",
+      send,
+    });
+
+    const result = await Effect.runPromise(
+      Effect.either(
+        storage.find("tts/ja-JP/example.mp3"),
+      ),
+    );
+
+    expect(result._tag).toBe("Left");
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it("writes immutable inline MP3 content at the supplied key", async () => {
     const send = vi.fn(
       (
         _command:
@@ -103,6 +157,7 @@ describe("S3TtsAssetStorage", () => {
         Bucket: "test-bucket",
         Key: "tts/ja-JP/example.mp3",
         ContentType: "audio/mpeg",
+        ContentDisposition: "inline",
         CacheControl:
           "public, max-age=31536000, immutable",
       });

@@ -1,0 +1,15 @@
+<CORSConfiguration>
+  <CORSRule>
+    <AllowedOrigin>http://localhost:3005</AllowedOrigin>
+    <AllowedOrigin>http://127.0.0.1:3005</AllowedOrigin>
+    <AllowedOrigin>http://localhost:3001</AllowedOrigin>
+    <AllowedOrigin>http://127.0.0.1:3001</AllowedOrigin>
+    <AllowedMethod>GET</AllowedMethod>
+    <AllowedMethod>HEAD</AllowedMethod>
+    <AllowedHeader>*</AllowedHeader>
+    <ExposeHeader>ETag</ExposeHeader>
+    <ExposeHeader>Content-Type</ExposeHeader>
+    <ExposeHeader>Cache-Control</ExposeHeader>
+    <MaxAgeSeconds>3600</MaxAgeSeconds>
+  </CORSRule>
+</CORSConfiguration>

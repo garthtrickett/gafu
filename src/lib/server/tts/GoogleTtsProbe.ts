@@ -55,6 +55,7 @@ export class GoogleTtsProbeError extends Data.TaggedError(
 )<{
   readonly kind: ProbeFailureKind;
   readonly message: string;
+  readonly retryable?: boolean;
 }> {}
 
 const errorMessage = (cause: unknown): string =>
@@ -82,6 +83,18 @@ const errorCode = (
     : undefined;
 };
 
+const isTransientGoogleFailure = (
+  code: string | number | undefined,
+  message: string,
+): boolean =>
+  code === 4 ||
+  code === "4" ||
+  code === 14 ||
+  code === "14" ||
+  /DEADLINE_EXCEEDED|UNAVAILABLE|ECONNRESET|ETIMEDOUT|EAI_AGAIN|socket hang up/i.test(
+    message,
+  );
+
 const sanitizeGoogleFailure = (
   cause: unknown,
 ): GoogleTtsProbeError => {
@@ -106,6 +119,7 @@ const sanitizeGoogleFailure = (
       kind: "authentication",
       message:
         "Google Cloud Application Default Credentials are unavailable. Run 'gcloud auth application-default login' or configure a readable server-side GOOGLE_APPLICATION_CREDENTIALS file.",
+      retryable: false,
     });
   }
 
@@ -120,12 +134,17 @@ const sanitizeGoogleFailure = (
       kind: "provider",
       message:
         "Google Cloud Text-to-Speech access was denied. Confirm billing and texttospeech.googleapis.com are enabled for the ADC project.",
+      retryable: false,
     });
   }
 
+  const retryable = isTransientGoogleFailure(code, message);
   return new GoogleTtsProbeError({
     kind: "provider",
-    message: "Google Cloud Text-to-Speech request failed.",
+    message: retryable
+      ? "Google Cloud Text-to-Speech is temporarily unavailable."
+      : "Google Cloud Text-to-Speech request failed.",
+    retryable,
   });
 };
 

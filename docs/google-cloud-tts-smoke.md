@@ -31,16 +31,16 @@ curl -sS \
 ## Step 2 tests
 
 ```bash
-pnpm install
-pnpm check-types
-pnpm vitest run src/lib/server/media
-pnpm test:node
+bun install
+bun run check-types
+bunx vitest run src/lib/server/media
+bun run test:node
 ```
 
 The optional real-provider integration test is disabled by default:
 
 ```bash
-pnpm tts:test:integration
+bun run tts:test:integration
 ```
 
 ## Deterministic smoke run
@@ -48,8 +48,8 @@ pnpm tts:test:integration
 Run the same sentence twice:
 
 ```bash
-pnpm tts:smoke
-pnpm tts:smoke
+bun run tts:smoke
+bun run tts:smoke
 ```
 
 The first run should report `miss`. The second should report `hit` and should
@@ -63,7 +63,7 @@ The probe must fail clearly without exposing the credential path:
 
 ```bash
 GOOGLE_APPLICATION_CREDENTIALS=/definitely/missing/google.json \
-pnpm tts:smoke
+bun run tts:smoke
 ```
 
 The canonical cached asset lives beneath `tmp/tts-smoke/assets/tts/`. Its
@@ -97,4 +97,88 @@ Import a representative 15-card payload. Every successful card should expose the
 Listen button. If Google TTS or object storage fails for part of the batch, the
 study session must still load and display one warning summarizing how many cards
 have no audio.
+
+## Step 4 production safeguards
+
+Static card assets are Google-only. `STATIC_CARD_AUDIO_PROVIDER` defaults to
+`google`; setting it to `vapi` or another provider causes the enrichment route
+to fail closed before synthesis. Vapi is not used for deterministic card audio.
+
+The default server-side safeguards are:
+
+- `TTS_MAX_ITEMS_PER_IMPORT=100`
+- `TTS_DAILY_SYNTHESIS_LIMIT=200`
+- `TTS_CONCURRENCY_LIMIT=3`
+- `TTS_MAX_TRANSIENT_RETRIES=2`
+- `TTS_RETRY_BASE_DELAY_MS=250`
+- `PUBLIC_TTS_BASE_URL` falls back to the existing `PUBLIC_AVATAR_URL`
+
+The daily ceiling is stored in PostgreSQL and counts cache-miss synthesis
+attempts. Cache hits do not consume the daily budget. Apply the migration before
+running the server:
+
+```bash
+bun run db:migrate
+```
+
+Google retries are restricted to transient `UNAVAILABLE` and
+`DEADLINE_EXCEEDED` failures. Authentication, permission, malformed audio,
+configuration, storage, and daily-limit failures are not retried.
+
+### Object-storage CORS
+
+Local MinIO applies `config/minio-tts-cors.xml` during bucket creation. For a
+remote S3-compatible bucket, configure the application origins explicitly:
+
+```bash
+TTS_CORS_ALLOWED_ORIGINS="https://your-app.example" \
+bun run tts:configure-cors
+```
+
+After generating an asset, verify its public URL, CORS response, immutable cache
+metadata, `audio/mpeg` content type, and MP3 header:
+
+```bash
+TTS_ASSET_URL="https://media.example/tts/ja-JP/..." \
+TTS_APP_ORIGIN="https://your-app.example" \
+bun run tts:verify-asset
+```
+
+Never use credential-bearing variables beginning with `VITE_`. Development and
+production builds fail early if Google, AWS, TTS, or Vapi credentials are
+detected in client-exposed environment variables.
+
+### Step 4 tests
+
+```bash
+bun run check-types
+bun run test:node
+bun run test:client
+bun run test:e2e
+bun run build
+```
+
+The E2E suite enables the development service worker and confirms that a valid
+MP3 is cached in `learning-audio-media`, the page reloads offline, and the audio
+element can load the cached response.
+
+### Manual online and offline verification
+
+Start the PWA-enabled development environment:
+
+```bash
+bun run dev:offline
+```
+
+1. Import a representative payload and wait for the
+   `[MediaPrewarm] Cycle complete` or immediate prewarm log.
+2. Play several cards and confirm each audio request returns HTTP 200 with
+   `Content-Type: audio/mpeg`.
+3. In browser DevTools, confirm the URLs exist under Cache Storage →
+   `learning-audio-media`.
+4. Switch the browser network to Offline and reload the study route.
+5. Confirm the session hydrates from IndexedDB and cached audio still loads.
+
+For ordinary development without a service worker, continue using
+`bun run dev`.
 

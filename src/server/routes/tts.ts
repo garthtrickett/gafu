@@ -2,17 +2,33 @@ import { Elysia, t } from "elysia";
 import { Effect } from "effect";
 import { InvalidCredentialsError } from "../../features/auth/Errors.ts";
 import { validateToken } from "../../lib/server/JwtService.ts";
-import { makeGoogleTtsProvider, validateGoogleCredentialsEnvironment } from "../../lib/server/media/GoogleTtsProvider.ts";
+import { config } from "../../lib/server/Config.ts";
+import {
+  makeGoogleTtsProvider,
+  validateGoogleCredentialsEnvironment,
+  validateStaticCardAudioProvider,
+} from "../../lib/server/media/GoogleTtsProvider.ts";
 import { makeS3TtsAssetStorage } from "../../lib/server/media/S3TtsAssetStorage.ts";
 import { enrichSessionAudio } from "../../lib/server/media/SessionAudioEnrichmentService.ts";
 import {
   TtsProviderError,
   makeTtsAssetService,
 } from "../../lib/server/media/TtsAssetService.ts";
+import { makePostgresTtsSynthesisBudget } from "../../lib/server/media/TtsSynthesisBudget.ts";
 import { effectPlugin } from "../middleware/effect-plugin.ts";
 
+const ttsUsageBudget = makePostgresTtsSynthesisBudget(
+  config.tts.dailySynthesisLimit,
+);
+
 const ttsAssetService = makeTtsAssetService(
-  makeGoogleTtsProvider(),
+  makeGoogleTtsProvider(undefined, {
+    usageBudget: ttsUsageBudget,
+    maxTransientRetries:
+      config.tts.maxTransientRetries,
+    retryBaseDelayMs:
+      config.tts.retryBaseDelayMs,
+  }),
   makeS3TtsAssetStorage(),
 );
 
@@ -27,7 +43,9 @@ const extractBearerToken = (
   return token.length > 0 ? token : null;
 };
 
-const isAuthorizationFailure = (error: unknown): boolean =>
+const isAuthorizationFailure = (
+  error: unknown,
+): boolean =>
   error instanceof InvalidCredentialsError ||
   (
     typeof error === "object" &&
@@ -40,14 +58,28 @@ const isAuthorizationFailure = (error: unknown): boolean =>
     )
   );
 
-export const ttsRoutes = new Elysia({ prefix: "/api/tts" })
+export const ttsRoutes = new Elysia({
+  prefix: "/api/tts",
+})
   .use(effectPlugin)
   .post(
     "/enrich-session",
-    async ({ body, headers, set, runEffect }) => {
+    async ({
+      body,
+      headers,
+      set,
+      runEffect,
+    }) => {
+      const requestId = crypto.randomUUID();
+
       const enrichmentEffect = Effect.gen(function* () {
         yield* Effect.logInfo(
-          `[TtsRoutes] Received session enrichment batch with ${body.items.length} items.`,
+          "[TtsRoutes] enrichment_request_received",
+          {
+            event: "tts_enrichment_request",
+            requestId,
+            itemCount: body.items.length,
+          },
         );
 
         const token = extractBearerToken(
@@ -56,7 +88,11 @@ export const ttsRoutes = new Elysia({ prefix: "/api/tts" })
 
         if (!token) {
           yield* Effect.logWarning(
-            "[TtsRoutes] Rejected audio enrichment request without a bearer token.",
+            "[TtsRoutes] authorization_missing",
+            {
+              event: "tts_authorization_missing",
+              requestId,
+            },
           );
           return yield* Effect.fail(
             new InvalidCredentialsError(),
@@ -65,14 +101,39 @@ export const ttsRoutes = new Elysia({ prefix: "/api/tts" })
 
         const user = yield* validateToken(token);
         yield* Effect.logInfo(
-          `[TtsRoutes] Authorized session audio enrichment for userId=${user.id}.`,
+          "[TtsRoutes] enrichment_authorized",
+          {
+            event: "tts_enrichment_authorized",
+            requestId,
+            userId: user.id,
+          },
         );
 
+        if (
+          body.items.length >
+          config.tts.maxItemsPerImport
+        ) {
+          return yield* Effect.fail(
+            new TtsProviderError({
+              kind: "limit",
+              message: `A single audio enrichment import may contain at most ${config.tts.maxItemsPerImport} cards.`,
+              retryable: false,
+            }),
+          );
+        }
+
+        yield* validateStaticCardAudioProvider(
+          config.tts.staticCardProvider,
+        );
         yield* validateGoogleCredentialsEnvironment();
 
         return yield* enrichSessionAudio(
           body.items,
           ttsAssetService,
+          {
+            concurrencyLimit:
+              config.tts.concurrencyLimit,
+          },
         );
       });
 
@@ -87,45 +148,95 @@ export const ttsRoutes = new Elysia({ prefix: "/api/tts" })
           set.status = 401;
           await runEffect(
             Effect.logWarning(
-              "[TtsRoutes] Session enrichment authorization failed.",
+              "[TtsRoutes] enrichment_authorization_failed",
+              {
+                event:
+                  "tts_enrichment_authorization_failed",
+                requestId,
+              },
             ),
           );
           return {
             success: false,
             error: "Unauthorized",
+            requestId,
           };
         }
 
         if (error instanceof TtsProviderError) {
-          set.status = 503;
+          set.status =
+            error.kind === "limit" ? 429 : 503;
           await runEffect(
             Effect.logWarning(
-              `[TtsRoutes] Google TTS unavailable before batch execution. kind=${error.kind}`,
+              "[TtsRoutes] enrichment_unavailable",
+              {
+                event: "tts_enrichment_unavailable",
+                requestId,
+                kind: error.kind,
+                retryable:
+                  error.retryable === true,
+              },
             ),
           );
           return {
             success: false,
-            error: "TTS unavailable",
+            error:
+              error.kind === "limit"
+                ? "TTS limit reached"
+                : "TTS unavailable",
             kind: error.kind,
             message: error.message,
+            requestId,
           };
         }
 
         set.status = 500;
         await runEffect(
           Effect.logError(
-            "[TtsRoutes] Unexpected session enrichment failure.",
+            "[TtsRoutes] enrichment_unexpected_failure",
+            {
+              event:
+                "tts_enrichment_unexpected_failure",
+              requestId,
+            },
           ),
         );
         return {
           success: false,
           error: "Internal Server Error",
+          requestId,
         };
       }
+
+      await runEffect(
+        Effect.logInfo(
+          "[TtsRoutes] enrichment_request_completed",
+          {
+            event: "tts_enrichment_request_completed",
+            requestId,
+            requestedCount:
+              result.right.requestedCount,
+            uniqueSentenceCount:
+              result.right.uniqueSentenceCount,
+            enrichedCount:
+              result.right.enrichedCount,
+            failedCount: result.right.failedCount,
+          },
+        ),
+      );
 
       return {
         success: true,
         data: result.right,
+        requestId,
+        limits: {
+          maxItemsPerImport:
+            config.tts.maxItemsPerImport,
+          dailySynthesisLimit:
+            config.tts.dailySynthesisLimit,
+          concurrencyLimit:
+            config.tts.concurrencyLimit,
+        },
       };
     },
     {
@@ -143,7 +254,7 @@ export const ttsRoutes = new Elysia({ prefix: "/api/tts" })
           }),
           {
             minItems: 1,
-            maxItems: 20,
+            maxItems: 100,
           },
         ),
       }),

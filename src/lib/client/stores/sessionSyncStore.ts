@@ -9,6 +9,7 @@ import {
 } from "./grammarPointStore.ts";
 import { activeSessionStore, type SessionCard, type FuriganaSegment } from "./activeSessionStore.ts";
 import { clientLog } from "../clientLog.ts";
+import { prewarmAudioUrls } from "../media/MediaPrewarmService.ts";
 import kaishiPool from "./kaishiPool.json";
 
 export interface ExportedGrammarProgress {
@@ -279,7 +280,8 @@ export interface SessionAudioEnrichmentResultItem {
     | "authentication"
     | "provider"
     | "audio"
-    | "storage";
+    | "storage"
+    | "limit";
 }
 
 export interface SessionAudioEnrichmentResult {
@@ -766,6 +768,34 @@ export const importSessionPayload = (
             }
           : null,
     });
+
+    const audioUrlsToPrewarm = sessionCards.flatMap(
+      (card) =>
+        typeof card.audioUrl === "string"
+          ? [card.audioUrl]
+          : [],
+    );
+
+    if (audioUrlsToPrewarm.length > 0) {
+      const prewarmResult = yield* Effect.either(
+        prewarmAudioUrls(audioUrlsToPrewarm),
+      );
+
+      if (prewarmResult._tag === "Left") {
+        yield* clientLog(
+          "warn",
+          "[SessionSync] Immediate session audio prewarm failed; the session remains available.",
+          prewarmResult.left,
+        );
+      } else {
+        yield* clientLog(
+          prewarmResult.right.failedCount > 0
+            ? "warn"
+            : "info",
+          `[SessionSync] Immediate audio prewarm complete. cached=${prewarmResult.right.cachedCount}, existing=${prewarmResult.right.alreadyCachedCount}, failed=${prewarmResult.right.failedCount}, skipped=${prewarmResult.right.skipped}.`,
+        );
+      }
+    }
 
     yield* clientLog(
       "info",

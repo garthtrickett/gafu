@@ -45,6 +45,7 @@ describe("SessionAudioEnrichmentService", () => {
     );
 
     expect(result.requestedCount).toBe(15);
+    expect(result.uniqueSentenceCount).toBe(15);
     expect(result.enrichedCount).toBe(15);
     expect(result.failedCount).toBe(0);
     expect(result.items).toHaveLength(15);
@@ -93,6 +94,7 @@ describe("SessionAudioEnrichmentService", () => {
       "同じ文です。",
       "別の文です。",
     ]);
+    expect(result.uniqueSentenceCount).toBe(2);
     expect(result.items[0]?.audioUrl).toBe(
       result.items[1]?.audioUrl,
     );
@@ -109,7 +111,8 @@ describe("SessionAudioEnrichmentService", () => {
             return yield* Effect.fail(
               new TtsProviderError({
                 kind: "provider",
-                message: "Synthetic provider failure.",
+                message:
+                  "Synthetic provider failure.",
               }),
             );
           }
@@ -149,5 +152,78 @@ describe("SessionAudioEnrichmentService", () => {
     expect(result.items[2]?.audioUrl).toBe(
       result.items[0]?.audioUrl,
     );
+  });
+
+  it("never exceeds the configured synthesis concurrency", async () => {
+    let inFlight = 0;
+    let maximumInFlight = 0;
+    let resolvedCount = 0;
+
+    const service: TtsAssetService = {
+      resolve: (input) =>
+        Effect.gen(function* () {
+          inFlight += 1;
+          maximumInFlight = Math.max(
+            maximumInFlight,
+            inFlight,
+          );
+
+          yield* Effect.sleep("5 millis");
+
+          inFlight -= 1;
+          resolvedCount += 1;
+          return makeResolvedAsset(
+            input.text,
+            resolvedCount,
+          );
+        }),
+    };
+    const requests: SessionAudioRequestItem[] =
+      Array.from({ length: 20 }, (_, index) => ({
+        requestId: `card-${index}`,
+        japaneseSentence: `並列制限${index}です。`,
+      }));
+
+    const result = await Effect.runPromise(
+      enrichSessionAudio(
+        requests,
+        service,
+        { concurrencyLimit: 2 },
+      ),
+    );
+
+    expect(result.enrichedCount).toBe(20);
+    expect(maximumInFlight).toBeLessThanOrEqual(2);
+  });
+
+  it("surfaces the daily ceiling as a per-card best-effort failure", async () => {
+    const service: TtsAssetService = {
+      resolve: () =>
+        Effect.fail(
+          new TtsProviderError({
+            kind: "limit",
+            message: "Daily limit reached.",
+            retryable: false,
+          }),
+        ),
+    };
+
+    const result = await Effect.runPromise(
+      enrichSessionAudio(
+        [
+          {
+            requestId: "card-0",
+            japaneseSentence: "上限です。",
+          },
+        ],
+        service,
+      ),
+    );
+
+    expect(result.items[0]).toEqual({
+      requestId: "card-0",
+      audioUrl: null,
+      failureKind: "limit",
+    });
   });
 });

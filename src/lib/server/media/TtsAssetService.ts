@@ -71,8 +71,10 @@ export class TtsProviderError extends Data.TaggedError(
     | "configuration"
     | "authentication"
     | "provider"
-    | "audio";
+    | "audio"
+    | "limit";
   readonly message: string;
+  readonly retryable?: boolean;
   readonly cause?: unknown;
 }> {}
 
@@ -221,22 +223,34 @@ export const makeTtsAssetService = (
     Effect.gen(function* () {
       const validated = yield* validateInput(input);
 
-      yield* Effect.logInfo(
-        `[TtsAssetService] Looking up deterministic asset ${validated.assetKey}.`,
+      const lookupResult = yield* Effect.either(
+        storage.find(validated.assetKey),
       );
 
-      const existingUrl = yield* storage.find(
-        validated.assetKey,
-      );
+      if (lookupResult._tag === "Left") {
+        yield* Effect.logError(
+          "[TtsAssetService] storage_find_failure",
+          {
+            event: "tts_storage_failure",
+            operation: "find",
+            assetKey: validated.assetKey,
+          },
+        );
+        return yield* Effect.fail(lookupResult.left);
+      }
 
-      if (existingUrl !== null) {
+      if (lookupResult.right !== null) {
         yield* Effect.logInfo(
-          `[TtsAssetService] Cache hit for ${validated.assetKey}.`,
+          "[TtsAssetService] cache_hit",
+          {
+            event: "tts_cache_hit",
+            assetKey: validated.assetKey,
+          },
         );
 
         return {
           assetKey: validated.assetKey,
-          url: existingUrl,
+          url: lookupResult.right,
           normalizedText: validated.normalizedText,
           settings: validated.settings,
           cacheStatus: "hit" as const,
@@ -244,27 +258,77 @@ export const makeTtsAssetService = (
       }
 
       yield* Effect.logInfo(
-        `[TtsAssetService] Cache miss for ${validated.assetKey}; requesting synthesis.`,
+        "[TtsAssetService] cache_miss",
+        {
+          event: "tts_cache_miss",
+          assetKey: validated.assetKey,
+        },
       );
 
-      const audio = yield* provider.synthesize({
-        text: validated.normalizedText,
-        settings: validated.settings,
-      });
+      const synthesisResult = yield* Effect.either(
+        provider.synthesize({
+          text: validated.normalizedText,
+          settings: validated.settings,
+        }),
+      );
 
-      const url = yield* storage.put({
-        assetKey: validated.assetKey,
-        audio,
-        contentType: "audio/mpeg",
-      });
+      if (synthesisResult._tag === "Left") {
+        yield* Effect.logError(
+          "[TtsAssetService] provider_failure",
+          {
+            event: "tts_provider_failure",
+            assetKey: validated.assetKey,
+            kind: synthesisResult.left.kind,
+            retryable:
+              synthesisResult.left.retryable === true,
+          },
+        );
+        return yield* Effect.fail(synthesisResult.left);
+      }
 
       yield* Effect.logInfo(
-        `[TtsAssetService] Persisted ${audio.byteLength} bytes at ${validated.assetKey}.`,
+        "[TtsAssetService] synthesis_success",
+        {
+          event: "tts_synthesis_success",
+          assetKey: validated.assetKey,
+          audioBytes: synthesisResult.right.byteLength,
+          voiceName: validated.settings.voiceName,
+        },
+      );
+
+      const storageResult = yield* Effect.either(
+        storage.put({
+          assetKey: validated.assetKey,
+          audio: synthesisResult.right,
+          contentType: "audio/mpeg",
+        }),
+      );
+
+      if (storageResult._tag === "Left") {
+        yield* Effect.logError(
+          "[TtsAssetService] storage_put_failure",
+          {
+            event: "tts_storage_failure",
+            operation: "put",
+            assetKey: validated.assetKey,
+          },
+        );
+        return yield* Effect.fail(storageResult.left);
+      }
+
+      yield* Effect.logInfo(
+        "[TtsAssetService] storage_success",
+        {
+          event: "tts_storage_success",
+          assetKey: validated.assetKey,
+          contentType: "audio/mpeg",
+          audioBytes: synthesisResult.right.byteLength,
+        },
       );
 
       return {
         assetKey: validated.assetKey,
-        url,
+        url: storageResult.right,
         normalizedText: validated.normalizedText,
         settings: validated.settings,
         cacheStatus: "miss" as const,

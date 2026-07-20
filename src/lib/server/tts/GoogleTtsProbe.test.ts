@@ -5,6 +5,7 @@ import {
   DEFAULT_GOOGLE_TTS_SMOKE_TEXT,
   GOOGLE_TTS_PROBE_CONFIG,
   GoogleTtsProbeError,
+  synthesizeGoogleTtsAudio,
   synthesizeGoogleTtsProbe,
   type GoogleTtsProbeClient,
   type GoogleTtsProbeRequest,
@@ -134,6 +135,64 @@ describe("GoogleTtsProbe", () => {
     expect(result._tag).toBe("Left");
     if (result._tag === "Left") {
       expect(result.left.kind).toBe("audio");
+    }
+  });
+
+  it("marks UNAVAILABLE failures as retryable", async () => {
+    const client = makeClient({
+      synthesizeSpeech: vi.fn(() =>
+        Promise.reject(
+          Object.assign(
+            new Error("UNAVAILABLE"),
+            { code: 14 },
+          ),
+        ),
+      ),
+    });
+
+    const result = await Effect.runPromise(
+      Effect.either(
+        synthesizeGoogleTtsAudio(
+          "一時的な失敗です。",
+          GOOGLE_TTS_PROBE_CONFIG,
+          client,
+        ),
+      ),
+    );
+
+    expect(result._tag).toBe("Left");
+    if (result._tag === "Left") {
+      expect(result.left.kind).toBe("provider");
+      expect(result.left.retryable).toBe(true);
+    }
+  });
+
+  it("marks permission failures as non-retryable", async () => {
+    const client = makeClient({
+      synthesizeSpeech: vi.fn(() =>
+        Promise.reject(
+          Object.assign(
+            new Error("PERMISSION_DENIED"),
+            { code: 7 },
+          ),
+        ),
+      ),
+    });
+
+    const result = await Effect.runPromise(
+      Effect.either(
+        synthesizeGoogleTtsAudio(
+          "権限がありません。",
+          GOOGLE_TTS_PROBE_CONFIG,
+          client,
+        ),
+      ),
+    );
+
+    expect(result._tag).toBe("Left");
+    if (result._tag === "Left") {
+      expect(result.left.kind).toBe("provider");
+      expect(result.left.retryable).toBe(false);
     }
   });
 });

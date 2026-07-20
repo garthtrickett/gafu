@@ -40,11 +40,15 @@ services:
     depends_on:
       minio:
         condition: service_healthy
+    volumes:
+      - ./config/minio-tts-cors.xml:/config/minio-tts-cors.xml:ro
     entrypoint: >
       /bin/sh -c "
       /usr/bin/mc alias set myminio http://minio:9000 minioadmin minioadmin;
-      /usr/bin/mc mb myminio/life-io;
+      /usr/bin/mc mb --ignore-existing myminio/life-io;
       /usr/bin/mc anonymous set public myminio/life-io;
+      /usr/bin/mc cors set myminio/life-io /config/minio-tts-cors.xml;
+      /usr/bin/mc cors get myminio/life-io;
       exit 0;
       "
 

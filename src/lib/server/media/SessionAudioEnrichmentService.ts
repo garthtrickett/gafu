@@ -13,7 +13,8 @@ export type SessionAudioFailureKind =
   | "authentication"
   | "provider"
   | "audio"
-  | "storage";
+  | "storage"
+  | "limit";
 
 export interface SessionAudioRequestItem {
   readonly requestId: string;
@@ -29,8 +30,13 @@ export interface SessionAudioResultItem {
 export interface SessionAudioEnrichmentResult {
   readonly items: readonly SessionAudioResultItem[];
   readonly requestedCount: number;
+  readonly uniqueSentenceCount: number;
   readonly enrichedCount: number;
   readonly failedCount: number;
+}
+
+export interface SessionAudioEnrichmentOptions {
+  readonly concurrencyLimit?: number;
 }
 
 interface ResolvedSentence {
@@ -38,6 +44,8 @@ interface ResolvedSentence {
   readonly audioUrl: string | null;
   readonly failureKind?: SessionAudioFailureKind;
 }
+
+const DEFAULT_CONCURRENCY_LIMIT = 3;
 
 const classifyFailure = (
   error: TtsInputError | TtsProviderError | TtsAssetStorageError,
@@ -53,13 +61,37 @@ const classifyFailure = (
   return "storage";
 };
 
+const normalizeConcurrencyLimit = (
+  value: number | undefined,
+): number => {
+  if (
+    value === undefined ||
+    !Number.isInteger(value) ||
+    value < 1
+  ) {
+    return DEFAULT_CONCURRENCY_LIMIT;
+  }
+
+  return Math.min(value, 10);
+};
+
 export const enrichSessionAudio = (
   items: readonly SessionAudioRequestItem[],
   ttsAssetService: TtsAssetService,
+  options: SessionAudioEnrichmentOptions = {},
 ): Effect.Effect<SessionAudioEnrichmentResult> =>
   Effect.gen(function* () {
+    const concurrencyLimit = normalizeConcurrencyLimit(
+      options.concurrencyLimit,
+    );
+
     yield* Effect.logInfo(
-      `[SessionAudioEnrichment] Received ${items.length} audio enrichment requests.`,
+      "[SessionAudioEnrichment] batch_started",
+      {
+        event: "tts_enrichment_batch_started",
+        requestedCount: items.length,
+        concurrencyLimit,
+      },
     );
 
     const uniqueNormalizedSentences = [
@@ -71,7 +103,13 @@ export const enrichSessionAudio = (
     ];
 
     yield* Effect.logInfo(
-      `[SessionAudioEnrichment] Collapsed ${items.length} requests into ${uniqueNormalizedSentences.length} unique deterministic sentences.`,
+      "[SessionAudioEnrichment] batch_deduplicated",
+      {
+        event: "tts_enrichment_deduplicated",
+        requestedCount: items.length,
+        uniqueSentenceCount:
+          uniqueNormalizedSentences.length,
+      },
     );
 
     const resolvedSentences = yield* Effect.forEach(
@@ -79,13 +117,21 @@ export const enrichSessionAudio = (
       (normalizedText) =>
         Effect.gen(function* () {
           const result = yield* Effect.either(
-            ttsAssetService.resolve({ text: normalizedText }),
+            ttsAssetService.resolve({
+              text: normalizedText,
+            }),
           );
 
           if (result._tag === "Left") {
-            const failureKind = classifyFailure(result.left);
+            const failureKind = classifyFailure(
+              result.left,
+            );
             yield* Effect.logWarning(
-              `[SessionAudioEnrichment] Failed to resolve one unique sentence. failureKind=${failureKind}`,
+              "[SessionAudioEnrichment] sentence_failed",
+              {
+                event: "tts_enrichment_sentence_failed",
+                failureKind,
+              },
             );
 
             return {
@@ -96,7 +142,12 @@ export const enrichSessionAudio = (
           }
 
           yield* Effect.logInfo(
-            `[SessionAudioEnrichment] Resolved ${result.right.assetKey} with cacheStatus=${result.right.cacheStatus}.`,
+            "[SessionAudioEnrichment] sentence_resolved",
+            {
+              event: "tts_enrichment_sentence_resolved",
+              assetKey: result.right.assetKey,
+              cacheStatus: result.right.cacheStatus,
+            },
           );
 
           return {
@@ -104,7 +155,7 @@ export const enrichSessionAudio = (
             audioUrl: result.right.url,
           } satisfies ResolvedSentence;
         }),
-      { concurrency: 3 },
+      { concurrency: concurrencyLimit },
     );
 
     const resolvedBySentence = new Map(
@@ -118,7 +169,8 @@ export const enrichSessionAudio = (
       const normalizedText = normalizeTtsText(
         item.japaneseSentence,
       );
-      const resolved = resolvedBySentence.get(normalizedText);
+      const resolved =
+        resolvedBySentence.get(normalizedText);
 
       if (!resolved) {
         return {
@@ -140,15 +192,26 @@ export const enrichSessionAudio = (
     const enrichedCount = resultItems.filter(
       (item) => item.audioUrl !== null,
     ).length;
-    const failedCount = resultItems.length - enrichedCount;
+    const failedCount =
+      resultItems.length - enrichedCount;
 
     yield* Effect.logInfo(
-      `[SessionAudioEnrichment] Completed batch. enriched=${enrichedCount}, failed=${failedCount}, requested=${items.length}.`,
+      "[SessionAudioEnrichment] batch_completed",
+      {
+        event: "tts_enrichment_batch_completed",
+        requestedCount: items.length,
+        uniqueSentenceCount:
+          uniqueNormalizedSentences.length,
+        enrichedCount,
+        failedCount,
+      },
     );
 
     return {
       items: resultItems,
       requestedCount: items.length,
+      uniqueSentenceCount:
+        uniqueNormalizedSentences.length,
       enrichedCount,
       failedCount,
     };
