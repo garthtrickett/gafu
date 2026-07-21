@@ -3,6 +3,7 @@ import "./StudySession";
 import { StudySession, calculateSrsUpdate } from "./StudySession";
 import { runClientPromise } from "../lib/client/runtime";
 import { grammarPointStore } from "../lib/client/stores/grammarPointStore";
+import { activeSessionStore } from "../lib/client/stores/activeSessionStore";
 import { hlcStore } from "../lib/client/stores/hlcStore";
 
 describe("StudySession SRS calculations", () => {
@@ -76,12 +77,15 @@ describe("StudySession Component State Logic", () => {
   let element: StudySession;
 
   beforeEach(() => {
+    activeSessionStore.clear();
     element = document.createElement("study-session") as StudySession;
     document.body.appendChild(element);
   });
 
   afterEach(() => {
     element.remove();
+    activeSessionStore.clear();
+    vi.unstubAllGlobals();
   });
 
   it("should default explanationVisible to false", () => {
@@ -122,6 +126,122 @@ describe("StudySession Component State Logic", () => {
         controller.propose({ type: "FORCE_MASTER", grammarPointId: "gp-123" });
     await new Promise((resolve) => setTimeout(resolve, 15));
     expect(controller.model.explanationVisible).toBe(false);
+  });
+
+  it("should hide Japanese by default and toggle it with the J key", async () => {
+    activeSessionStore.loadSession([
+      {
+        grammarPointId: "gp-japanese-shortcut",
+        englishContext: "A recall prompt.",
+        japaneseSentence: "日本語です。",
+        furigana: [
+          { kanji: "日本語", kana: "にほんご" },
+          { kanji: "です。" },
+        ],
+        audioUrl: null,
+      },
+    ]);
+    await element.updateComplete;
+
+    expect(element.querySelector("#japanese-sentence")).toBeNull();
+    expect(
+      element.querySelector("#japanese-sentence-hidden"),
+    ).not.toBeNull();
+
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "j",
+        bubbles: true,
+      }),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 15));
+    await element.updateComplete;
+
+    expect(
+      element.querySelector("#japanese-sentence"),
+    ).not.toBeNull();
+
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "J",
+        bubbles: true,
+      }),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 15));
+    await element.updateComplete;
+
+    expect(element.querySelector("#japanese-sentence")).toBeNull();
+  });
+
+  it("should replay current-card audio with the R key", async () => {
+    const play = vi.fn(() => Promise.resolve());
+    const pause = vi.fn();
+
+    class MockAudio {
+      readonly src: string;
+
+      constructor(src: string) {
+        this.src = src;
+      }
+
+      play = play;
+      pause = pause;
+    }
+
+    vi.stubGlobal("Audio", MockAudio);
+    activeSessionStore.loadSession([
+      {
+        grammarPointId: "gp-audio-shortcut",
+        englishContext: "An audio recall prompt.",
+        japaneseSentence: "聞いてください。",
+        furigana: [
+          { kanji: "聞", kana: "き" },
+          { kanji: "いてください。" },
+        ],
+        audioUrl: "https://media.example.test/card.mp3",
+      },
+    ]);
+    await element.updateComplete;
+
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "r",
+        bubbles: true,
+      }),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 15));
+
+    expect(play).toHaveBeenCalledTimes(1);
+  });
+
+  it("should ignore J shortcuts while typing in an input", async () => {
+    activeSessionStore.loadSession([
+      {
+        grammarPointId: "gp-input-shortcut",
+        englishContext: "A typing safety prompt.",
+        japaneseSentence: "日本語です。",
+        furigana: [
+          { kanji: "日本語", kana: "にほんご" },
+          { kanji: "です。" },
+        ],
+        audioUrl: null,
+      },
+    ]);
+    await element.updateComplete;
+
+    const input = document.createElement("input");
+    document.body.appendChild(input);
+    input.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "j",
+        bubbles: true,
+      }),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 15));
+    await element.updateComplete;
+
+    expect(element.querySelector("#japanese-sentence")).toBeNull();
+    input.remove();
   });
 
   it("should write a valid HLC string to grammarPointStore on SUBMIT_GRADE", async () => {

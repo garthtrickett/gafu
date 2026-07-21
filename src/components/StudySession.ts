@@ -78,17 +78,20 @@ export const calculateSrsUpdate = (
 export interface StudySessionModel {
   readonly audioPlaying: boolean;
   readonly explanationVisible: boolean;
+  readonly japaneseVisible: boolean;
 }
 
 export type StudySessionAction =
   | { type: "PLAY_AUDIO"; audioUrl: string }
   | { type: "SUBMIT_GRADE"; grammarPointId: string; isCorrect: boolean }
   | { type: "TOGGLE_EXPLANATION" }
+  | { type: "TOGGLE_JAPANESE" }
   | { type: "FORCE_MASTER"; grammarPointId: string };
 
 const initialModel: StudySessionModel = {
   audioPlaying: false,
   explanationVisible: false,
+  japaneseVisible: false,
 };
 
 const update = (model: StudySessionModel, action: StudySessionAction): StudySessionModel => {
@@ -104,11 +107,17 @@ const update = (model: StudySessionModel, action: StudySessionAction): StudySess
         ...model,
         audioPlaying: false,
         explanationVisible: false,
+        japaneseVisible: false,
       };
     case "TOGGLE_EXPLANATION":
       return {
         ...model,
         explanationVisible: !model.explanationVisible,
+      };
+    case "TOGGLE_JAPANESE":
+      return {
+        ...model,
+        japaneseVisible: !model.japaneseVisible,
       };
     default:
       return model;
@@ -120,6 +129,68 @@ export class StudySession extends LitElement {
   private controller!: ReactiveSamController<this, StudySessionModel, StudySessionAction, never, BaseClientContext>;
   private audioInstance: HTMLAudioElement | null = null;
   private _disposeEffect?: () => void;
+
+  private isEditableKeyboardTarget = (
+    target: EventTarget | null,
+  ): boolean =>
+    target instanceof HTMLElement &&
+    (
+      target.matches("input, textarea, select") ||
+      target.isContentEditable
+    );
+
+  private handleKeyboardShortcut = (event: KeyboardEvent) => {
+    if (
+      event.repeat ||
+      event.altKey ||
+      event.ctrlKey ||
+      event.metaKey ||
+      this.isEditableKeyboardTarget(event.target)
+    ) {
+      return;
+    }
+
+    const key = event.key.toLowerCase();
+    const currentCard = activeSessionStore.currentCard.peek();
+
+    if (key === "j" && currentCard) {
+      event.preventDefault();
+      runClientUnscoped(
+        clientLog(
+          "info",
+          `[StudySession] Keyboard shortcut J toggled Japanese visibility for grammarPointId=${currentCard.grammarPointId}.`,
+        ),
+      );
+      this.controller.propose({ type: "TOGGLE_JAPANESE" });
+      return;
+    }
+
+    if (key !== "r") {
+      return;
+    }
+
+    event.preventDefault();
+    if (!currentCard || typeof currentCard.audioUrl !== "string") {
+      runClientUnscoped(
+        clientLog(
+          "warn",
+          "[StudySession] Keyboard shortcut R ignored because the current card has no playable audio.",
+        ),
+      );
+      return;
+    }
+
+    runClientUnscoped(
+      clientLog(
+        "info",
+        `[StudySession] Keyboard shortcut R replayed audio for grammarPointId=${currentCard.grammarPointId}.`,
+      ),
+    );
+    this.controller.propose({
+      type: "PLAY_AUDIO",
+      audioUrl: currentCard.audioUrl,
+    });
+  };
 
   protected override createRenderRoot() {
     return this;
@@ -143,6 +214,10 @@ export class StudySession extends LitElement {
     );
 
     super.connectedCallback();
+    window.addEventListener(
+      "keydown",
+      this.handleKeyboardShortcut,
+    );
 
     // Play native audio for the first card immediately if present
     const firstCard = activeSessionStore.currentCard.value;
@@ -152,6 +227,14 @@ export class StudySession extends LitElement {
   }
 
   override disconnectedCallback() {
+    window.removeEventListener(
+      "keydown",
+      this.handleKeyboardShortcut,
+    );
+    if (this.audioInstance) {
+      this.audioInstance.pause();
+      this.audioInstance = null;
+    }
     super.disconnectedCallback();
     this._disposeEffect?.();
   }
@@ -322,7 +405,10 @@ export class StudySession extends LitElement {
     const isFinished = activeSessionStore.isFinished.value;
     const currentCard = activeSessionStore.currentCard.value;
     const audioWarning = activeSessionStore.audioWarning.value;
-    const { explanationVisible } = this.controller.model;
+    const {
+      explanationVisible,
+      japaneseVisible,
+    } = this.controller.model;
 
     if (isFinished) {
       const hasMore = activeSessionStore.hasMoreBatches.value;
@@ -416,7 +502,7 @@ export class StudySession extends LitElement {
         </div>
 
         <div class="bg-zinc-950 border border-zinc-800 rounded-xl shadow-lg overflow-hidden min-h-[340px] flex flex-col justify-between p-8 space-y-6">
-          <!-- The unified comprehension face of the card (displays context AND raw target immediately on the front) -->
+          <!-- Comprehension-first face: context is visible while Japanese remains recall-gated. -->
           <div class="flex-1 flex flex-col justify-center items-center text-center space-y-6">
             <div class="space-y-2">
               <span class="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Context</span>
@@ -424,21 +510,53 @@ export class StudySession extends LitElement {
             </div>
 
             <div class="space-y-3 w-full border-t border-zinc-900/60 pt-6">
-              <span class="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Sentence</span>
-              <div class="p-4 bg-zinc-900/40 border border-zinc-800/40 rounded-lg flex items-center justify-center">
-                <furigana-sentence .segments=${currentCard.furigana}></furigana-sentence>
+              <div class="flex items-center justify-between gap-3">
+                <span class="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Japanese</span>
+                <span class="text-[10px] font-medium text-zinc-600 uppercase tracking-widest">Shortcut: J</span>
               </div>
+              ${japaneseVisible
+                ? html`
+                    <div
+                      id="japanese-sentence"
+                      class="p-4 bg-zinc-900/40 border border-zinc-800/40 rounded-lg flex items-center justify-center animate-fade-in"
+                    >
+                      <furigana-sentence .segments=${currentCard.furigana}></furigana-sentence>
+                    </div>
+                  `
+                : html`
+                    <div
+                      id="japanese-sentence-hidden"
+                      class="min-h-20 p-4 bg-zinc-900/20 border border-dashed border-zinc-800 rounded-lg flex items-center justify-center"
+                    >
+                      <p class="text-sm text-zinc-500">
+                        Recall the sentence, then reveal it.
+                      </p>
+                    </div>
+                  `}
             </div>
 
-            <div class="flex items-center gap-3">
+            <div class="flex flex-wrap items-center justify-center gap-3">
+              <button
+                type="button"
+                @click=${() => this.controller.propose({ type: "TOGGLE_JAPANESE" })}
+                class="p-2.5 bg-zinc-900 hover:bg-zinc-850 text-zinc-300 hover:text-white rounded-full transition-colors border border-zinc-800 cursor-pointer flex items-center gap-1.5 text-xs font-medium"
+                title="Toggle Japanese sentence (J)"
+                aria-keyshortcuts="J"
+                aria-pressed=${japaneseVisible ? "true" : "false"}
+              >
+                ${japaneseVisible ? "Hide Japanese" : "Show Japanese"} <kbd class="text-zinc-500">J</kbd>
+              </button>
+
               ${currentCard.audioUrl
                 ? html`
                     <button
+                      type="button"
                       @click=${() => this.controller.propose({ type: "PLAY_AUDIO", audioUrl: currentCard.audioUrl! })}
                       class="p-2.5 bg-zinc-900 hover:bg-zinc-850 text-zinc-300 hover:text-white rounded-full transition-colors border border-zinc-800 cursor-pointer flex items-center gap-1.5 text-xs font-medium"
-                      title="Play pronunciation audio"
+                      title="Replay pronunciation audio (R)"
+                      aria-keyshortcuts="R"
                     >
-                      🔊 Listen
+                      🔊 Listen <kbd class="text-zinc-500">R</kbd>
                     </button>
                   `
                 : ""}
