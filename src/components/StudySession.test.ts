@@ -156,7 +156,61 @@ describe("StudySession Component State Logic", () => {
     ).toBe(false);
   });
 
-    it("should reset explanationVisible to false when SUBMIT_GRADE is proposed", async () => {
+      it("should submit correct and incorrect grades with C and I keys", async () => {
+        activeSessionStore.loadSession([
+          {
+            grammarPointId: "gp-grade-shortcut",
+            englishContext: "A grading shortcut prompt.",
+            japaneseSentence: "日本語です。",
+            furigana: [
+              { kanji: "日本語", kana: "にほんご" },
+              { kanji: "です。" },
+            ],
+            audioUrl: null,
+          },
+        ]);
+        await element.updateComplete;
+
+        const controller = (element as any).controller;
+        const proposeSpy = vi.spyOn(controller, "propose");
+
+        window.dispatchEvent(
+          new KeyboardEvent("keydown", {
+            key: "c",
+            bubbles: true,
+          }),
+        );
+
+        expect(proposeSpy).toHaveBeenCalledWith({
+          type: "SUBMIT_GRADE",
+          grammarPointId: "gp-grade-shortcut",
+          isCorrect: true,
+        });
+
+        proposeSpy.mockClear();
+
+        window.dispatchEvent(
+          new KeyboardEvent("keydown", {
+            key: "I",
+            bubbles: true,
+          }),
+        );
+
+        expect(proposeSpy).toHaveBeenCalledWith({
+          type: "SUBMIT_GRADE",
+          grammarPointId: "gp-grade-shortcut",
+          isCorrect: false,
+        });
+
+        expect(
+          element.querySelector("[aria-keyshortcuts='C']"),
+        ).not.toBeNull();
+        expect(
+          element.querySelector("[aria-keyshortcuts='I']"),
+        ).not.toBeNull();
+      });
+
+      it("should reset explanationVisible to false when SUBMIT_GRADE is proposed", async () => {
     const controller = (element as any).controller;
     controller.propose({ type: "TOGGLE_EXPLANATION" });
     await new Promise((resolve) => setTimeout(resolve, 15));

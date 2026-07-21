@@ -187,6 +187,23 @@ export class StudySession extends LitElement {
       return;
     }
 
+    if ((key === "c" || key === "i") && currentCard) {
+      event.preventDefault();
+      const isCorrect = key === "c";
+      runClientUnscoped(
+        clientLog(
+          "info",
+          `[StudySession] Keyboard shortcut ${key.toUpperCase()} submitted ${isCorrect ? "correct" : "incorrect"} for grammarPointId=${currentCard.grammarPointId}.`,
+        ),
+      );
+      this.controller.propose({
+        type: "SUBMIT_GRADE",
+        grammarPointId: currentCard.grammarPointId,
+        isCorrect,
+      });
+      return;
+    }
+
     if (key !== "r") {
       return;
     }
@@ -613,16 +630,22 @@ export class StudySession extends LitElement {
           <div class="pt-4 border-t border-zinc-900 flex flex-col gap-4 w-full">
             <div class="grid grid-cols-2 gap-4 w-full">
               <button
+                type="button"
                 @click=${() => this.controller.propose({ type: "SUBMIT_GRADE", grammarPointId: currentCard.grammarPointId, isCorrect: false })}
-                class="py-3 bg-red-650 hover:bg-red-600 text-white font-bold rounded-lg transition-colors text-sm cursor-pointer"
+                class="py-3 bg-red-650 hover:bg-red-600 text-white font-bold rounded-lg transition-colors text-sm cursor-pointer flex items-center justify-center gap-2"
+                title="Mark answer incorrect (I)"
+                aria-keyshortcuts="I"
               >
-                Incorrect
+                Incorrect <kbd class="text-red-200/70">I</kbd>
               </button>
               <button
+                type="button"
                 @click=${() => this.controller.propose({ type: "SUBMIT_GRADE", grammarPointId: currentCard.grammarPointId, isCorrect: true })}
-                class="py-3 bg-green-650 hover:bg-green-600 text-white font-bold rounded-lg transition-colors text-sm cursor-pointer"
+                class="py-3 bg-green-650 hover:bg-green-600 text-white font-bold rounded-lg transition-colors text-sm cursor-pointer flex items-center justify-center gap-2"
+                title="Mark answer correct (C)"
+                aria-keyshortcuts="C"
               >
-                Correct
+                Correct <kbd class="text-green-100/70">C</kbd>
               </button>
             </div>
             <button
