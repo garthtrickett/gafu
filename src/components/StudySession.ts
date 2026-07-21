@@ -165,6 +165,28 @@ export class StudySession extends LitElement {
       return;
     }
 
+    if (key === "e") {
+      event.preventDefault();
+      if (!currentCard || typeof currentCard.explanation !== "string") {
+        runClientUnscoped(
+          clientLog(
+            "warn",
+            "[StudySession] Keyboard shortcut E ignored because the current card has no explanation.",
+          ),
+        );
+        return;
+      }
+
+      runClientUnscoped(
+        clientLog(
+          "info",
+          `[StudySession] Keyboard shortcut E toggled the explanation for grammarPointId=${currentCard.grammarPointId}.`,
+        ),
+      );
+      this.controller.propose({ type: "TOGGLE_EXPLANATION" });
+      return;
+    }
+
     if (key !== "r") {
       return;
     }
@@ -564,11 +586,14 @@ export class StudySession extends LitElement {
               ${currentCard.explanation
                 ? html`
                     <button
+                      type="button"
                       @click=${() => this.controller.propose({ type: "TOGGLE_EXPLANATION" })}
                       class="p-2.5 bg-zinc-900 hover:bg-zinc-850 text-zinc-300 hover:text-white rounded-full transition-colors border border-zinc-800 cursor-pointer flex items-center gap-1.5 text-xs font-medium"
-                      title="Toggle grammatical explanation"
+                      title="Toggle grammatical explanation (E)"
+                      aria-keyshortcuts="E"
                     >
                       💡 ${explanationVisible ? "Hide Explanation" : "Explain"}
+                      <kbd class="text-zinc-500">E</kbd>
                     </button>
                   `
                 : ""}

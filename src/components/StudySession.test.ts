@@ -96,7 +96,7 @@ describe("StudySession Component State Logic", () => {
   it("should toggle explanationVisible when TOGGLE_EXPLANATION is proposed", async () => {
     const controller = (element as any).controller;
     controller.propose({ type: "TOGGLE_EXPLANATION" });
-    
+
     // Allow the async action queue to process
     await new Promise((resolve) => setTimeout(resolve, 15));
     expect(controller.model.explanationVisible).toBe(true);
@@ -104,6 +104,56 @@ describe("StudySession Component State Logic", () => {
     controller.propose({ type: "TOGGLE_EXPLANATION" });
     await new Promise((resolve) => setTimeout(resolve, 15));
     expect(controller.model.explanationVisible).toBe(false);
+  });
+
+  it("should toggle the current-card explanation with the E key", async () => {
+    activeSessionStore.loadSession([
+      {
+        grammarPointId: "gp-explanation-shortcut",
+        englishContext: "An explanation recall prompt.",
+        japaneseSentence: "日本語です。",
+        furigana: [
+          { kanji: "日本語", kana: "にほんご" },
+          { kanji: "です。" },
+        ],
+        audioUrl: null,
+        explanation: "A concise grammar explanation.",
+      },
+    ]);
+    await element.updateComplete;
+
+    expect(
+      element.querySelector("[aria-keyshortcuts='E']"),
+    ).not.toBeNull();
+    expect(
+      element.textContent?.includes("A concise grammar explanation."),
+    ).toBe(false);
+
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "e",
+        bubbles: true,
+      }),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 15));
+    await element.updateComplete;
+
+    expect(
+      element.textContent?.includes("A concise grammar explanation."),
+    ).toBe(true);
+
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "E",
+        bubbles: true,
+      }),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 15));
+    await element.updateComplete;
+
+    expect(
+      element.textContent?.includes("A concise grammar explanation."),
+    ).toBe(false);
   });
 
     it("should reset explanationVisible to false when SUBMIT_GRADE is proposed", async () => {
