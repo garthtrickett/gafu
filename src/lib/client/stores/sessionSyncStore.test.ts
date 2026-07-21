@@ -8,6 +8,7 @@ import {
   importSessionPayload,
   type SessionAudioEnricher,
   type SessionAudioEnrichmentRequestItem,
+  type ImportSessionProgress,
 } from "./sessionSyncStore.ts";
 
 const successfulAudioEnricher: SessionAudioEnricher = {
@@ -508,6 +509,98 @@ it("validates every card before invoking audio enrichment", async () => {
   expect(result._tag).toBe("Left");
   expect(enrichmentCallCount).toBe(0);
   expect(activeSessionStore.masterList.value).toEqual([]);
+});
+
+
+it("reports real audio progress from validation through finalization", async () => {
+  const progressEvents: ImportSessionProgress[] = [];
+  const audioEnricher: SessionAudioEnricher = {
+    enrich: (items, onProgress) =>
+      Effect.sync(() => {
+        onProgress?.({
+          completedCount: 1,
+          totalCount: items.length,
+          succeededCount: 1,
+          failedCount: 0,
+        });
+        onProgress?.({
+          completedCount: items.length,
+          totalCount: items.length,
+          succeededCount: items.length - 1,
+          failedCount: 1,
+        });
+
+        return {
+          items: items.map((item, index) => ({
+            requestId: item.requestId,
+            audioUrl:
+              index === items.length - 1
+                ? null
+                : `https://media.example.test/${item.requestId}.mp3`,
+            ...(index === items.length - 1
+              ? { failureKind: "provider" as const }
+              : {}),
+          })),
+          requestedCount: items.length,
+          enrichedCount: items.length - 1,
+          failedCount: 1,
+        };
+      }),
+  };
+  const mockPayload = {
+    cards: [
+      {
+        grammar_point_id: "gp-existing-progress",
+        english_context: "Existing audio context",
+        japanese_sentence: "既存音声です。",
+        audio_url: "https://media.example.test/existing.mp3",
+      },
+      {
+        grammar_point_id: "gp-generated-progress-1",
+        english_context: "Generated audio context one",
+        japanese_sentence: "生成音声一です。",
+        audio_url: null,
+      },
+      {
+        grammar_point_id: "gp-generated-progress-2",
+        english_context: "Generated audio context two",
+        japanese_sentence: "生成音声二です。",
+        audio_url: null,
+      },
+    ],
+  };
+
+  const result = await runClientPromise(
+    importSessionPayload(JSON.stringify(mockPayload), {
+      audioEnricher,
+      onProgress: (progress) => {
+        progressEvents.push(progress);
+      },
+    }),
+  );
+
+  expect(result.audioFailedCount).toBe(1);
+  expect(progressEvents[0]).toEqual({
+    phase: "validating",
+    totalCards: 3,
+    audioCompletedCount: 0,
+    audioSucceededCount: 0,
+    audioFailedCount: 0,
+  });
+  expect(progressEvents).toContainEqual({
+    phase: "generating_audio",
+    totalCards: 3,
+    audioCompletedCount: 2,
+    audioSucceededCount: 2,
+    audioFailedCount: 0,
+  });
+  expect(progressEvents.at(-1)).toEqual({
+    phase: "finalizing",
+    totalCards: 3,
+    audioCompletedCount: 3,
+    audioSucceededCount: 2,
+    audioFailedCount: 1,
+  });
 });
 
 });

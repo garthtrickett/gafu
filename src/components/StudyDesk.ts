@@ -4,7 +4,7 @@ import { effect } from "@preact/signals-core";
 import { grammarPointStore, grammarPointCatalogStore, calculateRetrievability } from "../lib/client/stores/grammarPointStore.ts";
 import { userPreferencesStore } from "../lib/client/stores/userPreferencesStore.ts";
 import { logout } from "../lib/client/stores/authStore.ts";
-import { generateExportPayload, importSessionPayload } from "../lib/client/stores/sessionSyncStore.ts";
+import { generateExportPayload, importSessionPayload, type ImportSessionProgress } from "../lib/client/stores/sessionSyncStore.ts";
 import { clientLog } from "../lib/client/clientLog.ts";
 import { runClientUnscoped } from "../lib/client/runtime.ts";
 import { navigate } from "../lib/client/router.ts";
@@ -20,6 +20,9 @@ export class StudyDesk extends LitElement {
 
   @state()
   private importError: string | null = null;
+
+  @state()
+  private importProgress: ImportSessionProgress | null = null;
 
   @state()
   private saveSuccessMessage: string | null = null;
@@ -118,11 +121,32 @@ export class StudyDesk extends LitElement {
       return;
     }
 
+    this.importProgress = {
+      phase: "validating",
+      totalCards: 0,
+      audioCompletedCount: 0,
+      audioSucceededCount: 0,
+      audioFailedCount: 0,
+    };
+
     runClientUnscoped(
-      importSessionPayload(this.pasteValue).pipe(
+      importSessionPayload(this.pasteValue, {
+        onProgress: (progress) => {
+          this.importProgress = progress;
+          this.requestUpdate();
+          runClientUnscoped(
+            clientLog(
+              "info",
+              `[StudyDesk] Import progress phase=${progress.phase}, completed=${progress.audioCompletedCount}/${progress.totalCards}, succeeded=${progress.audioSucceededCount}, failed=${progress.audioFailedCount}.`,
+            ),
+          );
+        },
+      }).pipe(
         Effect.andThen(() => navigate("study")),
         Effect.catchAll((err) => {
-          this.importError = err instanceof Error ? err.message : String(err);
+          this.importProgress = null;
+          this.importError =
+            err instanceof Error ? err.message : String(err);
           return clientLog("error", "Import failed", err);
         })
       )
@@ -219,6 +243,22 @@ export class StudyDesk extends LitElement {
 
     runClientUnscoped(clientLog("info", `[StudyDesk] Rendering desk. showMasteryGateWarning=${showMasteryGateWarning}, masteryRate=${masteryRate}%, enforceGates=${enforceGates}`));
 
+    const progress = this.importProgress;
+    const progressPercent =
+      progress && progress.totalCards > 0
+        ? Math.round(
+            (progress.audioCompletedCount /
+              progress.totalCards) *
+              100,
+          )
+        : 0;
+    const progressTitle =
+      progress?.phase === "validating"
+        ? "Validating imported cards"
+        : progress?.phase === "finalizing"
+          ? "Preparing your study session"
+          : "Generating card audio";
+
     const mappedDailyTarget = dailyTargetItems.map(p => {
       const catalogItem = catalog.find(c => c.id === p.id);
       return {
@@ -259,6 +299,85 @@ export class StudyDesk extends LitElement {
 
     return html`
       <div class="max-w-4xl mx-auto space-y-6">
+        ${progress
+          ? html`
+              <div
+                class="fixed inset-0 z-[100] flex items-center justify-center bg-black/75 px-4 backdrop-blur-sm"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="audio-import-progress-title"
+                data-testid="audio-import-progress-modal"
+              >
+                <div class="w-full max-w-md rounded-xl border border-zinc-700 bg-zinc-950 p-6 shadow-2xl">
+                  <div class="flex items-start gap-4">
+                    <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-green-500/10 text-xl">
+                      🔊
+                    </div>
+                    <div class="min-w-0 flex-1">
+                      <h2
+                        id="audio-import-progress-title"
+                        class="text-lg font-bold text-zinc-100"
+                      >
+                        ${progressTitle}
+                      </h2>
+                      <p class="mt-1 text-sm text-zinc-400">
+                        ${progress.phase === "validating"
+                          ? "Checking every card before any audio request begins."
+                          : progress.phase === "finalizing"
+                            ? "Saving the enriched cards and warming audio for offline study."
+                            : `Audio ready for ${progress.audioCompletedCount} of ${progress.totalCards} cards.`}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div class="mt-6 space-y-2">
+                    <div class="flex items-center justify-between text-xs font-medium">
+                      <span class="text-zinc-400">
+                        ${progress.audioCompletedCount} / ${progress.totalCards || "—"}
+                      </span>
+                      <span class="text-green-400">${progressPercent}%</span>
+                    </div>
+                    <div
+                      class="h-2.5 w-full overflow-hidden rounded-full bg-zinc-800"
+                      role="progressbar"
+                      aria-valuemin="0"
+                      aria-valuemax=${progress.totalCards}
+                      aria-valuenow=${progress.audioCompletedCount}
+                    >
+                      <div
+                        class="h-full rounded-full bg-green-500 transition-[width] duration-300 ease-out"
+                        style=${`width: ${progressPercent}%`}
+                      ></div>
+                    </div>
+                  </div>
+
+                  <div class="mt-5 grid grid-cols-2 gap-3 text-center">
+                    <div class="rounded-lg border border-zinc-800 bg-zinc-900/60 p-3">
+                      <div class="text-lg font-bold text-green-400">
+                        ${progress.audioSucceededCount}
+                      </div>
+                      <div class="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+                        Audio ready
+                      </div>
+                    </div>
+                    <div class="rounded-lg border border-zinc-800 bg-zinc-900/60 p-3">
+                      <div class="text-lg font-bold ${progress.audioFailedCount > 0 ? "text-yellow-400" : "text-zinc-300"}">
+                        ${progress.audioFailedCount}
+                      </div>
+                      <div class="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+                        Without audio
+                      </div>
+                    </div>
+                  </div>
+
+                  <p class="mt-4 text-center text-xs text-zinc-500">
+                    Keep this page open. The study session will start automatically.
+                  </p>
+                </div>
+              </div>
+            `
+          : ""}
+
         <div class="flex items-center justify-between border-b border-zinc-800 pb-4">
           <div>
             <h1 class="text-2xl font-bold">Language Study Desk</h1>
@@ -453,9 +572,12 @@ export class StudyDesk extends LitElement {
 
                 <button 
                   type="submit"
-                  class="w-full py-2.5 bg-green-650 hover:bg-green-600 text-white font-bold rounded text-sm transition-colors cursor-pointer"
+                  ?disabled=${this.importProgress !== null}
+                  class="w-full py-2.5 bg-green-650 hover:bg-green-600 disabled:bg-zinc-800 disabled:text-zinc-500 disabled:cursor-wait text-white font-bold rounded text-sm transition-colors cursor-pointer"
                 >
-                  🚀 Import & Start Study
+                  ${this.importProgress
+                    ? "Generating audio..."
+                    : "🚀 Import & Start Study"}
                 </button>
               </form>
             </div>

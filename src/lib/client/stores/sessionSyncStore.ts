@@ -291,14 +291,38 @@ export interface SessionAudioEnrichmentResult {
   readonly failedCount: number;
 }
 
+export interface SessionAudioEnrichmentProgress {
+  readonly completedCount: number;
+  readonly totalCount: number;
+  readonly succeededCount: number;
+  readonly failedCount: number;
+}
+
 export interface SessionAudioEnricher {
   readonly enrich: (
     items: readonly SessionAudioEnrichmentRequestItem[],
+    onProgress?: (
+      progress: SessionAudioEnrichmentProgress,
+    ) => void,
   ) => Effect.Effect<SessionAudioEnrichmentResult, Error>;
+}
+
+export interface ImportSessionProgress {
+  readonly phase:
+    | "validating"
+    | "generating_audio"
+    | "finalizing";
+  readonly totalCards: number;
+  readonly audioCompletedCount: number;
+  readonly audioSucceededCount: number;
+  readonly audioFailedCount: number;
 }
 
 export interface ImportSessionPayloadOptions {
   readonly audioEnricher?: SessionAudioEnricher;
+  readonly onProgress?: (
+    progress: ImportSessionProgress,
+  ) => void;
 }
 
 export interface ImportSessionPayloadResult {
@@ -468,8 +492,10 @@ const validateImportedCards = (
     return validatedCards;
   });
 
+const AUDIO_ENRICHMENT_BATCH_SIZE = 3;
+
 const requestSessionAudioEnrichment: SessionAudioEnricher = {
-  enrich: (items) =>
+  enrich: (items, onProgress) =>
     Effect.gen(function* () {
       if (items.length === 0) {
         return {
@@ -495,57 +521,107 @@ const requestSessionAudioEnrichment: SessionAudioEnricher = {
 
       yield* clientLog(
         "info",
-        `[SessionSync] Requesting server-side audio enrichment for ${items.length} cards.`,
+        `[SessionSync] Requesting progressive server-side audio enrichment for ${items.length} cards in batches of ${AUDIO_ENRICHMENT_BATCH_SIZE}.`,
       );
 
-      const response = yield* Effect.tryPromise({
-        try: () =>
-          fetch("/api/tts/enrich-session", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${token}`,
-            },
-            body: JSON.stringify({ items }),
-          }),
-        catch: (cause) =>
-          new Error(
-            `Audio enrichment request could not reach the server: ${String(cause)}`,
-          ),
+      const resultItems: SessionAudioEnrichmentResultItem[] = [];
+      let completedCount = 0;
+      let succeededCount = 0;
+      let failedCount = 0;
+
+      onProgress?.({
+        completedCount,
+        totalCount: items.length,
+        succeededCount,
+        failedCount,
       });
 
-      const payload = yield* Effect.tryPromise({
-        try: () =>
-          response.json() as Promise<SessionAudioEnrichmentApiResponse>,
-        catch: (cause) =>
-          new Error(
-            `Audio enrichment response was not valid JSON: ${String(cause)}`,
-          ),
-      });
-
-      if (!response.ok) {
-        return yield* Effect.fail(
-          new Error(
-            payload.message ??
-              payload.error ??
-              `Audio enrichment failed with HTTP ${response.status}.`,
-          ),
-        );
-      }
-
-      if (
-        payload.success !== true ||
-        !payload.data ||
-        !Array.isArray(payload.data.items)
+      for (
+        let batchStart = 0;
+        batchStart < items.length;
+        batchStart += AUDIO_ENRICHMENT_BATCH_SIZE
       ) {
-        return yield* Effect.fail(
-          new Error(
-            "Audio enrichment response did not contain a valid result.",
-          ),
+        const batch = items.slice(
+          batchStart,
+          batchStart + AUDIO_ENRICHMENT_BATCH_SIZE,
         );
+
+        yield* clientLog(
+          "info",
+          `[SessionSync] Starting audio enrichment batch ${Math.floor(batchStart / AUDIO_ENRICHMENT_BATCH_SIZE) + 1}; size=${batch.length}.`,
+        );
+
+        const response = yield* Effect.tryPromise({
+          try: () =>
+            fetch("/api/tts/enrich-session", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${token}`,
+              },
+              body: JSON.stringify({ items: batch }),
+            }),
+          catch: (cause) =>
+            new Error(
+              `Audio enrichment request could not reach the server: ${String(cause)}`,
+            ),
+        });
+
+        const payload = yield* Effect.tryPromise({
+          try: () =>
+            response.json() as Promise<SessionAudioEnrichmentApiResponse>,
+          catch: (cause) =>
+            new Error(
+              `Audio enrichment response was not valid JSON: ${String(cause)}`,
+            ),
+        });
+
+        if (!response.ok) {
+          return yield* Effect.fail(
+            new Error(
+              payload.message ??
+                payload.error ??
+                `Audio enrichment failed with HTTP ${response.status}.`,
+            ),
+          );
+        }
+
+        if (
+          payload.success !== true ||
+          !payload.data ||
+          !Array.isArray(payload.data.items)
+        ) {
+          return yield* Effect.fail(
+            new Error(
+              "Audio enrichment response did not contain a valid result.",
+            ),
+          );
+        }
+
+        resultItems.push(...payload.data.items);
+        completedCount += batch.length;
+        succeededCount += payload.data.enrichedCount;
+        failedCount += payload.data.failedCount;
+
+        yield* clientLog(
+          payload.data.failedCount > 0 ? "warn" : "info",
+          `[SessionSync] Audio enrichment progress completed=${completedCount}/${items.length}, succeeded=${succeededCount}, failed=${failedCount}.`,
+        );
+
+        onProgress?.({
+          completedCount,
+          totalCount: items.length,
+          succeededCount,
+          failedCount,
+        });
       }
 
-      return payload.data;
+      return {
+        items: resultItems,
+        requestedCount: items.length,
+        enrichedCount: succeededCount,
+        failedCount,
+      };
     }),
 };
 
@@ -611,6 +687,14 @@ export const importSessionPayload = (
       );
     }
 
+    options.onProgress?.({
+      phase: "validating",
+      totalCards: rawCards.length,
+      audioCompletedCount: 0,
+      audioSucceededCount: 0,
+      audioFailedCount: 0,
+    });
+
     yield* clientLog(
       "info",
       `[SessionSync] Validating all ${rawCards.length} imported cards before audio generation.`,
@@ -649,10 +733,35 @@ export const importSessionPayload = (
     const audioUrlByRequestId = new Map<string, string>();
     const audioEnricher =
       options.audioEnricher ?? requestSessionAudioEnrichment;
+    const suppliedAudioCount =
+      acceptedCards.length - audioRequests.length;
+
+    options.onProgress?.({
+      phase: "generating_audio",
+      totalCards: acceptedCards.length,
+      audioCompletedCount: suppliedAudioCount,
+      audioSucceededCount: suppliedAudioCount,
+      audioFailedCount: 0,
+    });
 
     if (audioRequests.length > 0) {
       const enrichmentAttempt = yield* Effect.either(
-        audioEnricher.enrich(audioRequests),
+        audioEnricher.enrich(
+          audioRequests,
+          (progress) => {
+            options.onProgress?.({
+              phase: "generating_audio",
+              totalCards: acceptedCards.length,
+              audioCompletedCount:
+                suppliedAudioCount +
+                progress.completedCount,
+              audioSucceededCount:
+                suppliedAudioCount +
+                progress.succeededCount,
+              audioFailedCount: progress.failedCount,
+            });
+          },
+        ),
       );
 
       if (enrichmentAttempt._tag === "Left") {
@@ -692,6 +801,15 @@ export const importSessionPayload = (
       (request) =>
         !audioUrlByRequestId.has(request.requestId),
     ).length;
+
+    options.onProgress?.({
+      phase: "finalizing",
+      totalCards: acceptedCards.length,
+      audioCompletedCount: acceptedCards.length,
+      audioSucceededCount:
+        acceptedCards.length - audioFailedCount,
+      audioFailedCount,
+    });
 
     // Load the local progress store state only after the entire payload has
     // passed schema validation and audio enrichment has completed.
