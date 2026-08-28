@@ -7,6 +7,7 @@ import "../../components/AiGenerator.ts";
 import "../../components/StudyDesk.ts";
 import "../../components/LoginView.ts";
 import "../../components/SignupView.ts";
+import "../../components/WatchView.ts";
 
 const NotFoundView = (): ViewResult => ({
   template: html`
@@ -63,6 +64,8 @@ const generateView = (): ViewResult => {
   };
 };
 
+const watchView = (): ViewResult => ({ template: html`<watch-view></watch-view>` });
+
 const routes: Route[] = [
   {
     pattern: /^\/$/,
@@ -77,6 +80,11 @@ const routes: Route[] = [
   {
     pattern: /^\/generate$/,
     view: generateView,
+    meta: { requiresAuth: true },
+  },
+  {
+    pattern: /^\/watch$/,
+    view: watchView,
     meta: { requiresAuth: true },
   },
   {

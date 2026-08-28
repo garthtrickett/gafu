@@ -673,8 +673,8 @@ phase exit:
 | Known-vocabulary bootstrap | Phase 1 | Gradual correction first; design an optional import without requiring it for MVP. |
 | First-encounter marker default | Phase 3 | Subtle visual marker on, with an obvious global off switch. |
 | Mid-episode checkout timing | Phase 3 | Preserve checkout immediately and offer resume/checkout on next visit. |
-| Source similarity thresholds | Phase 2 | Tune only from the versioned evaluation set; do not hard-code an unevaluated guess. |
-| Local embedding model and signature storage budget | Phase 2 | Pin one browser-capable model/version and measure episode-scale latency and storage before accepting it. |
+| Source similarity thresholds | Phase 2 | `source_signature_v1` provisionally uses 0.72 lexical and 0.88 semantic; release remains gated on the versioned evaluation set and Japanese review. |
+| Local embedding model and signature storage budget | Phase 2 | Pinned to quantized `Xenova/paraphrase-multilingual-MiniLM-L12-v2` on Transformers.js 2.17.2; persisted semantic cost is 16 bytes per cue plus IndexedDB overhead, while the browser model cache is measured during release hardening. |
 | Default review-time budget | Phase 2 | Derive from the existing review-count preference until user research selects a time default. |
 | Learner-day time zone | Phase 1 | Store an explicit IANA time zone; do not infer a new zone independently on each device. |
 | Browser support floor | Phase 2 | Current stable Chrome and Firefox; fail explicitly for unsupported codecs/APIs. |

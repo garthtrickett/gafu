@@ -14,4 +14,31 @@ export const SentenceGenerationSchema = z.object({
 export type FuriganaSegment = z.infer<typeof FuriganaSegmentSchema>;
 export type SentenceGeneration = z.infer<typeof SentenceGenerationSchema>;
 
+export const MediaRecommendationEvidenceSchema = z.object({
+  cueId: z.string().min(1),
+  start: z.number().int().nonnegative(),
+  end: z.number().int().positive(),
+  observedSurface: z.string().min(1),
+});
+
+export const MediaRecommendationProposalSchema = z.object({
+  kind: z.enum(["grammar", "vocabulary"]),
+  canonicalKey: z.string().min(1),
+  reading: z.string(),
+  meaning: z.string().min(1),
+  observedForms: z.array(z.string().min(1)).min(1).max(8),
+  occurrenceCount: z.number().int().positive(),
+  firstTimeSeconds: z.number().nonnegative(),
+  prerequisiteCanonicalKeys: z.array(z.string().min(1)).max(8),
+  confidence: z.number().min(0).max(1),
+  reviewCostClass: z.enum(["light_vocabulary", "difficult_vocabulary", "grammar"]),
+  evidence: z.array(MediaRecommendationEvidenceSchema).min(1).max(8),
+});
+
+export const MediaRecommendationResultSchema = z.object({
+  proposals: z.array(MediaRecommendationProposalSchema).max(5),
+});
+
+export type MediaRecommendationProposal = z.infer<typeof MediaRecommendationProposalSchema>;
+export type MediaRecommendationResult = z.infer<typeof MediaRecommendationResultSchema>;
 

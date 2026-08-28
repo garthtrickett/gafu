@@ -11,22 +11,22 @@ runtime, build time, or release time.
 
 | Source | Behavior | Destination | Decision |
 | --- | --- | --- | --- |
-| `src/subtitles.js` | SRT/ASS/SSA parsing and active-cue lookup | `src/lib/client/media/player/subtitles.ts` | Migrate and strengthen IDs |
-| `src/japanese.js` | Kuromoji loading, furigana, fallback tokens | `src/lib/client/media/player/japanese-tokenizer.ts` | Migrate and retain full token metadata |
-| `src/media-id.js` | Session media identifier | `src/lib/client/media/player/media-identity.ts` | Replace with versioned cryptographic fingerprints |
-| `server/subtitle-alignment.js` | PCM envelope and drift/offset search | `src/lib/client/media/player/subtitle-alignment.ts` | Migrate pure algorithm to typed arrays |
+| `src/subtitles.js` | SRT/ASS/SSA parsing and active-cue lookup | `src/lib/client/media/adaptive/subtitles.ts` | Migrated; IDs now use exact track fingerprint, format, and source ordinal |
+| `src/japanese.js` | Kuromoji loading, furigana, fallback tokens | `src/lib/client/media/adaptive/tokenizer.ts` | Migrated with full lemma/POS/conjugation/span metadata |
+| `src/media-id.js` | Session media identifier | `src/lib/client/media/adaptive/local-media.ts` | Replaced with versioned cryptographic fingerprints |
+| `server/subtitle-alignment.js` | PCM envelope and drift/offset search | `src/lib/client/media/adaptive/alignment.ts` | Migrated pure algorithm to typed arrays |
 | `src/subtitle-alignment.js` | Local Vite middleware client | none | Replace with browser-local adapter; never point at hosted Gafu |
-| `src/audio-repair.js` | Browser and native audio repair | `src/lib/client/media/player/audio-repair.ts` | Browser adapter gated by licence review |
-| `src/main.js` | File, player, clock, controls, subtitle DOM | Gafu Lit Watch components and controller | Extract behavior; do not copy monolith |
-| `src/style.css` | Player presentation | Gafu Watch styles | Migrate relevant rules into Gafu design system |
-| `test/*.test.js` | Parser and alignment regression tests | Gafu Vitest suites | Port before deprecation |
+| `src/audio-repair.js` | Browser and native audio repair | `src/lib/client/media/adaptive/audio-repair.ts` | Adapter and original-audio fallback migrated; FFmpeg core remains gated |
+| `src/main.js` | File, player, clock, controls, subtitle DOM | `src/components/WatchView.ts` plus adaptive media modules | Extracted into Lit/controller modules |
+| `src/style.css` | Player presentation | `src/components/WatchView.ts` | Relevant presentation moved into Gafu's design system |
+| `test/*.test.js` | Parser and alignment regression tests | `src/lib/client/media/adaptive/*.test.ts` | Ported and extended |
 
 ## Dependency and licence inventory
 
 | Package/asset | Declared licence | Migration decision |
 | --- | --- | --- |
-| `kuromoji` | Apache-2.0 | Eligible after adding attribution |
-| Kuromoji dictionary bundled by the package | Confirm with packaged notices | Gate asset copy on notice review |
+| `kuromoji` | Apache-2.0 | Added with `public/third-party-licenses/kuromoji-Apache-2.0.txt` |
+| Kuromoji dictionary bundled by the package | NAIST/ICOT notice in upstream `NOTICE.md` | Bundled with `public/third-party-licenses/kuromoji-NOTICE.md` |
 | `@ffmpeg/ffmpeg` | MIT | Wrapper is eligible, but unusable without an approved core |
 | `@ffmpeg/util` | MIT | Eligible with attribution |
 | `@ffmpeg/core` | GPL-2.0-or-later | Do not add to Gafu until the owner completes a distribution/licence decision |

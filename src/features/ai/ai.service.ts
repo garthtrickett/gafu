@@ -9,7 +9,7 @@ export class AiServiceError extends Data.TaggedError("AiServiceError")<{
 
 export const generateJapaneseSentence = (prompt: string) =>
   Effect.gen(function* () {
-    yield* Effect.logInfo(`[AiService] Requesting structured sentence generation from Mastra for prompt: "${prompt}"`);
+    yield* Effect.logInfo("[AiService] Requesting structured sentence generation from Mastra.");
 
     const agent = yield* Effect.sync(() => mastra.getAgentById("japanese-sentence-generator"));
     if (!agent) {
@@ -24,10 +24,9 @@ export const generateJapaneseSentence = (prompt: string) =>
             schema: SentenceGenerationSchema,
           },
         }),
-      catch: (error) => {
+      catch: () => {
         return new AiServiceError({
-          message: `Failed to generate structured sentence via Mastra AI. Error: ${error instanceof Error ? error.message : String(error)}`,
-          cause: error,
+          message: "Failed to generate structured sentence via Mastra AI.",
         });
       },
     });
@@ -35,7 +34,5 @@ export const generateJapaneseSentence = (prompt: string) =>
     yield* Effect.logInfo("[AiService] Successfully received structured output from Mastra.");
     
     const result = response.object;
-    yield* Effect.logInfo(`[AiService] Parsed result details - Front: "${result.front}", Back: "${result.back}"`);
-
     return result;
   });

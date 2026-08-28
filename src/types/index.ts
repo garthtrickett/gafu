@@ -11,6 +11,8 @@ export type { default as GrammarPointTable, GrammarPoint, NewGrammarPoint, Gramm
 export type { KnowledgePointId as GrammarPointId } from "./generated/public/KnowledgePoint";
 export type { default as VocabularyPointTable, VocabularyPoint, NewVocabularyPoint, VocabularyPointUpdate } from "./generated/public/VocabularyPoint";
 export type { default as IntroductionAdmissionTable, IntroductionAdmission, NewIntroductionAdmission, IntroductionAdmissionUpdate, IntroductionAdmissionId } from "./generated/public/IntroductionAdmission";
+export type { default as MediaAnalysisRunTable, MediaAnalysisRun, NewMediaAnalysisRun, MediaAnalysisRunUpdate, MediaAnalysisRunId } from "./generated/public/MediaAnalysisRun";
+export type { default as MediaCandidateTable, MediaCandidate, NewMediaCandidate, MediaCandidateUpdate, MediaCandidateId } from "./generated/public/MediaCandidate";
 export type { default as TtsDailyUsageTable, TtsDailyUsage, NewTtsDailyUsage, TtsDailyUsageUpdate } from "./generated/public/TtsDailyUsage";
 export type { default as UserPreferenceTable, UserPreference, NewUserPreference, UserPreferenceUpdate } from "./generated/public/UserPreference";
 export type { default as SyncEpochTable, SyncEpoch, NewSyncEpoch, SyncEpochUpdate, SyncEpochId } from "./generated/public/SyncEpoch";

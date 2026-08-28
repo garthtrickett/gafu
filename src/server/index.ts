@@ -62,6 +62,12 @@ export const app = new Elysia()
   .use(effectPlugin)
   .use(
     staticPlugin({
+      assets: "./dist/dict",
+      prefix: "/dict",
+    })
+  )
+  .use(
+    staticPlugin({
       assets: "./dist/assets",
       prefix: "/assets",
         })

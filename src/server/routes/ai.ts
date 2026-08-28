@@ -23,7 +23,9 @@ export const aiRoutes = new Elysia({ prefix: "/api/ai" })
         }
 
         const user = yield* validateToken(token);
-        yield* Effect.logInfo(`[AiRoutes] Authorized user: ${user.email} (ID: ${user.id})`);
+        yield* Effect.logInfo("[AiRoutes] Authorized request.").pipe(
+          Effect.annotateLogs("userId", user.id),
+        );
 
         const prompt = body.prompt;
         const sentence = yield* generateJapaneseSentence(prompt);
@@ -36,28 +38,7 @@ export const aiRoutes = new Elysia({ prefix: "/api/ai" })
       if (result._tag === "Left") {
         const error = result.left;
         const errorMessage = error instanceof Error ? error.message : "Unknown error";
-        const cause = error && typeof error === "object" && "cause" in error ? (error as { cause?: unknown }).cause : undefined;
-        const causeString = cause
-          ? (cause instanceof Error
-              ? cause.message
-              : typeof cause === "object"
-                ? JSON.stringify(cause)
-                : typeof cause === "symbol"
-                  ? cause.toString()
-                  : typeof cause === "function"
-                    ? (cause.name || "function")
-                    : typeof cause === "string"
-                      ? cause
-                      : typeof cause === "number"
-                        ? cause.toString()
-                        : typeof cause === "boolean"
-                          ? cause.toString()
-                          : typeof cause === "bigint"
-                            ? cause.toString()
-                            : "unknown")
-          : undefined;
-        
-        await runEffect(Effect.logError(`[AiRoutes] Generation failed: ${errorMessage}`, { cause }));
+        await runEffect(Effect.logError("[AiRoutes] Generation failed."));
 
         if (error instanceof InvalidCredentialsError || (error && typeof error === "object" && "_tag" in error && (error._tag === "Unauthorized" || error._tag === "Forbidden" || (error as { _tag?: string })._tag === "AuthError"))) {
           set.status = 401;
@@ -65,7 +46,7 @@ export const aiRoutes = new Elysia({ prefix: "/api/ai" })
         }
 
         set.status = 500;
-        return { error: "Internal Server Error", message: errorMessage, cause: causeString };
+        return { error: "Internal Server Error", message: errorMessage };
       }
 
       return result.right;

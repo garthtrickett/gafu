@@ -9,15 +9,15 @@ import type { ColumnType, Selectable, Insertable, Updateable } from 'kysely';
 export default interface GrammarPointTable {
   id: ColumnType<KnowledgePointId, KnowledgePointId | undefined, KnowledgePointId>;
 
-  deck_id: ColumnType<DeckId, DeckId, DeckId>;
+  deck_id: ColumnType<DeckId | null, DeckId | null, DeckId | null>;
 
   formal_name: ColumnType<string, string, string>;
 
   base_meaning: ColumnType<string, string, string>;
 
-  lesson_number: ColumnType<number, number, number>;
+  lesson_number: ColumnType<number, number | undefined, number>;
 
-  sequence_order: ColumnType<number, number, number>;
+  sequence_order: ColumnType<number, number | undefined, number>;
 
   difficulty_level: ColumnType<string, string | undefined, string>;
 

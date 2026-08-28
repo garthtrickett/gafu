@@ -3,6 +3,8 @@
 
 import type { default as KnowledgePointTable } from './KnowledgePoint';
 import type { default as TtsDailyUsageTable } from './TtsDailyUsage';
+import type { default as MediaAnalysisRunTable } from './MediaAnalysisRun';
+import type { default as MediaCandidateTable } from './MediaCandidate';
 import type { default as VocabularyPointTable } from './VocabularyPoint';
 import type { default as UserTable } from './User';
 import type { default as SyncEpochTable } from './SyncEpoch';
@@ -17,6 +19,10 @@ export default interface PublicSchema {
   knowledge_point: KnowledgePointTable;
 
   tts_daily_usage: TtsDailyUsageTable;
+
+  media_analysis_run: MediaAnalysisRunTable;
+
+  media_candidate: MediaCandidateTable;
 
   vocabulary_point: VocabularyPointTable;
 

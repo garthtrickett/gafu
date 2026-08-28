@@ -611,14 +611,21 @@ unspecified semantic fingerprint:
 1. Normalize the sentence with Unicode NFKC, standardized whitespace, and the
    same versioned Japanese tokenizer used for candidate evidence.
 2. Store a SHA-256 hash of the normalized sentence for exact-match rejection.
-3. Build a keyed bottom-k lexical sketch from lemma and character n-grams. The
-   shingle hashes use a device-local key so the stored sketch is not a plain
-   dictionary of recoverable source fragments.
-4. Build a quantized sentence embedding with a pinned local model and record its
-   model and normalization version.
-5. For every generated sentence, compute the same values locally and reject an
-   exact hash match or a lexical/embedding similarity above versioned thresholds
-   established by the release evaluation set.
+3. Build a 32-entry bottom-k lexical sketch from lemma/primary-POS uni-, bi-,
+   and trigrams. Hash every shingle with HMAC-SHA-256 under a random 32-byte
+   device-local key, then discard the shingles. The key stays in a private
+   IndexedDB store and is never logged or synced.
+4. Build a mean-pooled, normalized embedding locally with quantized
+   `Xenova/paraphrase-multilingual-MiniLM-L12-v2` under Transformers.js 2.17.2.
+   Compress it immediately to a deterministic 128-bit random-hyperplane SimHash
+   and discard the raw embedding. Record the model and normalization versions.
+5. For every generated sentence, compute the same values locally. Reject exact
+   hashes, lexical scores at or above 0.72, and semantic Hamming-agreement scores
+   at or above 0.88. These thresholds belong to `source_signature_v1` and remain
+   provisional until the versioned evaluation corpus and Japanese human review
+   justify promotion. Missing source signatures, model failure, or a model/
+   normalization version mismatch means validation unavailable and fails closed.
+   Threshold promotion is established by the release evaluation set.
 
 The signature, model inputs, and device key are not learner-visible, do not
 enter application logs, and do not sync by default. The server may return a
