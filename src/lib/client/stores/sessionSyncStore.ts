@@ -29,9 +29,19 @@ export interface ExportPayload {
 /**
  * Collects N5/N4 grammar states from IndexedDB and copies a lightweight payload to the clipboard
  */
-export const generateExportPayload = (options?: { isCram?: boolean }) => {
+export interface GenerateExportPayloadOptions {
+  readonly isCram?: boolean;
+  readonly copyToClipboard?: boolean;
+  readonly persistIntroductions?: boolean;
+}
+
+export const generateExportPayload = (
+  options: GenerateExportPayloadOptions = {},
+) => {
   const effect = Effect.gen(function* () {
     const isCram = options?.isCram ?? false;
+    const copyToClipboard = options.copyToClipboard ?? true;
+    const persistIntroductions = options.persistIntroductions ?? true;
     yield* clientLog("info", `[SessionSync] Compiling study progress payload (isCram=${isCram})...`);
     
     // Ensure both stores are loaded and updated
@@ -113,32 +123,38 @@ export const generateExportPayload = (options?: { isCram?: boolean }) => {
         };
       });
 
-            // 2. Process and save new introductions if eligible
+            // 2. Include new introductions, persisting only after API success
+            // when the caller has requested deferred activation.
           if (eligible && nextIntroductions.length > 0) {
-        yield* clientLog("info", `[SessionSync] Unlocking ${nextIntroductions.length} new grammar points.`);
-        
-                const { hlcStore } = yield* Effect.promise(() => import("./hlcStore.ts"));
+        if (persistIntroductions) {
+          yield* clientLog("info", `[SessionSync] Unlocking ${nextIntroductions.length} new grammar points.`);
+          const { hlcStore } = yield* Effect.promise(() => import("./hlcStore.ts"));
 
-        const newProgressRecords: KnowledgePointProgress[] = [];
-        for (const item of nextIntroductions) {
-          const currentHlc = yield* hlcStore.tick();
-          newProgressRecords.push({
-            id: item.id,
-            easeFactor: 2.5,
-            repetitions: 0,
-            intervalDays: 0,
-            nextReview: now.toISOString(),
-            difficulty: 5.0,
-            stability: 0.0,
-            lastReviewedAt: null,
-            unlockedAt: now.toISOString(),
-            hlc: currentHlc,
-          });
+          const newProgressRecords: KnowledgePointProgress[] = [];
+          for (const item of nextIntroductions) {
+            const currentHlc = yield* hlcStore.tick();
+            newProgressRecords.push({
+              id: item.id,
+              easeFactor: 2.5,
+              repetitions: 0,
+              intervalDays: 0,
+              nextReview: now.toISOString(),
+              difficulty: 5.0,
+              stability: 0.0,
+              lastReviewedAt: null,
+              unlockedAt: now.toISOString(),
+              hlc: currentHlc,
+            });
+          }
+
+          // Manual exports retain their historical immediate activation.
+          yield* knowledgePointStore.putAll(newProgressRecords);
+        } else {
+          yield* clientLog(
+            "info",
+            `[SessionSync] Deferring activation of ${nextIntroductions.length} new grammar points until the generated session passes import validation.`,
+          );
         }
-
-        
-        // Save these new rules to knowledgePointStore immediately so they count toward today's limit
-        yield* knowledgePointStore.putAll(newProgressRecords);
         
         for (const item of nextIntroductions) {
           queue.push({
@@ -236,16 +252,26 @@ CRITICAL CONSTRAINTS:
     const jsonString = JSON.stringify(payload, null, 2);
     
     // Write the compiled payload string directly to the user's system clipboard if API is available
-    if (typeof navigator !== "undefined" && navigator.clipboard) {
+    if (
+      copyToClipboard &&
+      typeof navigator !== "undefined" &&
+      navigator.clipboard
+    ) {
       yield* Effect.tryPromise({
         try: () => navigator.clipboard.writeText(jsonString),
         catch: (e) => new Error(`Failed to write text to system clipboard: ${String(e)}`),
       });
-    } else {
+    } else if (copyToClipboard) {
       yield* clientLog("warn", "[SessionSync] Clipboard API not available in this environment.");
     }
 
-    yield* clientLog("info", "[SessionSync] Study progress successfully copied to clipboard.", { wordPoolSize: kaishiPool.length, queueSize: queueLength });
+    yield* clientLog(
+      "info",
+      copyToClipboard
+        ? "[SessionSync] Study progress successfully copied to clipboard."
+        : "[SessionSync] Study progress compiled for server-side generation.",
+      { wordPoolSize: kaishiPool.length, queueSize: queueLength },
+    );
     return jsonString;
   });
 

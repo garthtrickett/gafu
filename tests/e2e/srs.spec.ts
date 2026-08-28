@@ -79,6 +79,8 @@ test.describe("SRS Pacing, Daily Cap, and Mastery Gating E2E Flow", () => {
     await page.locator("button", { hasText: "View Active Queue" }).click();
     await expect(page.locator("text=Due Today - Daily Target (11 rules)")).toBeVisible();
 
+    await page.getByText("Manual JSON fallback", { exact: true }).click();
+
     // 3. Export Progress payload: This initiates first-time pacing
     // Click Copy Progress Payload button to compile progress
     await page.locator("button", { hasText: "Copy Progress Payload" }).click();
@@ -265,9 +267,10 @@ test.describe("SRS Pacing, Daily Cap, and Mastery Gating E2E Flow", () => {
       ]
     };
 
-    const textarea = page.locator("textarea");
+    await page.getByText("Manual JSON fallback", { exact: true }).click();
+    const textarea = page.getByLabel("Manual session JSON");
     await textarea.fill(JSON.stringify(mockPayload));
-    await page.locator("button", { hasText: "Import & Start Study" }).click();
+    await page.getByRole("button", { name: "Import JSON & Start Study" }).click();
 
     // Confirm transition to the active study session view
     await expect(page).toHaveURL("/study");

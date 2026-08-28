@@ -85,11 +85,12 @@ test.describe("HLC Client Clock Drift Resiliency", () => {
       ]
     };
 
-    const textarea = page.locator("textarea");
+    await page.getByText("Manual JSON fallback", { exact: true }).click();
+    const textarea = page.getByLabel("Manual session JSON");
     await textarea.fill(JSON.stringify(mockSessionPayload));
 
     // 4. Start the study and grade the card as correct
-    await page.locator("button", { hasText: "Import & Start Study" }).click();
+    await page.getByRole("button", { name: "Import JSON & Start Study" }).click();
     await expect(page).toHaveURL("/study");
 
     // Click "Correct"

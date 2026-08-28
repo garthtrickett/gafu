@@ -38,9 +38,10 @@ test.describe("Grammar Explanation Study Flow", () => {
       ]
     };
 
-    // 5. Paste payload and submit the import form
-    await page.locator("textarea").fill(JSON.stringify(mockPayload));
-    await page.locator('button[type="submit"]', { hasText: "Import & Start Study" }).click();
+    // 5. Open the manual fallback, paste the payload, and submit the import form
+    await page.getByText("Manual JSON fallback", { exact: true }).click();
+    await page.getByLabel("Manual session JSON").fill(JSON.stringify(mockPayload));
+    await page.getByRole("button", { name: "Import JSON & Start Study" }).click();
 
     // 6. Verify transition to study interface
     await expect(page).toHaveURL(/\/study/);

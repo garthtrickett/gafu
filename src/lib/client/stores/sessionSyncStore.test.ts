@@ -31,6 +31,39 @@ describe("sessionSyncStore export payload gating integration tests", () => {
     await runClientPromise(grammarPointCatalogStore.clear());
   });
 
+  it("defers new-point activation until an API-generated session is validated", async () => {
+    await runClientPromise(grammarPointCatalogStore.putAll([
+      {
+        id: "gp-deferred-1",
+        formal_name: "です",
+        base_meaning: "polite copula",
+        difficulty_level: "N5",
+        hlc: "0000000000000:0000:initial",
+      },
+      {
+        id: "gp-deferred-2",
+        formal_name: "から",
+        base_meaning: "from",
+        difficulty_level: "N5",
+        hlc: "0000000000000:0000:initial",
+      },
+    ]));
+    const preferences = await import("./userPreferencesStore.ts");
+    await runClientPromise(
+      preferences.userPreferencesStore.updateLimits(20, 3, true),
+    );
+
+    const compiled = await runClientPromise(
+      generateExportPayload({
+        copyToClipboard: false,
+        persistIntroductions: false,
+      }),
+    );
+
+    expect(JSON.parse(compiled).queue).toHaveLength(2);
+    expect(grammarPointStore.state.peek()).toEqual([]);
+  });
+
   it("should cap massive backlogs of due rules to a maximum of 15 items in the exported queue sorted by retrievability", async () => {
     const catalogItems = Array.from({ length: 50 }, (_, i) => ({
       id: `gp-${i}`,

@@ -107,7 +107,7 @@ describe("StudyDesk component and activeSessionStore pacing presentation", () =>
     expect(htmlContent).toContain("id=\"backlog-advice-hint\""); // backlog advice rendered since gp-2 is in backlog
 
     // Verify progression export button is locked while gate is active
-    const progressBtn = document.querySelector("#btn-export-progress") as HTMLButtonElement;
+    const progressBtn = document.querySelector("#btn-generate-session") as HTMLButtonElement;
     expect(progressBtn).not.toBeNull();
     expect(progressBtn.disabled).toBe(true);
     expect(progressBtn.textContent).toContain("Progression Locked");
@@ -127,10 +127,10 @@ describe("StudyDesk component and activeSessionStore pacing presentation", () =>
     expect(htmlContent).not.toContain("id=\"backlog-advice-hint\"");
 
         // Verify progression export button is unlocked after gate is bypassed
-    const progressBtnAfter = document.querySelector("#btn-export-progress") as HTMLButtonElement;
+    const progressBtnAfter = document.querySelector("#btn-generate-session") as HTMLButtonElement;
     expect(progressBtnAfter).not.toBeNull();
     expect(progressBtnAfter.disabled).toBe(false);
-    expect(progressBtnAfter.textContent).toContain("Copy Progress Payload");
+    expect(progressBtnAfter.textContent).toContain("Generate & Start Session");
   });
 
   it("should render the metrics panel with exact calculations and distributions", async () => {

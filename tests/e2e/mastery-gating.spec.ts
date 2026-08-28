@@ -175,12 +175,13 @@ test.describe("Mastery Gating, Cram Generation, and Preferences Bypass E2E Flow"
     await expect(gateAlert).toBeVisible();
     await expect(page.locator("#mastery-rate-pct")).toContainText("40%");
 
-    // 4. Verify standard progress payload copy button is locked (disabled) with appropriate messaging
-    const progressBtn = page.locator("#btn-export-progress");
+    // 4. Verify the primary API session button is locked with appropriate messaging
+    const progressBtn = page.locator("#btn-generate-session");
     await expect(progressBtn).toHaveAttribute("disabled", "");
     await expect(progressBtn).toContainText("Progression Locked");
 
-    // 5. Verify the 'Compile Cram Payload' button is visible, click it, and assert the payload structure is specialized
+    // 5. The manual fallback still supports inspecting a specialized cram payload
+    await page.getByText("Manual JSON fallback", { exact: true }).click();
     const cramBtn = page.locator("#btn-cram-export");
     await expect(cramBtn).toBeVisible();
     await cramBtn.click();
@@ -197,10 +198,11 @@ test.describe("Mastery Gating, Cram Generation, and Preferences Bypass E2E Flow"
     // 7. Verify Mastery Gate Card disappears immediately
     await expect(gateAlert).not.toBeVisible();
 
-    // 8. Verify progression export button is now unlocked (enabled), click it, and assert that new rules are successfully introduced (total length exceeds 5)
+    // 8. Verify API generation is unlocked, then inspect the fallback payload to confirm new rules are introduced
     await expect(progressBtn).not.toHaveAttribute("disabled", "");
-    await progressBtn.click();
-    await expect(progressBtn).toContainText("Copied to Clipboard!");
+    const manualProgressBtn = page.locator("#btn-export-progress");
+    await manualProgressBtn.click();
+    await expect(manualProgressBtn).toContainText("Copied to Clipboard!");
 
     const bypassedClipboardText = await page.evaluate(() => navigator.clipboard.readText());
     const bypassedPayload = JSON.parse(bypassedClipboardText) as { queue: unknown[] };

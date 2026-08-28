@@ -18,6 +18,8 @@ test.describe("Manual Handshake Study Session Loop", () => {
     await expect(page).toHaveURL("/");
     await expect(page.locator("h1")).toContainText("Language Study Desk");
 
+    await page.getByText("Manual JSON fallback", { exact: true }).click();
+
     // 2. Check the "Copy Progress" button is present
     const copyBtn = page.locator("button", { hasText: "Copy Progress Payload" });
     await expect(copyBtn).toBeVisible();
@@ -42,11 +44,11 @@ test.describe("Manual Handshake Study Session Loop", () => {
       ]
     };
 
-    const textarea = page.locator("textarea");
+    const textarea = page.getByLabel("Manual session JSON");
     await textarea.fill(JSON.stringify(mockSessionPayload));
 
     // 4. Click the "Import & Start Study" button
-    const startBtn = page.locator("button", { hasText: "Import & Start Study" });
+    const startBtn = page.getByRole("button", { name: "Import JSON & Start Study" });
     await startBtn.click();
 
     // 5. Confirm transition to the active study session view

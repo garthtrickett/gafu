@@ -14,6 +14,39 @@ export const SentenceGenerationSchema = z.object({
 export type FuriganaSegment = z.infer<typeof FuriganaSegmentSchema>;
 export type SentenceGeneration = z.infer<typeof SentenceGenerationSchema>;
 
+export const DailySessionQueueItemSchema = z.object({
+  grammar_point_id: z.string().min(1).max(100),
+  formal_name: z.string().min(1).max(200),
+  repetitions: z.number().int().nonnegative(),
+  ease_factor: z.number().finite().positive(),
+});
+
+export const DailySessionGenerationRequestSchema = z.object({
+  mode: z.enum(["standard", "cram"]),
+  queue: z.array(DailySessionQueueItemSchema).min(1).max(15),
+  vocabulary_pool: z.array(z.string().min(1).max(100)).min(1).max(2_000),
+});
+
+export const DailySessionCardSchema = z.object({
+  grammar_point_id: z.string().min(1).max(100),
+  english_context: z.string().min(1).max(1_000),
+  japanese_sentence: z.string().min(1).max(500),
+  furigana: z.array(FuriganaSegmentSchema).max(100),
+  audio_url: z.null(),
+  explanation: z.string().min(1).max(2_000),
+});
+
+export const DailySessionGenerationSchema = z.object({
+  cards: z.array(DailySessionCardSchema).min(1).max(15),
+});
+
+export type DailySessionGenerationRequest = z.infer<
+  typeof DailySessionGenerationRequestSchema
+>;
+export type DailySessionGeneration = z.infer<
+  typeof DailySessionGenerationSchema
+>;
+
 export const MediaRecommendationEvidenceSchema = z.object({
   cueId: z.string().min(1),
   start: z.number().int().nonnegative(),
