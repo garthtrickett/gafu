@@ -1,9 +1,9 @@
 import { Effect } from "effect";
-import { SOURCE_SIGNATURE_VERSION, type NormalizedToken } from "../../../shared/adaptive-media.ts";
+import { SOURCE_SEMANTIC_MODEL_VERSION, SOURCE_SIGNATURE_VERSION, type NormalizedToken } from "../../../shared/adaptive-media.ts";
 
 export const LEXICAL_SIGNATURE_SIZE = 32;
 export const SEMANTIC_SIGNATURE_BITS = 128;
-export const SEMANTIC_MODEL_VERSION = "Xenova/paraphrase-multilingual-MiniLM-L12-v2@transformers-2.17.2" as const;
+export const SEMANTIC_MODEL_VERSION = SOURCE_SEMANTIC_MODEL_VERSION;
 export const LEXICAL_REJECTION_THRESHOLD = 0.72;
 export const SEMANTIC_REJECTION_THRESHOLD = 0.88;
 

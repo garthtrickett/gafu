@@ -24,7 +24,10 @@ import {
 } from "../lib/client/media/adaptive/recommendations.ts";
 import {
   fetchPendingMediaCheckouts,
+  fetchNextValidatedExercise,
+  generateValidateAndStoreExercise,
   requestLearningContent,
+  requestExerciseWithCachedFallback,
   submitAlternativeCheckout,
   submitLearningEvent,
   validateGeneratedSentence,
@@ -64,7 +67,14 @@ export class WatchView extends LitElement {
   @state() private acceptedTargets: readonly AcceptedTarget[] = [];
   @state() private pendingCheckouts: readonly PendingMediaCheckout[] = [];
   @state() private primer: { readonly target: AcceptedTarget; readonly content: PrimerContent; readonly revealed: boolean } | null = null;
-  @state() private checkout: { readonly item: PendingMediaCheckout; readonly content: LearningExerciseContent; readonly revealed: boolean } | null = null;
+  @state() private checkout: {
+    readonly item: PendingMediaCheckout;
+    readonly exerciseId: string;
+    readonly content: LearningExerciseContent;
+    readonly cached: boolean;
+    readonly openedAt: number;
+    readonly revealed: boolean;
+  } | null = null;
   @state() private learningStatus = "";
   @state() private markersEnabled = true;
   private canonicalKeys: ReadonlySet<string> = new Set();
@@ -410,23 +420,30 @@ export class WatchView extends LitElement {
   private openCheckout(item: PendingMediaCheckout) {
     const token = tokenState.value;
     if (!token) return;
-    if (!item.subtitleTrackFingerprint || item.subtitleTrackFingerprint !== this.subtitleTrackFingerprint || this.cues.length === 0) {
-      this.learningStatus = "Reload the original subtitle track on this device before generating a new checkout exercise.";
-      return;
-    }
     this.learningStatus = `Generating a fresh checkout for ${item.canonicalKey}…`;
     const program = Effect.gen(this, function* () {
-      const content = yield* requestLearningContent(token, item.knowledgePointId, "checkout");
-      yield* validateGeneratedSentence(
-        content.japaneseSentence,
-        content.targetStart,
-        content.targetEnd,
-        this.cues,
-        item.subtitleTrackFingerprint!,
+      const canValidateSource = Boolean(
+        item.subtitleTrackFingerprint
+        && item.subtitleTrackFingerprint === this.subtitleTrackFingerprint
+        && this.cues.length > 0,
       );
+      const selected = canValidateSource
+        ? yield* requestExerciseWithCachedFallback(
+          token, item.knowledgePointId, "checkout", this.cues, item.subtitleTrackFingerprint!,
+        )
+        : { exercise: yield* fetchNextValidatedExercise(token, item.knowledgePointId), cached: true as const };
       yield* Effect.sync(() => {
-        this.checkout = { item, content, revealed: false };
-        this.learningStatus = "Checkout exercise passed local source-exclusion validation.";
+        this.checkout = {
+          item,
+          exerciseId: selected.exercise.id,
+          content: selected.exercise.content,
+          cached: selected.cached,
+          openedAt: Date.now(),
+          revealed: false,
+        };
+        this.learningStatus = selected.cached
+          ? "AI generation was unavailable; using a cached exercise validated on a source-capable device."
+          : "Checkout passed local source and exercise-bank validation.";
       });
     }).pipe(Effect.catchAll((error) => Effect.sync(() => { this.learningStatus = error.message; })));
     void runClientPromise(program);
@@ -436,18 +453,29 @@ export class WatchView extends LitElement {
     const token = tokenState.value;
     if (!token || !this.checkout) return;
     const item = this.checkout.item;
+    const exerciseId = this.checkout.exerciseId;
+    const responseTimeMs = Math.max(0, Date.now() - this.checkout.openedAt);
     void runClientPromise(submitLearningEvent(token, {
       knowledgePointId: item.knowledgePointId,
       candidateId: item.candidateId,
       event: recalled ? "checkout_recalled" : "checkout_missed",
       idempotencyKey: `checkout:${item.id}`,
+      exerciseId,
+      responseTimeMs,
     }).pipe(
-      Effect.tap(() => Effect.sync(() => {
-        this.pendingCheckouts = this.pendingCheckouts.filter((entry) => entry.id !== item.id);
-        this.checkout = null;
-        this.learningStatus = recalled
-          ? "Recalled; next retrieval is prioritized for tomorrow."
-          : "Not recalled; a shorter follow-up is scheduled.";
+      Effect.tap(() => Effect.gen(this, function* () {
+        yield* Effect.sync(() => {
+          this.pendingCheckouts = this.pendingCheckouts.filter((entry) => entry.id !== item.id);
+          this.checkout = null;
+          this.learningStatus = recalled
+            ? "Recalled; long intervals stay capped until a second varied context succeeds."
+            : "Not recalled; a shorter follow-up is scheduled.";
+        });
+        if (item.subtitleTrackFingerprint === this.subtitleTrackFingerprint && this.cues.length > 0) {
+          yield* generateValidateAndStoreExercise(
+            token, item.knowledgePointId, "review", this.cues, this.subtitleTrackFingerprint,
+          ).pipe(Effect.catchAll(() => Effect.void));
+        }
       })),
       Effect.catchAll((error) => Effect.sync(() => { this.learningStatus = error.message; })),
     ));

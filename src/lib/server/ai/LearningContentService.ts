@@ -44,6 +44,17 @@ const targetContext = (userId: string, knowledgePointId: string) => Effect.tryPr
       .where("srs_card.participation_status", "=", "active")
       .where("srs_card.learning_state", "in", ["stable", "known"])
       .limit(50).execute();
+    const recentExercises = await db.selectFrom("generated_exercise")
+      .select(["content_fingerprint", "variation_profile", "modality"])
+      .where("user_id", "=", userId as UserId)
+      .where("knowledge_point_id", "=", knowledgePointId as KnowledgePointId)
+      .where("validation_status", "=", "accepted")
+      .orderBy("created_at", "desc").limit(10).execute();
+    const recentEvidence = await db.selectFrom("retrieval_evidence")
+      .select(["modality", "result", "material_context_key"])
+      .where("user_id", "=", userId as UserId)
+      .where("knowledge_point_id", "=", knowledgePointId as KnowledgePointId)
+      .orderBy("reviewed_at", "desc").limit(20).execute();
     return {
       contract: "adaptive_learning_content_v1",
       target: {
@@ -55,6 +66,14 @@ const targetContext = (userId: string, knowledgePointId: string) => Effect.tryPr
         partOfSpeech: target.part_of_speech,
       },
       stablePrerequisiteCanonicalKeys: prerequisites.map((entry) => entry.canonical_key),
+      recentExerciseFingerprints: recentExercises.map((entry) => entry.content_fingerprint),
+      recentVariationHistory: recentExercises.map((entry) => ({
+        modality: entry.modality,
+        variationProfile: entry.variation_profile,
+      })),
+      performanceWeaknesses: recentEvidence
+        .filter((entry) => entry.result === "missed")
+        .map((entry) => ({ modality: entry.modality, materialContextKey: entry.material_context_key })),
       offsetUnit: "utf16_code_units",
       sourceExclusionPolicy: "source_signature_v1_client_validation_required",
     };

@@ -46,6 +46,7 @@ export type LearnerProgressEvent = Schema.Schema.Type<typeof LearnerProgressEven
 
 export const NORMALIZED_CUE_VERSION = "adaptive_media_nfkc_v1" as const;
 export const SOURCE_SIGNATURE_VERSION = "source_signature_v1" as const;
+export const SOURCE_SEMANTIC_MODEL_VERSION = "Xenova/paraphrase-multilingual-MiniLM-L12-v2@transformers-2.17.2" as const;
 export const TARGET_OFFSET_UNIT = "utf16_code_units" as const;
 
 export const TargetSpanSchema = Schema.Struct({

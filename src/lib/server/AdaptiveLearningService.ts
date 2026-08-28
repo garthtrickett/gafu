@@ -1,13 +1,14 @@
 import { Data, Effect } from "effect";
 import { sql } from "kysely";
 import { db } from "../../db/client.ts";
-import type { KnowledgePointId, MediaCandidateId, UserId } from "../../types/index.ts";
+import type { GeneratedExerciseId, KnowledgePointId, MediaCandidateId, UserId } from "../../types/index.ts";
 import {
   quarantineTargetForWrongAnalysis,
   transitionLearnerProgress,
   type LearnerProgressEvent,
 } from "../shared/adaptive-media.ts";
-import { calculateSrsUpdate } from "../shared/srs-scheduling.ts";
+import { applyVariationMasteryLimit, calculateSrsUpdate } from "../shared/srs-scheduling.ts";
+import { initHlc, packHlc, receiveHlc } from "../shared/hlc.ts";
 import { setLearnerPointStatus } from "./IntroductionAdmissionService.ts";
 import { setMediaCandidateDisposition } from "./MediaCandidateService.ts";
 
@@ -20,6 +21,8 @@ export interface ProgressEventInput {
   readonly candidateId: string | null;
   readonly event: LearnerProgressEvent;
   readonly idempotencyKey: string;
+  readonly exerciseId?: string;
+  readonly responseTimeMs?: number | null;
   readonly encounter?: {
     readonly cueId: string;
     readonly timingTransformId: string;
@@ -84,15 +87,61 @@ export const recordProgressEvent = (
     }
 
     const checkoutCompleted = input.event === "checkout_recalled" || input.event === "checkout_missed";
-    const metrics = checkoutCompleted ? calculateSrsUpdate({
+    let metrics = checkoutCompleted ? calculateSrsUpdate({
       easeFactor: progress.ease_factor,
       repetitions: progress.repetitions,
       intervalDays: progress.interval_days,
       difficulty: Number(progress.difficulty),
       stability: Number(progress.stability),
     }, input.event === "checkout_recalled", now, () => 0.5) : null;
+    let successfulMaterialContextCount = 0;
+    let exercise: {
+      id: GeneratedExerciseId;
+      modality: string;
+      material_context_key: string;
+    } | null = null;
+    if (checkoutCompleted && input.exerciseId && metrics) {
+      exercise = await trx.selectFrom("generated_exercise")
+        .select(["id", "modality", "material_context_key"])
+        .where("id", "=", input.exerciseId as GeneratedExerciseId)
+        .where("user_id", "=", userId as UserId)
+        .where("knowledge_point_id", "=", input.knowledgePointId as KnowledgePointId)
+        .executeTakeFirst() ?? null;
+      if (!exercise) throw new AdaptiveLearningError({ code: "storage_failed" });
+      if (input.event === "checkout_recalled") {
+        const prior = await trx.selectFrom("retrieval_evidence").select("material_context_key").distinct()
+          .where("user_id", "=", userId as UserId)
+          .where("knowledge_point_id", "=", input.knowledgePointId as KnowledgePointId)
+          .where("result", "=", "recalled").execute();
+        successfulMaterialContextCount = new Set([
+          ...prior.map((row) => row.material_context_key),
+          exercise.material_context_key,
+        ]).size;
+      }
+      metrics = applyVariationMasteryLimit(metrics, successfulMaterialContextCount, now);
+      await trx.insertInto("retrieval_evidence").values({
+        user_id: userId as UserId,
+        knowledge_point_id: input.knowledgePointId as KnowledgePointId,
+        exercise_id: exercise.id,
+        result: input.event === "checkout_recalled" ? "recalled" : "missed",
+        response_time_ms: input.responseTimeMs ?? null,
+        modality: exercise.modality,
+        material_context_key: exercise.material_context_key,
+        scheduling_change: sql`${JSON.stringify({
+          metrics,
+          successfulMaterialContextCount,
+          masteryLimited: successfulMaterialContextCount < 2,
+        })}::jsonb`,
+        idempotency_key: input.idempotencyKey,
+        reviewed_at: now,
+      }).execute();
+    }
+    const nextState = checkoutCompleted && input.event === "checkout_recalled"
+      && successfulMaterialContextCount >= 2 && (metrics?.stability ?? 0) >= 7
+      ? "stable"
+      : transition.nextState;
     await trx.updateTable("srs_card").set({
-      learning_state: transition.nextState,
+      learning_state: nextState,
       checkout_due: input.event === "primer_retrieval_completed" || input.event === "media_abandoned"
         ? true
         : checkoutCompleted ? false : progress.checkout_due,
@@ -106,6 +155,7 @@ export const recordProgressEvent = (
         next_review: new Date(metrics.nextReview),
       } : {}),
       updated_at: now,
+      hlc: packHlc(receiveHlc(initHlc("server-adaptive", now.getTime()), progress.hlc, now.getTime())),
     }).where("id", "=", progress.id).execute();
 
     if (input.event === "primer_retrieval_completed") {
@@ -131,7 +181,7 @@ export const recordProgressEvent = (
     return {
       knowledgePointId: input.knowledgePointId,
       previousState: progress.learning_state,
-      nextState: transition.nextState,
+      nextState,
       replayed: false,
     };
   }),

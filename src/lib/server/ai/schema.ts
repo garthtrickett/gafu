@@ -63,6 +63,7 @@ export const PrimerContentSchema = z.object({
 });
 
 export const LearningExerciseContentSchema = z.object({
+  targetCanonicalKey: z.string().min(1),
   context: z.string().min(1),
   japaneseSentence: z.string().min(1),
   targetStart: z.number().int().nonnegative(),
@@ -72,6 +73,22 @@ export const LearningExerciseContentSchema = z.object({
   furigana: z.array(LearningFuriganaSegmentSchema),
   modality: z.enum(["text_recognition", "listening_recognition", "production"]),
   variationTags: z.array(z.string().min(1)).min(2).max(12),
+  variationProfile: z.object({
+    situation: z.string().min(1),
+    surroundingVocabulary: z.array(z.string().min(1)).max(12),
+    conjugation: z.string().min(1),
+    politeness: z.enum(["casual", "polite", "neutral"]),
+    register: z.string().min(1),
+    speakerIntention: z.string().min(1),
+    polarity: z.enum(["positive", "negative"]),
+    questionForm: z.boolean(),
+  }),
+  qualityChecks: z.object({
+    intendedSenseOrFunction: z.literal(true),
+    unambiguousAnswer: z.literal(true),
+    naturalJapanese: z.literal(true),
+    registerMatches: z.literal(true),
+  }),
   prerequisiteCanonicalKeys: z.array(z.string().min(1)).max(20),
   confidence: z.number().min(0).max(1),
 });

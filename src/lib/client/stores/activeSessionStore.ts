@@ -12,6 +12,7 @@ export interface FuriganaSegment {
 
 export interface SessionCard {
   readonly knowledgePointId: string;
+  readonly exerciseId?: string;
   readonly englishContext: string;
   readonly japaneseSentence: string;
   readonly furigana: readonly FuriganaSegment[];

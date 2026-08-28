@@ -15,6 +15,7 @@ import { navigate } from "../lib/client/router";
 import { Effect } from "effect";
 import "./FuriganaSentence";
 import { calculateSrsUpdate } from "../lib/shared/srs-scheduling.ts";
+import { submitExerciseReview } from "../lib/client/media/adaptive/learning-content.ts";
 export { calculateSrsUpdate } from "../lib/shared/srs-scheduling.ts";
 
 export interface StudySessionModel {
@@ -70,6 +71,7 @@ const update = (model: StudySessionModel, action: StudySessionAction): StudySess
 export class StudySession extends LitElement {
   private controller!: ReactiveSamController<this, StudySessionModel, StudySessionAction, never, BaseClientContext>;
   private audioInstance: HTMLAudioElement | null = null;
+  private cardStartedAt = Date.now();
   private _disposeEffect?: () => void;
 
   private isEditableKeyboardTarget = (
@@ -202,6 +204,7 @@ export class StudySession extends LitElement {
 
     // Play native audio for the first card immediately if present
     const firstCard = activeSessionStore.currentCard.value;
+    this.cardStartedAt = Date.now();
     if (firstCard && typeof firstCard.audioUrl === "string") {
       this.controller.propose({ type: "PLAY_AUDIO", audioUrl: firstCard.audioUrl });
     }
@@ -308,6 +311,46 @@ export class StudySession extends LitElement {
 
             if (action.type === "SUBMIT_GRADE") {
         const { knowledgePointId, isCorrect } = action;
+        const activeCard = activeSessionStore.currentCard.peek();
+        if (activeCard?.exerciseId) {
+          const { tokenState } = yield* Effect.promise(() => import("../lib/client/stores/authStore.ts"));
+          const token = tokenState.peek();
+          if (!token) return yield* clientLog("error", "[StudySession] Adaptive exercise review requires authentication.");
+          const reviewed = yield* submitExerciseReview(
+            token,
+            activeCard.exerciseId,
+            isCorrect,
+            `review:${activeCard.exerciseId}:${self.cardStartedAt}`,
+            Math.max(0, Date.now() - self.cardStartedAt),
+          );
+          const currentProgress = knowledgePointStore.state.peek().find((progress) => progress.id === knowledgePointId);
+          const { hlcStore } = yield* Effect.promise(() => import("../lib/client/stores/hlcStore.ts"));
+          const currentHlc = yield* hlcStore.tick();
+          yield* knowledgePointStore.put({
+            id: knowledgePointId,
+            kind: currentProgress?.kind,
+            participationStatus: currentProgress?.participationStatus ?? "active",
+            learningState: reviewed.learningState,
+            easeFactor: reviewed.metrics.easeFactor,
+            repetitions: reviewed.metrics.repetitions,
+            intervalDays: reviewed.metrics.intervalDays,
+            nextReview: reviewed.metrics.nextReview,
+            difficulty: reviewed.metrics.difficulty,
+            stability: reviewed.metrics.stability,
+            lastReviewedAt: reviewed.metrics.lastReviewedAt,
+            unlockedAt: currentProgress?.unlockedAt,
+            checkoutDue: false,
+            hlc: currentHlc,
+          });
+          yield* clientLog("info", `[StudySession] Adaptive review recorded for knowledgePointId=${knowledgePointId}; variedContexts=${reviewed.successfulMaterialContextCount}, masteryLimited=${reviewed.masteryLimited}.`);
+          yield* Effect.sync(() => {
+            activeSessionStore.next();
+            self.cardStartedAt = Date.now();
+            const nextCard = activeSessionStore.currentCard.value;
+            if (nextCard && typeof nextCard.audioUrl === "string") _propose({ type: "PLAY_AUDIO", audioUrl: nextCard.audioUrl });
+          });
+          return;
+        }
         
         // Retrieve existing progress metadata for this grammar rule from IndexedDB, or fallback to standard N5 defaults
         const currentProgress = knowledgePointStore.state.peek().find(p => p.id === knowledgePointId) || {
@@ -365,6 +408,7 @@ export class StudySession extends LitElement {
         // Advance progress store indicator sequentially
         yield* Effect.sync(() => {
           activeSessionStore.next();
+          self.cardStartedAt = Date.now();
           const nextCard = activeSessionStore.currentCard.value;
           if (nextCard && typeof nextCard.audioUrl === "string") {
             _propose({ type: "PLAY_AUDIO", audioUrl: nextCard.audioUrl });
@@ -590,12 +634,12 @@ export class StudySession extends LitElement {
                 Correct <kbd class="text-green-100/70">C</kbd>
               </button>
             </div>
-            <button
+            ${currentCard.exerciseId ? html`<p class="text-center text-xs text-amber-300">Long intervals unlock only after successful retrieval in two materially different contexts.</p>` : html`<button
               @click=${() => this.controller.propose({ type: "FORCE_MASTER", knowledgePointId: currentCard.knowledgePointId })}
               class="w-full py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 hover:text-white font-medium rounded-lg transition-colors text-xs cursor-pointer border border-zinc-700 flex items-center justify-center gap-1.5"
             >
               🎓 Mark as Mastered
-            </button>
+            </button>`}
           </div>
         </div>
       </div>

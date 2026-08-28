@@ -8,6 +8,8 @@ import type { default as MediaCandidateTable } from './MediaCandidate';
 import type { default as VocabularyPointTable } from './VocabularyPoint';
 import type { default as UserTable } from './User';
 import type { default as SyncEpochTable } from './SyncEpoch';
+import type { default as RetrievalEvidenceTable } from './RetrievalEvidence';
+import type { default as GeneratedExerciseTable } from './GeneratedExercise';
 import type { default as MediaEncounterTable } from './MediaEncounter';
 import type { default as DeckTable } from './Deck';
 import type { default as UserPreferenceTable } from './UserPreference';
@@ -32,6 +34,10 @@ export default interface PublicSchema {
   user: UserTable;
 
   sync_epoch: SyncEpochTable;
+
+  retrieval_evidence: RetrievalEvidenceTable;
+
+  generated_exercise: GeneratedExerciseTable;
 
   media_encounter: MediaEncounterTable;
 

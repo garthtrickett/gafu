@@ -3,12 +3,14 @@ import { customElement, state } from "lit/decorators.js";
 import { effect } from "@preact/signals-core";
 import { grammarPointStore, grammarPointCatalogStore, calculateRetrievability } from "../lib/client/stores/grammarPointStore.ts";
 import { userPreferencesStore } from "../lib/client/stores/userPreferencesStore.ts";
-import { logout } from "../lib/client/stores/authStore.ts";
+import { logout, tokenState } from "../lib/client/stores/authStore.ts";
 import { generateExportPayload, importSessionPayload, type ImportSessionProgress } from "../lib/client/stores/sessionSyncStore.ts";
 import { clientLog } from "../lib/client/clientLog.ts";
 import { runClientUnscoped } from "../lib/client/runtime.ts";
 import { navigate } from "../lib/client/router.ts";
 import { Effect } from "effect";
+import { fetchNextValidatedExercise } from "../lib/client/media/adaptive/learning-content.ts";
+import { activeSessionStore, type SessionCard } from "../lib/client/stores/activeSessionStore.ts";
 
 @customElement("study-desk")
 export class StudyDesk extends LitElement {
@@ -26,6 +28,9 @@ export class StudyDesk extends LitElement {
 
   @state()
   private saveSuccessMessage: string | null = null;
+
+  @state()
+  private adaptiveReviewLoading = false;
 
   private _disposeEffect?: () => void;
 
@@ -155,6 +160,59 @@ export class StudyDesk extends LitElement {
 
   private toggleQueue = () => {
     this.showQueue = !this.showQueue;
+  };
+
+  private startAdaptiveReview = () => {
+    const token = tokenState.peek();
+    if (!token) {
+      this.importError = "Adaptive review requires an authenticated session.";
+      return;
+    }
+    this.adaptiveReviewLoading = true;
+    this.importError = null;
+    const now = Date.now();
+    const due = grammarPointStore.state.peek()
+      .filter((progress) =>
+        progress.participationStatus !== "archived"
+        && progress.learningState !== "known"
+        && (progress.checkoutDue || new Date(progress.nextReview).getTime() <= now)
+      )
+      .slice(0, userPreferencesStore.dailyReviewLimit.peek());
+    const program = Effect.gen(this, function* () {
+      const cards: SessionCard[] = [];
+      for (const progress of due) {
+        const selected = yield* Effect.either(fetchNextValidatedExercise(token, progress.id));
+        if (selected._tag === "Left") continue;
+        const exercise = selected.right;
+        cards.push({
+          knowledgePointId: progress.id,
+          exerciseId: exercise.id,
+          englishContext: exercise.content.context,
+          japaneseSentence: exercise.content.japaneseSentence,
+          furigana: exercise.content.furigana.map((segment) => ({
+            kanji: segment.text,
+            ...(segment.reading ? { kana: segment.reading } : {}),
+          })),
+          audioUrl: null,
+          explanation: exercise.content.explanation,
+        });
+      }
+      if (cards.length === 0) {
+        return yield* Effect.fail(new Error(
+          due.length === 0
+            ? "No adaptive knowledge points are due."
+            : "No source-validated cached exercises are available. Due points were not graded or postponed.",
+        ));
+      }
+      yield* Effect.sync(() => activeSessionStore.loadSession(cards));
+      yield* navigate("study");
+    }).pipe(
+      Effect.catchAll((error) => Effect.sync(() => {
+        this.importError = error.message;
+      })),
+      Effect.ensuring(Effect.sync(() => { this.adaptiveReviewLoading = false; })),
+    );
+    runClientUnscoped(program);
   };
 
   private handlePreferenceUpdate = (e: Event, type: "review" | "newRule") => {
@@ -533,6 +591,15 @@ export class StudyDesk extends LitElement {
             </div>
 
             <div class="space-y-4 pt-2 border-t border-zinc-900">
+              <div class="space-y-2">
+                <span class="text-xs font-semibold text-emerald-400 uppercase tracking-wider block">Adaptive media reviews</span>
+                <button
+                  @click=${this.startAdaptiveReview}
+                  ?disabled=${this.adaptiveReviewLoading}
+                  class="w-full py-2.5 bg-emerald-700 hover:bg-emerald-600 disabled:bg-zinc-800 text-white font-bold rounded text-sm transition-colors cursor-pointer"
+                >${this.adaptiveReviewLoading ? "Loading validated exercises…" : "Start adaptive review"}</button>
+                <p class="text-2xs text-zinc-500">Uses varied exercises already validated against the original subtitle on a source-capable device. If none exist, the point stays due.</p>
+              </div>
               <div class="space-y-2">
                 <span class="text-xs font-semibold text-zinc-400 uppercase tracking-wider block">1. Export Progress</span>
                 ${showMasteryGateWarning

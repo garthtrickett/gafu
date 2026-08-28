@@ -16,6 +16,24 @@ export interface SrsMetricsUpdate {
   readonly nextReview: string;
 }
 
+export const UNVARIED_MASTERY_INTERVAL_CAP_DAYS = 3;
+
+export const applyVariationMasteryLimit = (
+  update: SrsMetricsUpdate,
+  successfulMaterialContextCount: number,
+  now: Date,
+): SrsMetricsUpdate => {
+  if (successfulMaterialContextCount >= 2 || update.intervalDays <= UNVARIED_MASTERY_INTERVAL_CAP_DAYS) return update;
+  const nextReview = new Date(now);
+  nextReview.setDate(nextReview.getDate() + UNVARIED_MASTERY_INTERVAL_CAP_DAYS);
+  return {
+    ...update,
+    intervalDays: UNVARIED_MASTERY_INTERVAL_CAP_DAYS,
+    stability: Math.min(update.stability, UNVARIED_MASTERY_INTERVAL_CAP_DAYS),
+    nextReview: nextReview.toISOString(),
+  };
+};
+
 export const calculateSrsUpdate = (
   current: SrsMetricsInput,
   isCorrect: boolean,
