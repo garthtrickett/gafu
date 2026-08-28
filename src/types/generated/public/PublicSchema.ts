@@ -8,10 +8,13 @@ import type { default as MediaCandidateTable } from './MediaCandidate';
 import type { default as VocabularyPointTable } from './VocabularyPoint';
 import type { default as UserTable } from './User';
 import type { default as SyncEpochTable } from './SyncEpoch';
+import type { default as MediaEncounterTable } from './MediaEncounter';
 import type { default as DeckTable } from './Deck';
 import type { default as UserPreferenceTable } from './UserPreference';
 import type { default as GrammarPointTable } from './GrammarPoint';
 import type { default as IntroductionAdmissionTable } from './IntroductionAdmission';
+import type { default as MediaCheckoutTable } from './MediaCheckout';
+import type { default as LearnerProgressEventTable } from './LearnerProgressEvent';
 import type { default as PlatformAdminTable } from './PlatformAdmin';
 import type { default as SrsCardTable } from './SrsCard';
 
@@ -30,6 +33,8 @@ export default interface PublicSchema {
 
   sync_epoch: SyncEpochTable;
 
+  media_encounter: MediaEncounterTable;
+
   deck: DeckTable;
 
   user_preference: UserPreferenceTable;
@@ -37,6 +42,10 @@ export default interface PublicSchema {
   grammar_point: GrammarPointTable;
 
   introduction_admission: IntroductionAdmissionTable;
+
+  media_checkout: MediaCheckoutTable;
+
+  learner_progress_event: LearnerProgressEventTable;
 
   platform_admin: PlatformAdminTable;
 

@@ -42,3 +42,39 @@ export const MediaRecommendationResultSchema = z.object({
 export type MediaRecommendationProposal = z.infer<typeof MediaRecommendationProposalSchema>;
 export type MediaRecommendationResult = z.infer<typeof MediaRecommendationResultSchema>;
 
+export const LearningFuriganaSegmentSchema = z.object({
+  text: z.string().min(1),
+  reading: z.string().optional(),
+});
+
+export const PrimerContentSchema = z.object({
+  form: z.string().min(1),
+  reading: z.string(),
+  senseOrFunction: z.string().min(1),
+  formation: z.string().min(1),
+  exampleContext: z.string().min(1),
+  exampleSentence: z.string().min(1),
+  exampleTargetStart: z.number().int().nonnegative(),
+  exampleTargetEnd: z.number().int().positive(),
+  furigana: z.array(LearningFuriganaSegmentSchema),
+  retrievalPrompt: z.string().min(1),
+  retrievalAnswer: z.string().min(1),
+  listeningMission: z.string().min(1),
+});
+
+export const LearningExerciseContentSchema = z.object({
+  context: z.string().min(1),
+  japaneseSentence: z.string().min(1),
+  targetStart: z.number().int().nonnegative(),
+  targetEnd: z.number().int().positive(),
+  answer: z.string().min(1),
+  explanation: z.string().min(1),
+  furigana: z.array(LearningFuriganaSegmentSchema),
+  modality: z.enum(["text_recognition", "listening_recognition", "production"]),
+  variationTags: z.array(z.string().min(1)).min(2).max(12),
+  prerequisiteCanonicalKeys: z.array(z.string().min(1)).max(20),
+  confidence: z.number().min(0).max(1),
+});
+
+export type PrimerContent = z.infer<typeof PrimerContentSchema>;
+export type LearningExerciseContent = z.infer<typeof LearningExerciseContentSchema>;

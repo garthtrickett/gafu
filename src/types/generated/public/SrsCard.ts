@@ -43,6 +43,8 @@ export default interface SrsCardTable {
   learning_state: ColumnType<string, string | undefined, string>;
 
   introduced_at: ColumnType<Date | null, Date | string | null, Date | string | null>;
+
+  checkout_due: ColumnType<boolean, boolean | undefined, boolean>;
 }
 
 export type SrsCard = Selectable<SrsCardTable>;

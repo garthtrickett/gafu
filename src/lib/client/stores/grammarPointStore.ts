@@ -16,6 +16,7 @@ export interface KnowledgePointProgress {
   readonly stability?: number;
   readonly lastReviewedAt?: string | null;
   readonly unlockedAt?: string; // ISO string representing when the rule was unlocked
+  readonly checkoutDue?: boolean;
   readonly hlc?: string;
 }
 

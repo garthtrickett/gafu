@@ -35,6 +35,7 @@ interface DeltaResponse {
     readonly participationStatus: "active" | "archived";
     readonly learningState: "introduced" | "primed" | "encountered" | "learning" | "stable" | "known";
     readonly introducedAt: string | null;
+    readonly checkoutDue?: boolean;
     readonly hlc: string;
   }>;
   readonly grammarPoints: Array<{
@@ -263,6 +264,7 @@ export const executeDeltaPull = (): Effect.Effect<void, unknown, never> =>
           difficulty: u.difficulty,
           stability: u.stability,
           lastReviewedAt: u.lastReviewedAt,
+          checkoutDue: u.checkoutDue ?? false,
           hlc: u.hlc
         }));
         const filteredSrs = filterCausal(mappedSrs, existingSrs);
@@ -282,6 +284,8 @@ export const executeDeltaPull = (): Effect.Effect<void, unknown, never> =>
           difficulty: u.difficulty,
           stability: u.stability,
           lastReviewedAt: u.lastReviewedAt,
+          unlockedAt: u.introducedAt ?? undefined,
+          checkoutDue: u.checkoutDue ?? false,
           hlc: u.hlc
         }));
         const filteredProgress = filterCausal(mappedProgress, existingProgress);

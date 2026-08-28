@@ -67,7 +67,7 @@ export const submitMediaCandidateAction = (
   recommendation: ActionableMediaRecommendation,
   analysisRunId: string,
   subtitleTrackFingerprint: string,
-): Effect.Effect<{ readonly accepted: boolean; readonly reason: string }, Error> => Effect.gen(function* () {
+): Effect.Effect<{ readonly accepted: boolean; readonly reason: string; readonly knowledgePointId?: string }, Error> => Effect.gen(function* () {
   const response = yield* Effect.tryPromise({
     try: () => fetch("/api/adaptive-media/candidates/action", {
       method: "POST",
@@ -100,7 +100,7 @@ export const submitMediaCandidateAction = (
   });
   if (!response.ok) return yield* Effect.fail(new Error("Candidate action was rejected."));
   const payload = yield* Effect.tryPromise({
-    try: () => response.json() as Promise<{ readonly success?: boolean; readonly data?: { readonly accepted: boolean; readonly reason: string } }>,
+    try: () => response.json() as Promise<{ readonly success?: boolean; readonly data?: { readonly accepted: boolean; readonly reason: string; readonly knowledgePointId?: string } }>,
     catch: () => new Error("Candidate action returned an unreadable result."),
   });
   if (!payload.success || !payload.data) return yield* Effect.fail(new Error("Candidate action returned an invalid result."));

@@ -13,6 +13,7 @@ import { buildEpisodeSyllabus, type EpisodeSyllabus } from "../lib/client/media/
 import { findActiveCues, fingerprintSubtitleBytes, parseSubtitleTrack } from "../lib/client/media/adaptive/subtitles.ts";
 import { tokenizeJapaneseWithFallback } from "../lib/client/media/adaptive/tokenizer.ts";
 import { tokenState } from "../lib/client/stores/authStore.ts";
+import type { LearningExerciseContent, PrimerContent } from "../lib/server/ai/schema.ts";
 import {
   requestMediaRecommendations,
   selectMediaAnalysisExcerpts,
@@ -21,8 +22,25 @@ import {
   type ActionableMediaRecommendation,
   type MediaCandidateAction,
 } from "../lib/client/media/adaptive/recommendations.ts";
+import {
+  fetchPendingMediaCheckouts,
+  requestLearningContent,
+  submitAlternativeCheckout,
+  submitLearningEvent,
+  validateGeneratedSentence,
+  type PendingMediaCheckout,
+} from "../lib/client/media/adaptive/learning-content.ts";
 
 const SOURCE_TIMING: TimingTransform = { id: "source", version: "timing_transform_v1", scale: 1, offsetSeconds: 0 };
+
+interface AcceptedTarget {
+  readonly candidateId: string;
+  readonly knowledgePointId: string;
+  readonly canonicalKey: string;
+  readonly cueIds: readonly string[];
+  readonly subtitleTrackFingerprint: string;
+  readonly primed: boolean;
+}
 
 @customElement("watch-view")
 export class WatchView extends LitElement {
@@ -43,6 +61,12 @@ export class WatchView extends LitElement {
   @state() private aiStatus = "Optional AI analysis is off.";
   @state() private candidateStatuses: Readonly<Record<string, string>> = {};
   @state() private laterAccepted: Readonly<Record<string, boolean>> = {};
+  @state() private acceptedTargets: readonly AcceptedTarget[] = [];
+  @state() private pendingCheckouts: readonly PendingMediaCheckout[] = [];
+  @state() private primer: { readonly target: AcceptedTarget; readonly content: PrimerContent; readonly revealed: boolean } | null = null;
+  @state() private checkout: { readonly item: PendingMediaCheckout; readonly content: LearningExerciseContent; readonly revealed: boolean } | null = null;
+  @state() private learningStatus = "";
+  @state() private markersEnabled = true;
   private canonicalKeys: ReadonlySet<string> = new Set();
   private analysisRunId = "";
   private subtitleTrackFingerprint = "";
@@ -54,10 +78,20 @@ export class WatchView extends LitElement {
   override connectedCallback() {
     super.connectedCallback();
     document.addEventListener("keydown", this.onKeyDown);
+    this.refreshPendingCheckouts();
   }
 
   override disconnectedCallback() {
     document.removeEventListener("keydown", this.onKeyDown);
+    const token = tokenState.value;
+    if (token) for (const target of this.acceptedTargets.filter((item) => item.primed)) {
+      void runClientPromise(submitLearningEvent(token, {
+        knowledgePointId: target.knowledgePointId,
+        candidateId: target.candidateId,
+        event: "media_abandoned",
+        idempotencyKey: `abandon:${target.candidateId}`,
+      }).pipe(Effect.catchAll(() => Effect.void)));
+    }
     this.video?.pause();
     this.media.releaseAll();
     this.lifecycle.reset();
@@ -163,8 +197,48 @@ export class WatchView extends LitElement {
     this.activeCues = findActiveCues(this.cues, this.video.currentTime, this.transform);
     for (const event of this.lifecycle.update(this.cues, this.video.currentTime, this.transform)) {
       this.dispatchEvent(new CustomEvent("gafu-media-cue", { detail: event, bubbles: true, composed: true }));
+      if (event.type === "cue-enter") this.recordAcceptedEncounter(event.cueId, event.playbackSeconds);
     }
   };
+
+  private refreshPendingCheckouts() {
+    const token = tokenState.value;
+    if (!token) return;
+    void runClientPromise(fetchPendingMediaCheckouts(token).pipe(
+      Effect.tap((items) => Effect.sync(() => {
+        this.pendingCheckouts = items;
+        const restored = items.flatMap((item): AcceptedTarget[] =>
+          item.candidateId && item.subtitleTrackFingerprint && (item.learningState === "primed" || item.learningState === "encountered")
+            ? [{
+                candidateId: item.candidateId,
+                knowledgePointId: item.knowledgePointId,
+                canonicalKey: item.canonicalKey,
+                cueIds: item.cueIds,
+                subtitleTrackFingerprint: item.subtitleTrackFingerprint,
+                primed: true,
+              }]
+            : []
+        );
+        const existingIds = new Set(this.acceptedTargets.map((target) => target.candidateId));
+        this.acceptedTargets = [...this.acceptedTargets, ...restored.filter((target) => !existingIds.has(target.candidateId))];
+      })),
+      Effect.catchAll(() => Effect.void),
+    ));
+  }
+
+  private recordAcceptedEncounter(cueId: string, playbackSeconds: number) {
+    const token = tokenState.value;
+    if (!token) return;
+    for (const target of this.acceptedTargets.filter((item) => item.primed && item.cueIds.includes(cueId))) {
+      void runClientPromise(submitLearningEvent(token, {
+        knowledgePointId: target.knowledgePointId,
+        candidateId: target.candidateId,
+        event: "cue_reached",
+        idempotencyKey: `encounter:${target.candidateId}:${cueId}`,
+        encounter: { cueId, timingTransformId: this.transform.id, effectivePlaybackSeconds: playbackSeconds },
+      }).pipe(Effect.catchAll(() => Effect.void)));
+    }
+  }
 
   private togglePlayback() {
     if (!this.videoUrl || !this.video) return;
@@ -258,9 +332,143 @@ export class WatchView extends LitElement {
         if (action === "accept" && !result.accepted) {
           this.aiStatus = `No new target was admitted (${result.reason.replaceAll("_", " ")}); use this episode for reinforcement.`;
         }
+        if (action === "accept" && result.accepted && result.knowledgePointId) {
+          const target: AcceptedTarget = {
+            candidateId: recommendation.candidateId,
+            knowledgePointId: result.knowledgePointId,
+            canonicalKey: recommendation.canonicalKey,
+            cueIds: recommendation.evidence.map((evidence) => evidence.cueId),
+            subtitleTrackFingerprint: this.subtitleTrackFingerprint,
+            primed: false,
+          };
+          this.acceptedTargets = [...this.acceptedTargets, target];
+          this.startPrimer(target);
+        }
       });
     }).pipe(Effect.catchAll((error) => Effect.sync(() => { this.aiStatus = error.message; })));
     void runClientPromise(program);
+  }
+
+  private startPrimer(target: AcceptedTarget) {
+    const token = tokenState.value;
+    if (!token) return;
+    this.learningStatus = `Preparing a source-distinct primer for ${target.canonicalKey}…`;
+    const program = Effect.gen(this, function* () {
+      yield* submitLearningEvent(token, {
+        knowledgePointId: target.knowledgePointId,
+        candidateId: target.candidateId,
+        event: "primer_started",
+        idempotencyKey: `primer-start:${target.candidateId}`,
+      });
+      const content = yield* requestLearningContent(token, target.knowledgePointId, "primer");
+      yield* validateGeneratedSentence(
+        content.exampleSentence,
+        content.exampleTargetStart,
+        content.exampleTargetEnd,
+        this.cues,
+        target.subtitleTrackFingerprint,
+      );
+      yield* Effect.sync(() => {
+        this.primer = { target, content, revealed: false };
+        this.learningStatus = "Primer passed local source-exclusion validation.";
+      });
+    }).pipe(Effect.catchAll((error) => Effect.sync(() => { this.learningStatus = error.message; })));
+    void runClientPromise(program);
+  }
+
+  private completePrimer() {
+    const token = tokenState.value;
+    if (!token || !this.primer) return;
+    const target = this.primer.target;
+    const program = Effect.gen(this, function* () {
+      yield* submitLearningEvent(token, {
+        knowledgePointId: target.knowledgePointId,
+        candidateId: target.candidateId,
+        event: "primer_retrieval_completed",
+        idempotencyKey: `primer-complete:${target.candidateId}`,
+      });
+      yield* Effect.sync(() => {
+        this.acceptedTargets = this.acceptedTargets.map((item) =>
+          item.candidateId === target.candidateId ? { ...item, primed: true } : item
+        );
+        this.primer = null;
+        this.learningStatus = `${target.canonicalKey} is primed; watch normally and listen for it.`;
+      });
+      const pending = yield* fetchPendingMediaCheckouts(token);
+      yield* Effect.sync(() => { this.pendingCheckouts = pending; });
+    }).pipe(Effect.catchAll((error) => Effect.sync(() => { this.learningStatus = error.message; })));
+    void runClientPromise(program);
+  }
+
+  private speakPrimer() {
+    if (!this.primer || !("speechSynthesis" in globalThis)) return;
+    const utterance = new SpeechSynthesisUtterance(this.primer.content.exampleSentence);
+    utterance.lang = "ja-JP";
+    speechSynthesis.speak(utterance);
+  }
+
+  private openCheckout(item: PendingMediaCheckout) {
+    const token = tokenState.value;
+    if (!token) return;
+    if (!item.subtitleTrackFingerprint || item.subtitleTrackFingerprint !== this.subtitleTrackFingerprint || this.cues.length === 0) {
+      this.learningStatus = "Reload the original subtitle track on this device before generating a new checkout exercise.";
+      return;
+    }
+    this.learningStatus = `Generating a fresh checkout for ${item.canonicalKey}…`;
+    const program = Effect.gen(this, function* () {
+      const content = yield* requestLearningContent(token, item.knowledgePointId, "checkout");
+      yield* validateGeneratedSentence(
+        content.japaneseSentence,
+        content.targetStart,
+        content.targetEnd,
+        this.cues,
+        item.subtitleTrackFingerprint!,
+      );
+      yield* Effect.sync(() => {
+        this.checkout = { item, content, revealed: false };
+        this.learningStatus = "Checkout exercise passed local source-exclusion validation.";
+      });
+    }).pipe(Effect.catchAll((error) => Effect.sync(() => { this.learningStatus = error.message; })));
+    void runClientPromise(program);
+  }
+
+  private gradeCheckout(recalled: boolean) {
+    const token = tokenState.value;
+    if (!token || !this.checkout) return;
+    const item = this.checkout.item;
+    void runClientPromise(submitLearningEvent(token, {
+      knowledgePointId: item.knowledgePointId,
+      candidateId: item.candidateId,
+      event: recalled ? "checkout_recalled" : "checkout_missed",
+      idempotencyKey: `checkout:${item.id}`,
+    }).pipe(
+      Effect.tap(() => Effect.sync(() => {
+        this.pendingCheckouts = this.pendingCheckouts.filter((entry) => entry.id !== item.id);
+        this.checkout = null;
+        this.learningStatus = recalled
+          ? "Recalled; next retrieval is prioritized for tomorrow."
+          : "Not recalled; a shorter follow-up is scheduled.";
+      })),
+      Effect.catchAll((error) => Effect.sync(() => { this.learningStatus = error.message; })),
+    ));
+  }
+
+  private alternativeCheckout(outcome: "already_known" | "wrongly_analyzed" | "not_useful") {
+    const token = tokenState.value;
+    if (!token || !this.checkout) return;
+    const item = this.checkout.item;
+    void runClientPromise(submitAlternativeCheckout(token, item, outcome).pipe(
+      Effect.tap(() => Effect.sync(() => {
+        this.pendingCheckouts = this.pendingCheckouts.filter((entry) => entry.id !== item.id);
+        this.checkout = null;
+        this.learningStatus = outcome.replaceAll("_", " ");
+      })),
+      Effect.catchAll((error) => Effect.sync(() => { this.learningStatus = error.message; })),
+    ));
+  }
+
+  private cueHasMarker(cueId: string): boolean {
+    return this.markersEnabled && this.acceptedTargets.some((target) => target.primed && target.cueIds.includes(cueId));
   }
 
   private renderToken(cue: NormalizedCue) {
@@ -283,9 +491,9 @@ export class WatchView extends LitElement {
         <div class="grid gap-5 lg:grid-cols-[minmax(0,1fr)_20rem]">
           <div class="space-y-3">
             <div class="relative aspect-video overflow-hidden rounded-xl border border-zinc-700 bg-black">
-              ${this.videoUrl ? html`<video class="h-full w-full" .src=${this.videoUrl} playsinline controls @timeupdate=${this.updateCues}></video>` : html`<div class="grid h-full place-items-center text-zinc-500">Choose or drop an MKV, MP4, or WebM file</div>`}
+              ${this.videoUrl ? html`<video class="h-full w-full" .src=${this.videoUrl} playsinline controls @timeupdate=${this.updateCues} @ended=${this.refreshPendingCheckouts}></video>` : html`<div class="grid h-full place-items-center text-zinc-500">Choose or drop an MKV, MP4, or WebM file</div>`}
               <div class="pointer-events-none absolute inset-x-4 bottom-8 text-center font-semibold text-white [text-shadow:0_2px_5px_#000]" style=${`font-size:${this.subtitleSize}px`}>
-                ${this.activeCues.map((cue) => html`<div>${this.renderToken(cue)}</div>`)}
+                ${this.activeCues.map((cue) => html`<div class=${this.cueHasMarker(cue.id) ? "border-l-4 border-emerald-400 pl-2" : ""}>${this.renderToken(cue)}</div>`)}
               </div>
             </div>
             <div class="flex flex-wrap items-center gap-3 rounded-lg border border-zinc-700 bg-zinc-800 p-3">
@@ -300,6 +508,7 @@ export class WatchView extends LitElement {
           <aside class="space-y-4 rounded-xl border border-zinc-700 bg-zinc-800 p-4">
             <div><h2 class="font-semibold">Local files</h2><p class="truncate text-sm text-zinc-400">${this.videoName || "No video"}</p><p class="truncate text-sm text-zinc-400">${this.subtitleName || "No subtitles"}</p></div>
             <label class="flex justify-between">Furigana <input type="checkbox" .checked=${this.furigana} @change=${(event: Event) => { this.furigana = (event.target as HTMLInputElement).checked; }}></label>
+            <label class="flex justify-between">Encounter markers <input type="checkbox" .checked=${this.markersEnabled} @change=${(event: Event) => { this.markersEnabled = (event.target as HTMLInputElement).checked; }}></label>
             <label class="block text-sm">Word spacing<input class="w-full" type="range" min="0" max="0.7" step="0.05" .value=${String(this.spacing)} @input=${(event: Event) => { this.spacing = Number((event.target as HTMLInputElement).value); }}></label>
             <label class="block text-sm">Subtitle size<input class="w-full" type="range" min="22" max="46" step="2" .value=${String(this.subtitleSize)} @input=${(event: Event) => { this.subtitleSize = Number((event.target as HTMLInputElement).value); }}></label>
             <label class="block text-sm">Manual offset (${this.transform.offsetSeconds.toFixed(1)}s)<input class="w-full" type="range" min="-10" max="10" step="0.1" .value=${String(this.transform.offsetSeconds)} @input=${(event: Event) => { this.transform = { id: "manual", version: "timing_transform_v1", scale: 1, offsetSeconds: Number((event.target as HTMLInputElement).value) }; this.updateCues(); }}></label>
@@ -312,6 +521,26 @@ export class WatchView extends LitElement {
             <p class="border-t border-zinc-700 pt-3 text-xs text-amber-300">Audio repair falls back to original audio while the FFmpeg core licence gate remains unresolved.</p>
           </aside>
         </div>
+        <section class="space-y-4 rounded-xl border border-zinc-700 bg-zinc-900 p-5" aria-label="Adaptive learning loop">
+          <div class="flex items-center justify-between gap-3"><div><h2 class="text-lg font-semibold">Prime and checkout</h2><p class="text-xs text-zinc-500">Generated teaching content is shown only after local source-copy validation.</p></div><p class="text-sm text-emerald-300" role="status">${this.learningStatus}</p></div>
+          ${this.primer ? html`
+            <article class="space-y-3 rounded-lg border border-emerald-800 bg-emerald-950/20 p-4">
+              <h3 class="font-semibold">Primer · ${this.primer.content.form} ${this.primer.content.reading ? html`<span class="text-zinc-400">(${this.primer.content.reading})</span>` : ""}</h3>
+              <p>${this.primer.content.senseOrFunction}</p><p class="text-sm text-zinc-400">Formation: ${this.primer.content.formation}</p>
+              <div class="rounded bg-zinc-950 p-3"><p class="text-xs text-zinc-500">Different example</p><p>${this.primer.content.exampleContext}</p><p class="text-lg">${this.primer.content.exampleSentence}</p><button class="mt-2 rounded border border-zinc-600 px-2 py-1 text-xs" @click=${this.speakPrimer}>Play local audio</button></div>
+              <div class="rounded bg-zinc-800 p-3"><p class="font-medium">${this.primer.content.retrievalPrompt}</p>${this.primer.revealed ? html`<p class="mt-2 text-emerald-300">${this.primer.content.retrievalAnswer}</p><div class="mt-2 flex gap-2"><button class="rounded bg-emerald-700 px-3 py-1" @click=${this.completePrimer}>I retrieved it</button><button class="rounded border border-zinc-600 px-3 py-1" @click=${() => { if (this.primer) this.primer = { ...this.primer, revealed: false }; }}>Try again</button></div>` : html`<button class="mt-2 rounded border border-zinc-600 px-3 py-1" @click=${() => { if (this.primer) this.primer = { ...this.primer, revealed: true }; }}>Reveal answer</button>`}</div>
+              <p class="text-sm text-amber-300">Listening mission: ${this.primer.content.listeningMission}</p>
+            </article>
+          ` : ""}
+          ${this.checkout ? html`
+            <article class="space-y-3 rounded-lg border border-sky-800 bg-sky-950/20 p-4">
+              <h3 class="font-semibold">Checkout · ${this.checkout.item.canonicalKey}</h3>
+              <p>${this.checkout.content.context}</p>
+              ${this.checkout.revealed ? html`<div class="rounded bg-zinc-950 p-3"><p class="text-lg">${this.checkout.content.japaneseSentence}</p><p class="mt-2 text-sky-300">${this.checkout.content.answer}</p><p class="text-sm text-zinc-400">${this.checkout.content.explanation}</p></div>` : html`<button class="rounded border border-zinc-600 px-3 py-1" @click=${() => { if (this.checkout) this.checkout = { ...this.checkout, revealed: true }; }}>Reveal fresh answer</button>`}
+              <div class="flex flex-wrap gap-2 text-sm"><button class="rounded bg-emerald-700 px-3 py-1" @click=${() => this.gradeCheckout(true)}>Recalled</button><button class="rounded bg-rose-800 px-3 py-1" @click=${() => this.gradeCheckout(false)}>Not recalled</button><button class="rounded border border-zinc-600 px-3 py-1" @click=${() => this.alternativeCheckout("already_known")}>Already known</button><button class="rounded border border-zinc-600 px-3 py-1" @click=${() => this.alternativeCheckout("wrongly_analyzed")}>Wrongly analyzed</button><button class="rounded border border-zinc-600 px-3 py-1" @click=${() => this.alternativeCheckout("not_useful")}>Not useful</button></div>
+            </article>
+          ` : this.pendingCheckouts.length ? html`<div><p class="mb-2 text-sm text-zinc-400">Checkout is available now, including after an early stop or refresh.</p><div class="flex flex-wrap gap-2">${this.pendingCheckouts.map((item) => html`<button class="rounded border border-sky-700 px-3 py-2 text-sm" @click=${() => this.openCheckout(item)}>${item.canonicalKey}</button>`)}</div></div>` : html`<p class="text-sm text-zinc-500">Accept and complete a primer to reserve checkout and next-day priority.</p>`}
+        </section>
       </section>
     `;
   }

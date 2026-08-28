@@ -11,6 +11,7 @@ import { activeSessionStore, type SessionCard, type FuriganaSegment } from "./ac
 import { clientLog } from "../clientLog.ts";
 import { prewarmAudioUrls } from "../media/MediaPrewarmService.ts";
 import kaishiPool from "./kaishiPool.json";
+import { orderReviewQueue } from "../../shared/adaptive-scheduling.ts";
 
 export interface ExportedGrammarProgress {
   readonly grammar_point_id: string;
@@ -88,8 +89,16 @@ export const generateExportPayload = (options?: { isCram?: boolean }) => {
       const dueReviewsTargetCount = Math.max(0, dailyReviewLimit - nextIntroductions.length);
 
       // 1. Sort all active progress rules by lowest retrievability (most in need of review) first
-      const activeDueProgress = [...localProgress]
-        .sort((a, b) => calculateRetrievability(a) - calculateRetrievability(b));
+      const progressById = new Map(localProgress.map((progress) => [progress.id, progress]));
+      const activeDueProgress = orderReviewQueue(localProgress.map((progress) => ({
+        knowledgePointId: progress.id,
+        participationStatus: progress.participationStatus ?? "active",
+        learningState: progress.learningState ?? ((progress.stability ?? 0) >= 21 ? "stable" : "learning"),
+        introducedAt: progress.unlockedAt ?? null,
+        nextReview: progress.nextReview,
+        checkoutDue: progress.checkoutDue ?? false,
+        risk: 1 - calculateRetrievability(progress),
+      })), now).map((item) => progressById.get(item.knowledgePointId)!).filter(Boolean);
 
       const activeDueSliced = activeDueProgress.slice(0, dueReviewsTargetCount);
       

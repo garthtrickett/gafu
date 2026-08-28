@@ -179,6 +179,9 @@ export const transitionLearnerProgress = (
   if (state === null && event === "primer_started") {
     return acceptedTransition(state, "introduced", event);
   }
+  if (state === "introduced" && event === "primer_started") {
+    return acceptedTransition(state, state, event);
+  }
   if (state === "introduced" && event === "primer_retrieval_completed") {
     return acceptedTransition(state, "primed", event);
   }

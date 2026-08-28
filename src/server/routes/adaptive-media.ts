@@ -11,6 +11,12 @@ import {
   recordMediaCandidate,
   setMediaCandidateDisposition,
 } from "../../lib/server/MediaCandidateService.ts";
+import {
+  completeAlternativeCheckout,
+  listPendingMediaCheckouts,
+  recordProgressEvent,
+} from "../../lib/server/AdaptiveLearningService.ts";
+import { generateExerciseContent, generatePrimerContent } from "../../lib/server/ai/LearningContentService.ts";
 
 export const adaptiveMediaRoutes = new Elysia({ prefix: "/api/adaptive-media" })
   .use(effectPlugin)
@@ -130,5 +136,93 @@ export const adaptiveMediaRoutes = new Elysia({ prefix: "/api/adaptive-media" })
         firstEncounterSeconds: t.Number({ minimum: 0 }),
         occurrenceCount: t.Number({ minimum: 1 }),
       }),
+    }),
+  })
+  .post("/learning/content", async ({ body, headers, set, runEffect }) => {
+    const program = Effect.gen(function* () {
+      const token = headers.authorization?.startsWith("Bearer ") ? headers.authorization.slice(7) : null;
+      if (!token) return yield* Effect.fail(new InvalidCredentialsError());
+      const user = yield* validateToken(token);
+      return body.mode === "primer"
+        ? yield* generatePrimerContent(user.id, body.knowledgePointId)
+        : yield* generateExerciseContent(user.id, body.knowledgePointId, body.mode);
+    });
+    const result = await runEffect(Effect.either(program), { name: "adaptive_learning_content" });
+    if (result._tag === "Left") {
+      set.status = result.left instanceof InvalidCredentialsError ? 401 : 503;
+      return { error: result.left instanceof InvalidCredentialsError ? "Unauthorized" : "Learning content unavailable" };
+    }
+    return { success: true as const, data: result.right };
+  }, {
+    body: t.Object({
+      knowledgePointId: t.String({ format: "uuid" }),
+      mode: t.Union([t.Literal("primer"), t.Literal("checkout"), t.Literal("review")]),
+    }),
+  })
+  .post("/learning/event", async ({ body, headers, set, runEffect }) => {
+    const program = Effect.gen(function* () {
+      const token = headers.authorization?.startsWith("Bearer ") ? headers.authorization.slice(7) : null;
+      if (!token) return yield* Effect.fail(new InvalidCredentialsError());
+      const user = yield* validateToken(token);
+      return yield* recordProgressEvent(user.id, body);
+    });
+    const result = await runEffect(Effect.either(program), { name: "adaptive_learning_event" });
+    if (result._tag === "Left") {
+      set.status = result.left instanceof InvalidCredentialsError ? 401 : 422;
+      return { error: result.left instanceof InvalidCredentialsError ? "Unauthorized" : "Learning event rejected" };
+    }
+    return { success: true as const, data: result.right };
+  }, {
+    body: t.Object({
+      knowledgePointId: t.String({ format: "uuid" }),
+      candidateId: t.Nullable(t.String({ format: "uuid" })),
+      event: t.Union([
+        t.Literal("primer_started"), t.Literal("primer_retrieval_completed"), t.Literal("cue_reached"),
+        t.Literal("checkout_recalled"), t.Literal("checkout_missed"), t.Literal("media_abandoned"),
+      ]),
+      idempotencyKey: t.String({ minLength: 1, maxLength: 220 }),
+      encounter: t.Optional(t.Object({
+        cueId: t.String({ minLength: 1, maxLength: 220 }),
+        timingTransformId: t.String({ minLength: 1, maxLength: 220 }),
+        effectivePlaybackSeconds: t.Number({ minimum: 0 }),
+      })),
+    }),
+  })
+  .get("/learning/checkouts", async ({ headers, set, runEffect }) => {
+    const program = Effect.gen(function* () {
+      const token = headers.authorization?.startsWith("Bearer ") ? headers.authorization.slice(7) : null;
+      if (!token) return yield* Effect.fail(new InvalidCredentialsError());
+      const user = yield* validateToken(token);
+      return yield* listPendingMediaCheckouts(user.id);
+    });
+    const result = await runEffect(Effect.either(program), { name: "adaptive_pending_checkouts" });
+    if (result._tag === "Left") {
+      set.status = result.left instanceof InvalidCredentialsError ? 401 : 500;
+      return { error: result.left instanceof InvalidCredentialsError ? "Unauthorized" : "Pending checkout lookup failed" };
+    }
+    return { success: true as const, data: result.right };
+  })
+  .post("/learning/checkout/alternative", async ({ body, headers, set, runEffect }) => {
+    const program = Effect.gen(function* () {
+      const token = headers.authorization?.startsWith("Bearer ") ? headers.authorization.slice(7) : null;
+      if (!token) return yield* Effect.fail(new InvalidCredentialsError());
+      const user = yield* validateToken(token);
+      yield* completeAlternativeCheckout(
+        user.id, body.knowledgePointId, body.candidateId, body.outcome, body.canonicalDefinitionInvalid,
+      );
+      return { completed: true as const };
+    });
+    const result = await runEffect(Effect.either(program), { name: "adaptive_alternative_checkout" });
+    if (result._tag === "Left") {
+      set.status = result.left instanceof InvalidCredentialsError ? 401 : 422;
+      return { error: result.left instanceof InvalidCredentialsError ? "Unauthorized" : "Checkout action rejected" };
+    }
+    return { success: true as const, data: result.right };
+  }, {
+    body: t.Object({
+      knowledgePointId: t.String({ format: "uuid" }),
+      candidateId: t.Nullable(t.String({ format: "uuid" })),
+      outcome: t.Union([t.Literal("already_known"), t.Literal("wrongly_analyzed"), t.Literal("not_useful")]),
+      canonicalDefinitionInvalid: t.Boolean(),
     }),
   });

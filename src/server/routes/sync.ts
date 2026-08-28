@@ -155,6 +155,7 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
           participationStatus: c.participation_status,
           learningState: c.learning_state,
           introducedAt: c.introduced_at ? c.introduced_at.toISOString() : null,
+          checkoutDue: c.checkout_due,
           hlc: c.hlc
         }));
 

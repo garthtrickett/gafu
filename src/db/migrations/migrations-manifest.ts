@@ -10,6 +10,7 @@ import * as m07 from "../../migrations/07_add_sync_epoch";
 import * as m08 from "../../migrations/08_add_tts_daily_usage";
 import * as m09 from "../../migrations/09_adaptive_knowledge_points";
 import * as m10 from "../../migrations/10_adaptive_media_candidates";
+import * as m11 from "../../migrations/11_adaptive_media_learning_loop";
 
 export const migrationObjects: Record<string, Migration> = {
   "00_init_db": { up: m00.up, down: m00.down },
@@ -23,4 +24,5 @@ export const migrationObjects: Record<string, Migration> = {
   "08_add_tts_daily_usage": { up: m08.up, down: m08.down },
   "09_adaptive_knowledge_points": { up: m09.up, down: m09.down },
   "10_adaptive_media_candidates": { up: m10.up, down: m10.down },
+  "11_adaptive_media_learning_loop": { up: m11.up, down: m11.down },
 };

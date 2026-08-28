@@ -14,66 +14,8 @@ import { runClientUnscoped, type BaseClientContext } from "../lib/client/runtime
 import { navigate } from "../lib/client/router";
 import { Effect } from "effect";
 import "./FuriganaSentence";
-
-export const calculateSrsUpdate = (
-  current: {
-    easeFactor?: number;
-    repetitions?: number;
-    intervalDays?: number;
-    difficulty?: number;
-    stability?: number;
-  },
-  isCorrect: boolean
-) => {
-  const now = new Date();
-  const difficulty = current.difficulty !== undefined ? current.difficulty : 5.0;
-  const stability = current.stability !== undefined ? current.stability : 0.0;
-  const repetitions = current.repetitions || 0;
-
-  const nextDifficulty = isCorrect
-    ? Math.max(1.0, difficulty - 0.5)
-    : Math.min(10.0, difficulty + 1.5);
-
-  let nextStability = 0.0;
-  const nextRepetitions = isCorrect ? repetitions + 1 : 0;
-
-  if (isCorrect) {
-    if (repetitions === 0 || stability === 0.0) {
-      nextStability = 1.0;
-    } else {
-      const factor = Math.max(1.2, 3.5 - 0.2 * difficulty);
-      nextStability = stability * factor;
-    }
-  } else {
-    if (stability >= 7.0) {
-      nextStability = Math.max(1.0, stability * 0.25);
-    } else {
-      nextStability = 0.5;
-    }
-  }
-
-  let intervalDays = Math.ceil(nextStability);
-  if (intervalDays >= 5) {
-    const fuzzRange = 0.05; // +/- 5%
-    const fuzzFactor = 1 + (Math.random() * (fuzzRange * 2) - fuzzRange);
-    intervalDays = Math.max(1, Math.round(intervalDays * fuzzFactor));
-  }
-
-  const nextReview = new Date(now.getTime());
-  nextReview.setDate(nextReview.getDate() + intervalDays);
-
-  const easeFactor = Math.max(1.3, 3.5 - 0.2 * nextDifficulty);
-
-  return {
-    easeFactor: Math.round(easeFactor * 100) / 100,
-    repetitions: nextRepetitions,
-    intervalDays,
-    difficulty: Math.round(nextDifficulty * 100) / 100,
-    stability: Math.round(nextStability * 100) / 100,
-    lastReviewedAt: now.toISOString(),
-    nextReview: nextReview.toISOString()
-  };
-};
+import { calculateSrsUpdate } from "../lib/shared/srs-scheduling.ts";
+export { calculateSrsUpdate } from "../lib/shared/srs-scheduling.ts";
 
 export interface StudySessionModel {
   readonly audioPlaying: boolean;
