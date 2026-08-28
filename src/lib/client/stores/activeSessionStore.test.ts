@@ -20,11 +20,11 @@ const successfulAudioEnricher: SessionAudioEnricher = {
     }),
 };
 
-const createMockCard = (grammarPointId: string, index: number): SessionCard => ({
-  grammarPointId,
-  englishContext: `Context for ${grammarPointId} #${index}`,
-  japaneseSentence: `Sentence for ${grammarPointId} #${index}`,
-  furigana: [{ kanji: `Kanji ${grammarPointId}` }],
+const createMockCard = (knowledgePointId: string, index: number): SessionCard => ({
+  knowledgePointId,
+  englishContext: `Context for ${knowledgePointId} #${index}`,
+  japaneseSentence: `Sentence for ${knowledgePointId} #${index}`,
+  furigana: [{ kanji: `Kanji ${knowledgePointId}` }],
   audioUrl: null,
   explanation: "Explanation",
 });
@@ -51,8 +51,8 @@ describe("activeSessionStore & weaveSessionCards unit tests", () => {
     const weaved = weaveSessionCards(cards);
     expect(weaved).toHaveLength(4);
 
-    const originalIds = cards.map((c) => c.grammarPointId).sort();
-    const weavedIds = weaved.map((c) => c.grammarPointId).sort();
+    const originalIds = cards.map((c) => c.knowledgePointId).sort();
+    const weavedIds = weaved.map((c) => c.knowledgePointId).sort();
     expect(weavedIds).toEqual(originalIds);
   });
 
@@ -69,8 +69,8 @@ describe("activeSessionStore & weaveSessionCards unit tests", () => {
     expect(weaved).toHaveLength(6);
 
     for (let i = 0; i < weaved.length - 1; i++) {
-      const current = weaved[i]?.grammarPointId;
-      const next = weaved[i + 1]?.grammarPointId;
+      const current = weaved[i]?.knowledgePointId;
+      const next = weaved[i + 1]?.knowledgePointId;
       expect(current).not.toBe(next);
     }
   });
@@ -87,8 +87,8 @@ describe("activeSessionStore & weaveSessionCards unit tests", () => {
     expect(weaved).toHaveLength(5);
 
     for (let i = 0; i < weaved.length - 1; i++) {
-      const current = weaved[i]?.grammarPointId;
-      const next = weaved[i + 1]?.grammarPointId;
+      const current = weaved[i]?.knowledgePointId;
+      const next = weaved[i + 1]?.knowledgePointId;
       expect(current).not.toBe(next);
     }
   });
@@ -212,8 +212,8 @@ describe("activeSessionStore & weaveSessionCards unit tests", () => {
     const masterList = activeSessionStore.masterList.value;
     expect(masterList).toHaveLength(3);
 
-    expect(masterList[0]?.grammarPointId).not.toBe(masterList[1]?.grammarPointId);
-    expect(masterList[1]?.grammarPointId).not.toBe(masterList[2]?.grammarPointId);
+    expect(masterList[0]?.knowledgePointId).not.toBe(masterList[1]?.knowledgePointId);
+    expect(masterList[1]?.knowledgePointId).not.toBe(masterList[2]?.knowledgePointId);
   });
 
 it("stores and dismisses the imported-session audio warning", () => {

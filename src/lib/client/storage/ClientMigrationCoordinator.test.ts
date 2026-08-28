@@ -51,7 +51,7 @@ describe("ClientMigrationCoordinator - Offline Schema Transitions", () => {
 
     // Verify metadata version upgraded
     const savedVersion = await get<number>("client_db_version", metadataStore);
-    expect(savedVersion).toBe(2);
+    expect(savedVersion).toBe(CURRENT_CLIENT_DB_VERSION);
 
     // Verify grammar point was correctly backfilled
     const migratedGps = await get<any[]>("store:grammar_points", collectionsStore);
@@ -70,5 +70,35 @@ describe("ClientMigrationCoordinator - Offline Schema Transitions", () => {
     expect(srs.difficulty).toBe(5.0); // calculated: 5.0 + (2.5 - 2.5) * 4 = 5.0
     expect(srs.stability).toBe(0);
     expect(srs.lastReviewedAt).toBeNull(); // repetitions = 0, so lastReviewedAt is null
+
+    const sharedProgress = await get<any[]>("store:learner_progress", collectionsStore);
+    expect(sharedProgress).toEqual([
+      expect.objectContaining({ id: "gp-migrate-1", kind: "grammar", participationStatus: "active" }),
+    ]);
+  });
+
+  it("migrates multiple user scopes and is safe to repeat after a partial write", async () => {
+    await set("client_db_version", 2, metadataStore);
+    await set("store:user-a:grammar_points", [{
+      id: "point-a", easeFactor: 2.5, repetitions: 1, intervalDays: 1,
+      nextReview: "2026-08-28T00:00:00.000Z",
+    }], collectionsStore);
+    await set("store:user-b:grammar_points", [{
+      id: "point-b", easeFactor: 2.5, repetitions: 0, intervalDays: 0,
+      nextReview: "2026-08-28T00:00:00.000Z",
+    }], collectionsStore);
+    await set("store:user-a:learner_progress", [{
+      id: "partial", kind: "vocabulary", easeFactor: 2.5, repetitions: 0,
+      intervalDays: 0, nextReview: "2026-08-28T00:00:00.000Z",
+    }], collectionsStore);
+
+    await Effect.runPromise(runClientMigrations());
+    await set("client_db_version", 2, metadataStore);
+    await Effect.runPromise(runClientMigrations());
+
+    expect((await get<any[]>("store:user-a:learner_progress", collectionsStore))?.map((item) => item.id).sort())
+      .toEqual(["partial", "point-a"]);
+    expect((await get<any[]>("store:user-b:learner_progress", collectionsStore))?.map((item) => item.id))
+      .toEqual(["point-b"]);
   });
 });

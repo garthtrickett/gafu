@@ -109,7 +109,7 @@ describe("StudySession Component State Logic", () => {
   it("should toggle the current-card explanation with the E key", async () => {
     activeSessionStore.loadSession([
       {
-        grammarPointId: "gp-explanation-shortcut",
+        knowledgePointId: "gp-explanation-shortcut",
         englishContext: "An explanation recall prompt.",
         japaneseSentence: "日本語です。",
         furigana: [
@@ -159,7 +159,7 @@ describe("StudySession Component State Logic", () => {
       it("should submit correct and incorrect grades with C and I keys", async () => {
         activeSessionStore.loadSession([
           {
-            grammarPointId: "gp-grade-shortcut",
+            knowledgePointId: "gp-grade-shortcut",
             englishContext: "A grading shortcut prompt.",
             japaneseSentence: "日本語です。",
             furigana: [
@@ -183,7 +183,7 @@ describe("StudySession Component State Logic", () => {
 
         expect(proposeSpy).toHaveBeenCalledWith({
           type: "SUBMIT_GRADE",
-          grammarPointId: "gp-grade-shortcut",
+          knowledgePointId: "gp-grade-shortcut",
           isCorrect: true,
         });
 
@@ -198,7 +198,7 @@ describe("StudySession Component State Logic", () => {
 
         expect(proposeSpy).toHaveBeenCalledWith({
           type: "SUBMIT_GRADE",
-          grammarPointId: "gp-grade-shortcut",
+          knowledgePointId: "gp-grade-shortcut",
           isCorrect: false,
         });
 
@@ -216,7 +216,7 @@ describe("StudySession Component State Logic", () => {
     await new Promise((resolve) => setTimeout(resolve, 15));
     expect(controller.model.explanationVisible).toBe(true);
 
-    controller.propose({ type: "SUBMIT_GRADE", grammarPointId: "gp-123", isCorrect: true });
+    controller.propose({ type: "SUBMIT_GRADE", knowledgePointId: "gp-123", isCorrect: true });
     await new Promise((resolve) => setTimeout(resolve, 15));
     expect(controller.model.explanationVisible).toBe(false);
   });
@@ -227,7 +227,7 @@ describe("StudySession Component State Logic", () => {
     await new Promise((resolve) => setTimeout(resolve, 15));
     expect(controller.model.explanationVisible).toBe(true);
 
-        controller.propose({ type: "FORCE_MASTER", grammarPointId: "gp-123" });
+        controller.propose({ type: "FORCE_MASTER", knowledgePointId: "gp-123" });
     await new Promise((resolve) => setTimeout(resolve, 15));
     expect(controller.model.explanationVisible).toBe(false);
   });
@@ -235,7 +235,7 @@ describe("StudySession Component State Logic", () => {
   it("should hide Japanese by default and toggle it with the J key", async () => {
     activeSessionStore.loadSession([
       {
-        grammarPointId: "gp-japanese-shortcut",
+        knowledgePointId: "gp-japanese-shortcut",
         englishContext: "A recall prompt.",
         japaneseSentence: "日本語です。",
         furigana: [
@@ -295,7 +295,7 @@ describe("StudySession Component State Logic", () => {
     vi.stubGlobal("Audio", MockAudio);
     activeSessionStore.loadSession([
       {
-        grammarPointId: "gp-audio-shortcut",
+        knowledgePointId: "gp-audio-shortcut",
         englishContext: "An audio recall prompt.",
         japaneseSentence: "聞いてください。",
         furigana: [
@@ -321,7 +321,7 @@ describe("StudySession Component State Logic", () => {
   it("should ignore J shortcuts while typing in an input", async () => {
     activeSessionStore.loadSession([
       {
-        grammarPointId: "gp-input-shortcut",
+        knowledgePointId: "gp-input-shortcut",
         englishContext: "A typing safety prompt.",
         japaneseSentence: "日本語です。",
         furigana: [
@@ -355,7 +355,7 @@ describe("StudySession Component State Logic", () => {
     await runClientPromise(hlcStore.clear());
     await runClientPromise(hlcStore.load());
 
-    controller.propose({ type: "SUBMIT_GRADE", grammarPointId: "gp-hlc-test", isCorrect: true });
+    controller.propose({ type: "SUBMIT_GRADE", knowledgePointId: "gp-hlc-test", isCorrect: true });
     
     await new Promise((resolve) => setTimeout(resolve, 30));
 
@@ -373,7 +373,7 @@ describe("StudySession Component State Logic", () => {
     await runClientPromise(hlcStore.clear());
     await runClientPromise(hlcStore.load());
 
-    controller.propose({ type: "FORCE_MASTER", grammarPointId: "gp-hlc-test-force" });
+    controller.propose({ type: "FORCE_MASTER", knowledgePointId: "gp-hlc-test-force" });
     
     await new Promise((resolve) => setTimeout(resolve, 30));
 

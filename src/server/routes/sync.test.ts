@@ -85,7 +85,7 @@ describe("Synchronization API Endpoint Suite", () => {
           id: "tx-stale-user-123",
           type: "record_review",
           payload: {
-            grammarPointId: "e0eebc99-9c0b-4ef8-bb6d-6bb9bd380e55",
+            knowledgePointId: "e0eebc99-9c0b-4ef8-bb6d-6bb9bd380e55",
             easeFactor: 2.6,
             repetitions: 1,
             intervalDays: 1,
@@ -180,7 +180,7 @@ describe("Synchronization API Endpoint Suite", () => {
 });
 
 describe("Sync Push Route - Validation Boundaries", () => {
-  it("should reject push requests with malformed non-UUID grammarPointId with a 400 Bad Request", async () => {
+  it("should reject push requests with malformed non-UUID knowledgePointId with a 400 Bad Request", async () => {
     const user: PublicUser = {
       id: "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
       email: "learner@site.com",
@@ -200,7 +200,7 @@ describe("Sync Push Route - Validation Boundaries", () => {
       id: "1cba4d11-a963-438a-ab07-c18098d9426d",
       type: "record_review",
       payload: {
-        grammarPointId: "tai",
+        knowledgePointId: "tai",
         easeFactor: 2.5,
         repetitions: 0,
         intervalDays: 0,
@@ -223,7 +223,7 @@ describe("Sync Push Route - Validation Boundaries", () => {
     expect(response.status).toBe(400);
     const body = (await response.json()) as { error: string; message: string };
     expect(body.error).toBe("Bad Request");
-    expect(body.message).toContain("grammarPointId");
+    expect(body.message).toContain("knowledgePointId");
   });
 
   it("should reject push requests with negative values in update_preferences with a 400 Bad Request", async () => {

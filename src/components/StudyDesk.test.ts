@@ -15,7 +15,7 @@ describe("StudyDesk component and activeSessionStore pacing presentation", () =>
   it("should enforce a study cap of 20 in activeSessionStore when a large session payload is loaded", () => {
     // Construct a large mock session containing 35 cards
     const largeCards = Array.from({ length: 35 }, (_, i) => ({
-      grammarPointId: `gp-${i}`,
+      knowledgePointId: `gp-${i}`,
       englishContext: `Context ${i}`,
       japaneseSentence: `Sentence ${i}`,
       furigana: [],

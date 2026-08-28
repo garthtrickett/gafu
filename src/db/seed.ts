@@ -2801,6 +2801,7 @@ export const seedDb = (options?: { clearData?: boolean }) =>
       return {
         id: `d0eebc99-9c0b-4ef8-bb6d-6bb9bd38${hexIndex}` as SrsCardId,
         user_id: SAMPLE_LEARNER_ID,
+        knowledge_point_id: gp.id,
         grammar_point_id: gp.id,
         ease_factor: 2.5,
         repetitions: 0,

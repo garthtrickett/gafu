@@ -1,12 +1,12 @@
 import { Effect } from "effect";
 import {
-  grammarPointStore,
-  grammarPointCatalogStore,
+  knowledgePointStore,
   canUnlockMoreRules,
   getDailyUnlockAllowance,
   calculateRetrievability,
-  type GrammarPointProgress
-} from "./grammarPointStore.ts";
+  type KnowledgePointProgress
+} from "./knowledgePointStore.ts";
+import { grammarPointCatalogStore } from "./grammarPointStore.ts";
 import { activeSessionStore, type SessionCard, type FuriganaSegment } from "./activeSessionStore.ts";
 import { clientLog } from "../clientLog.ts";
 import { prewarmAudioUrls } from "../media/MediaPrewarmService.ts";
@@ -34,10 +34,10 @@ export const generateExportPayload = (options?: { isCram?: boolean }) => {
     yield* clientLog("info", `[SessionSync] Compiling study progress payload (isCram=${isCram})...`);
     
     // Ensure both stores are loaded and updated
-    yield* grammarPointStore.load();
+    yield* knowledgePointStore.load();
     yield* grammarPointCatalogStore.load();
     
-    const localProgress = grammarPointStore.state.peek();
+    const localProgress = knowledgePointStore.state.peek();
     const catalog = grammarPointCatalogStore.state.peek();
     
     const now = new Date();
@@ -110,7 +110,7 @@ export const generateExportPayload = (options?: { isCram?: boolean }) => {
         
                 const { hlcStore } = yield* Effect.promise(() => import("./hlcStore.ts"));
 
-        const newProgressRecords: GrammarPointProgress[] = [];
+        const newProgressRecords: KnowledgePointProgress[] = [];
         for (const item of nextIntroductions) {
           const currentHlc = yield* hlcStore.tick();
           newProgressRecords.push({
@@ -128,8 +128,8 @@ export const generateExportPayload = (options?: { isCram?: boolean }) => {
         }
 
         
-        // Save these new rules to grammarPointStore immediately so they count toward today's limit
-        yield* grammarPointStore.putAll(newProgressRecords);
+        // Save these new rules to knowledgePointStore immediately so they count toward today's limit
+        yield* knowledgePointStore.putAll(newProgressRecords);
         
         for (const item of nextIntroductions) {
           queue.push({
@@ -258,7 +258,7 @@ interface ImportedPayload {
 
 interface ValidatedImportedCard {
   readonly sourceIndex: number;
-  readonly grammarPointId: string;
+  readonly knowledgePointId: string;
   readonly englishContext: string;
   readonly japaneseSentence: string;
   readonly furigana: readonly FuriganaSegment[];
@@ -400,7 +400,7 @@ const validateImportedCards = (
       }
 
       const card = rawCard as ImportedCard;
-      const grammarPointId =
+      const knowledgePointId =
         typeof card.grammar_point_id === "string"
           ? card.grammar_point_id.trim()
           : "";
@@ -414,7 +414,7 @@ const validateImportedCards = (
           : "";
 
       if (
-        grammarPointId.length === 0 ||
+        knowledgePointId.length === 0 ||
         englishContext.length === 0 ||
         japaneseSentence.length === 0
       ) {
@@ -476,7 +476,7 @@ const validateImportedCards = (
 
       validatedCards.push({
         sourceIndex,
-        grammarPointId,
+        knowledgePointId,
         englishContext,
         japaneseSentence,
         furigana: isFuriganaSegments(furiganaValue)
@@ -628,7 +628,7 @@ const requestSessionAudioEnrichment: SessionAudioEnricher = {
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-const isAcceptedGrammarPointId = (grammarPointId: string): boolean => {
+const isAcceptedGrammarPointId = (knowledgePointId: string): boolean => {
   const isTest =
     typeof process !== "undefined" &&
     (
@@ -636,13 +636,13 @@ const isAcceptedGrammarPointId = (grammarPointId: string): boolean => {
       process.env?.VITEST_WORKER_ID
     );
   const isMockId =
-    grammarPointId.startsWith("gp-") ||
-    grammarPointId.startsWith("gp");
+    knowledgePointId.startsWith("gp-") ||
+    knowledgePointId.startsWith("gp");
 
   return Boolean(
     isTest ||
       isMockId ||
-      UUID_REGEX.test(grammarPointId),
+      UUID_REGEX.test(knowledgePointId),
   );
 };
 
@@ -703,10 +703,10 @@ export const importSessionPayload = (
 
     const acceptedCards: ValidatedImportedCard[] = [];
     for (const card of validatedCards) {
-      if (!isAcceptedGrammarPointId(card.grammarPointId)) {
+      if (!isAcceptedGrammarPointId(card.knowledgePointId)) {
         yield* clientLog(
           "warn",
-          `[SessionSync] Skipping card with non-UUID grammar_point_id: "${card.grammarPointId}"`,
+          `[SessionSync] Skipping card with non-UUID grammar_point_id: "${card.knowledgePointId}"`,
         );
         continue;
       }
@@ -813,19 +813,19 @@ export const importSessionPayload = (
 
     // Load the local progress store state only after the entire payload has
     // passed schema validation and audio enrichment has completed.
-    yield* grammarPointStore.load();
-    const localProgress = grammarPointStore.state.peek();
+    yield* knowledgePointStore.load();
+    const localProgress = knowledgePointStore.state.peek();
     const activeIds = new Set(localProgress.map((progress) => progress.id));
     const now = new Date();
 
     const sessionCards: SessionCard[] = [];
     for (const card of acceptedCards) {
-      const grammarPointId = card.grammarPointId;
+      const knowledgePointId = card.knowledgePointId;
 
-      if (!activeIds.has(grammarPointId)) {
+      if (!activeIds.has(knowledgePointId)) {
         yield* clientLog(
           "info",
-          `[SessionSync] Activating newly introduced grammar point ID: ${grammarPointId}`,
+          `[SessionSync] Activating newly introduced grammar point ID: ${knowledgePointId}`,
         );
 
         const { hlcStore } = yield* Effect.promise(
@@ -834,7 +834,7 @@ export const importSessionPayload = (
         const currentHlc = yield* hlcStore.tick();
 
         const initialProgress = {
-          id: grammarPointId,
+          id: knowledgePointId,
           easeFactor: 2.5,
           repetitions: 0,
           intervalDays: 0,
@@ -845,20 +845,20 @@ export const importSessionPayload = (
           hlc: currentHlc,
         };
 
-        yield* grammarPointStore.put(initialProgress);
+        yield* knowledgePointStore.put(initialProgress);
 
         const { enqueueTransaction } = yield* Effect.promise(
           () => import("../sync/OutboxQueue"),
         );
         yield* enqueueTransaction("record_review", {
-          grammarPointId,
+          knowledgePointId: knowledgePointId,
           easeFactor: 2.5,
           repetitions: 0,
           intervalDays: 0,
           nextReview: initialProgress.nextReview,
         });
 
-        activeIds.add(grammarPointId);
+        activeIds.add(knowledgePointId);
       }
 
       const generatedAudioUrl = audioUrlByRequestId.get(
@@ -866,7 +866,7 @@ export const importSessionPayload = (
       );
 
       sessionCards.push({
-        grammarPointId,
+        knowledgePointId,
         englishContext: card.englishContext,
         japaneseSentence: card.japaneseSentence,
         furigana: card.furigana,

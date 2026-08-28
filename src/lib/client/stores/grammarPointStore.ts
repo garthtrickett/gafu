@@ -1,9 +1,13 @@
 import { createLocalStore } from "../storage/LocalStoreFactory.ts";
+import type { LocalStore } from "../storage/LocalStoreFactory.ts";
 import { computed } from "@preact/signals-core";
 import { userPreferencesStore } from "./userPreferencesStore.ts";
 
-export interface GrammarPointProgress {
-  readonly id: string; // Represents grammar_point_id
+export interface KnowledgePointProgress {
+  readonly id: string;
+  readonly kind?: "grammar" | "vocabulary";
+  readonly participationStatus?: "active" | "archived";
+  readonly learningState?: "introduced" | "primed" | "encountered" | "learning" | "stable" | "known";
   readonly easeFactor: number;
   readonly repetitions: number;
   readonly intervalDays: number;
@@ -23,12 +27,31 @@ export interface GrammarPointCatalogItem {
   readonly hlc?: string;
 }
 
-export const grammarPointCatalogStore = createLocalStore<GrammarPointCatalogItem>(
-  "grammar_point_catalog"
+export interface VocabularyPointCatalogItem {
+  readonly id: string;
+  readonly kind: "vocabulary";
+  readonly canonical_key: string;
+  readonly scope: "curated" | "personal";
+  readonly catalogue_status: "active" | "archived" | "quarantined";
+  readonly lemma: string;
+  readonly reading: string;
+  readonly part_of_speech: string;
+  readonly sense_key: string;
+  readonly meaning: string;
+  readonly register?: string | null;
+  readonly hlc?: string;
+}
+
+export type KnowledgePointCatalogItem =
+  | (GrammarPointCatalogItem & { readonly kind?: "grammar" })
+  | VocabularyPointCatalogItem;
+
+export const knowledgePointCatalogStore = createLocalStore<KnowledgePointCatalogItem>(
+  "knowledge_point_catalog"
 );
 
-const baseGrammarPointStore = createLocalStore<GrammarPointProgress>(
-  "grammar_points",
+const baseKnowledgePointStore = createLocalStore<KnowledgePointProgress>(
+  "learner_progress",
   (a, b) => new Date(a.nextReview).getTime() - new Date(b.nextReview).getTime()
 );
 
@@ -42,7 +65,7 @@ export const calculateRetrievability = (progress: { stability?: number; lastRevi
   return Math.max(0.0, Math.min(1.0, Math.pow(0.9, elapsedDays / stability)));
 };
 
-export const canUnlockMoreRules = (progressList: GrammarPointProgress[]): boolean => {
+export const canUnlockMoreRules = (progressList: KnowledgePointProgress[]): boolean => {
   const learningRules = progressList.filter(p => (p.stability ?? 0.0) < 21.0);
   if (learningRules.length === 0) {
     return true;
@@ -56,7 +79,7 @@ export const canUnlockMoreRules = (progressList: GrammarPointProgress[]): boolea
 };
 
 export const getDailyUnlockAllowance = (
-  progressList: GrammarPointProgress[],
+  progressList: KnowledgePointProgress[],
   dailyCap: number = 3
 ): number => {
   const now = Date.now();
@@ -71,34 +94,34 @@ export const getDailyUnlockAllowance = (
   return Math.max(0, dailyCap - unlockedCount);
 };
 
-export const grammarPointStore = { 
-  ...baseGrammarPointStore,
+export const knowledgePointStore = {
+  ...baseKnowledgePointStore,
 
   activeLearningRules: computed(() => {
-    const progress = baseGrammarPointStore.state.value;
-    return progress.filter(p => (p.stability ?? 0.0) < 21.0);
+    const progress = baseKnowledgePointStore.state.value;
+    return progress.filter(p => p.participationStatus !== "archived" && p.learningState !== "known" && (p.stability ?? 0.0) < 21.0);
   }),
 
   graduatedRules: computed(() => {
-    const progress = baseGrammarPointStore.state.value;
+    const progress = baseKnowledgePointStore.state.value;
     return progress.filter(p => (p.stability ?? 0.0) >= 21.0);
   }),
 
   lockedCatalogItems: computed(() => {
-    const catalog = grammarPointCatalogStore.state.value;
-    const progress = baseGrammarPointStore.state.value;
+    const catalog = knowledgePointCatalogStore.state.value;
+    const progress = baseKnowledgePointStore.state.value;
     const progressIds = new Set(progress.map(p => p.id));
     return catalog.filter(c => !progressIds.has(c.id));
   }),
 
   unlockedLast24HoursCount: computed(() => {
-    const progress = baseGrammarPointStore.state.value;
+    const progress = baseKnowledgePointStore.state.value;
     const limit = userPreferencesStore.dailyNewRuleLimit.value;
     return getDailyUnlockAllowance(progress, limit);
   }),
 
   activeMasteryRate: computed(() => {
-    const progress = baseGrammarPointStore.state.value;
+    const progress = baseKnowledgePointStore.state.value;
     const learningRules = progress.filter(p => (p.stability ?? 0.0) < 21.0);
     if (learningRules.length === 0) {
       return 100;
@@ -110,7 +133,7 @@ export const grammarPointStore = {
   }),
 
     unmasteredActiveRules: computed(() => {
-    const progress = baseGrammarPointStore.state.value;
+    const progress = baseKnowledgePointStore.state.value;
     const learningRules = progress.filter(p => (p.stability ?? 0.0) < 21.0);
     return learningRules.filter(
       p => !((p.stability ?? 0.0) >= 7.0 || (p.difficulty ?? 5.0) <= 4.0)
@@ -118,8 +141,8 @@ export const grammarPointStore = {
   }),
 
   unstartedCount: computed(() => {
-    const catalog = grammarPointCatalogStore.state.value;
-    const progress = baseGrammarPointStore.state.value;
+    const catalog = knowledgePointCatalogStore.state.value;
+    const progress = baseKnowledgePointStore.state.value;
     const progressMap = new Map(progress.map(p => [p.id, p]));
     let count = 0;
     for (const cat of catalog) {
@@ -132,7 +155,7 @@ export const grammarPointStore = {
   }),
 
   learningCount: computed(() => {
-    const progress = baseGrammarPointStore.state.value;
+    const progress = baseKnowledgePointStore.state.value;
     return progress.filter(p => 
       (p.stability ?? 0.0) < 21.0 &&
       p.repetitions > 0 &&
@@ -141,7 +164,7 @@ export const grammarPointStore = {
   }),
 
   masteredCount: computed(() => {
-    const progress = baseGrammarPointStore.state.value;
+    const progress = baseKnowledgePointStore.state.value;
     return progress.filter(p => 
       (p.stability ?? 0.0) < 21.0 &&
       ((p.stability ?? 0.0) >= 7.0 || (p.difficulty ?? 5.0) <= 4.0)
@@ -149,12 +172,12 @@ export const grammarPointStore = {
   }),
 
   graduatedCount: computed(() => {
-    const progress = baseGrammarPointStore.state.value;
+    const progress = baseKnowledgePointStore.state.value;
     return progress.filter(p => (p.stability ?? 0.0) >= 21.0).length;
   }),
 
   averageDifficulty: computed(() => {
-    const progress = baseGrammarPointStore.state.value;
+    const progress = baseKnowledgePointStore.state.value;
     const studied = progress.filter(p => p.repetitions > 0);
     if (studied.length === 0) {
       return 5.0;
@@ -164,11 +187,24 @@ export const grammarPointStore = {
   }),
 
   averageRetrievability: computed(() => {
-    const progress = baseGrammarPointStore.state.value;
+    const progress = baseKnowledgePointStore.state.value;
     if (progress.length === 0) {
       return 100;
     }
     const sum = progress.reduce((acc, curr) => acc + calculateRetrievability(curr), 0);
     return Math.round((sum / progress.length) * 100);
   }),
+};
+
+// Temporary grammar UI compatibility exports. Both point at the shared stores;
+// no production persistence path writes the old collection names.
+export type GrammarPointProgress = KnowledgePointProgress;
+export const grammarPointCatalogStore = knowledgePointCatalogStore as unknown as LocalStore<GrammarPointCatalogItem>;
+export const grammarPointStore = {
+  ...knowledgePointStore,
+  lockedCatalogItems: computed(() =>
+    knowledgePointStore.lockedCatalogItems.value.filter(
+      (item): item is GrammarPointCatalogItem & { readonly kind?: "grammar" } => item.kind !== "vocabulary",
+    ),
+  ),
 };

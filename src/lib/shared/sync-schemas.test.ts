@@ -3,7 +3,18 @@ import { Schema, Either } from "effect";
 import { OutboxTransactionSchema, RecordReviewPayloadSchema, UpdatePreferencesPayloadSchema } from "./sync-schemas";
 
 describe("Sync schemas verification", () => {
-  it("should successfully decode camelCase record_review payload", () => {
+  it("uses knowledgePointId as the canonical record_review field", () => {
+    const raw = {
+      knowledgePointId: "e0eebc99-9c0b-4ef8-bb6d-6bb9bd380e55",
+      repetitions: 0,
+      nextReview: "2026-05-31T04:32:00.000Z",
+    };
+    const result = Schema.decodeUnknownEither(RecordReviewPayloadSchema)(raw);
+    expect(Either.isRight(result)).toBe(true);
+    if (Either.isRight(result)) expect(result.right.knowledgePointId).toBe(raw.knowledgePointId);
+  });
+
+  it("decodes legacy camelCase record_review payload during the migration window", () => {
     const raw = {
       grammarPointId: "e0eebc99-9c0b-4ef8-bb6d-6bb9bd380e55",
       easeFactor: 2.7,
@@ -15,14 +26,14 @@ describe("Sync schemas verification", () => {
     const result = Schema.decodeUnknownEither(RecordReviewPayloadSchema)(raw);
     expect(Either.isRight(result)).toBe(true);
     if (Either.isRight(result)) {
-      expect(result.right.grammarPointId).toBe(raw.grammarPointId);
+      expect(result.right.knowledgePointId).toBe(raw.grammarPointId);
       expect(result.right.easeFactor).toBe(2.7);
       expect(result.right.repetitions).toBe(2);
       expect(result.right.intervalDays).toBe(6);
     }
   });
 
-  it("should successfully decode snake_case record_review payload", () => {
+  it("decodes legacy snake_case record_review payload during the migration window", () => {
     const raw = {
       grammar_point_id: "e0eebc99-9c0b-4ef8-bb6d-6bb9bd380e55",
       ease_factor: 2.7,
@@ -34,7 +45,7 @@ describe("Sync schemas verification", () => {
     const result = Schema.decodeUnknownEither(RecordReviewPayloadSchema)(raw);
     expect(Either.isRight(result)).toBe(true);
     if (Either.isRight(result)) {
-      expect(result.right.grammarPointId).toBe(raw.grammar_point_id);
+      expect(result.right.knowledgePointId).toBe(raw.grammar_point_id);
       expect(result.right.easeFactor).toBe(2.7);
       expect(result.right.repetitions).toBe(2);
       expect(result.right.intervalDays).toBe(6);
@@ -157,6 +168,7 @@ describe("Sync schemas verification", () => {
         dailyReviewLimit: 50,
         dailyNewRuleLimit: 5,
         enforceMasteryGates: true,
+        learnerTimeZone: "UTC",
       });
     }
   });

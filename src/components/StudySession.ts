@@ -7,7 +7,7 @@ import { customElement } from "lit/decorators.js";
 import { effect } from "@preact/signals-core";
 import { ReactiveSamController } from "../lib/client/reactive-sam-controller";
 import { activeSessionStore } from "../lib/client/stores/activeSessionStore";
-import { grammarPointStore } from "../lib/client/stores/grammarPointStore";
+import { knowledgePointStore } from "../lib/client/stores/knowledgePointStore";
 import { enqueueTransaction } from "../lib/client/sync/OutboxQueue";
 import { clientLog } from "../lib/client/clientLog";
 import { runClientUnscoped, type BaseClientContext } from "../lib/client/runtime";
@@ -83,10 +83,10 @@ export interface StudySessionModel {
 
 export type StudySessionAction =
   | { type: "PLAY_AUDIO"; audioUrl: string }
-  | { type: "SUBMIT_GRADE"; grammarPointId: string; isCorrect: boolean }
+  | { type: "SUBMIT_GRADE"; knowledgePointId: string; isCorrect: boolean }
   | { type: "TOGGLE_EXPLANATION" }
   | { type: "TOGGLE_JAPANESE" }
-  | { type: "FORCE_MASTER"; grammarPointId: string };
+  | { type: "FORCE_MASTER"; knowledgePointId: string };
 
 const initialModel: StudySessionModel = {
   audioPlaying: false,
@@ -158,7 +158,7 @@ export class StudySession extends LitElement {
       runClientUnscoped(
         clientLog(
           "info",
-          `[StudySession] Keyboard shortcut J toggled Japanese visibility for grammarPointId=${currentCard.grammarPointId}.`,
+          `[StudySession] Keyboard shortcut J toggled Japanese visibility for knowledgePointId=${currentCard.knowledgePointId}.`,
         ),
       );
       this.controller.propose({ type: "TOGGLE_JAPANESE" });
@@ -180,7 +180,7 @@ export class StudySession extends LitElement {
       runClientUnscoped(
         clientLog(
           "info",
-          `[StudySession] Keyboard shortcut E toggled the explanation for grammarPointId=${currentCard.grammarPointId}.`,
+          `[StudySession] Keyboard shortcut E toggled the explanation for knowledgePointId=${currentCard.knowledgePointId}.`,
         ),
       );
       this.controller.propose({ type: "TOGGLE_EXPLANATION" });
@@ -193,12 +193,12 @@ export class StudySession extends LitElement {
       runClientUnscoped(
         clientLog(
           "info",
-          `[StudySession] Keyboard shortcut ${key.toUpperCase()} submitted ${isCorrect ? "correct" : "incorrect"} for grammarPointId=${currentCard.grammarPointId}.`,
+          `[StudySession] Keyboard shortcut ${key.toUpperCase()} submitted ${isCorrect ? "correct" : "incorrect"} for knowledgePointId=${currentCard.knowledgePointId}.`,
         ),
       );
       this.controller.propose({
         type: "SUBMIT_GRADE",
-        grammarPointId: currentCard.grammarPointId,
+        knowledgePointId: currentCard.knowledgePointId,
         isCorrect,
       });
       return;
@@ -222,7 +222,7 @@ export class StudySession extends LitElement {
     runClientUnscoped(
       clientLog(
         "info",
-        `[StudySession] Keyboard shortcut R replayed audio for grammarPointId=${currentCard.grammarPointId}.`,
+        `[StudySession] Keyboard shortcut R replayed audio for knowledgePointId=${currentCard.knowledgePointId}.`,
       ),
     );
     this.controller.propose({
@@ -301,10 +301,10 @@ export class StudySession extends LitElement {
       }
 
             if (action.type === "FORCE_MASTER") {
-        const { grammarPointId } = action;
+        const { knowledgePointId } = action;
         
-        const currentProgress = grammarPointStore.state.peek().find(p => p.id === grammarPointId) || {
-          id: grammarPointId,
+        const currentProgress = knowledgePointStore.state.peek().find(p => p.id === knowledgePointId) || {
+          id: knowledgePointId,
           easeFactor: 2.5,
           repetitions: 0,
           intervalDays: 0,
@@ -327,13 +327,13 @@ export class StudySession extends LitElement {
           lastReviewedAt: new Date().toISOString()
         };
 
-        yield* clientLog("info", `[StudySession] Force mastered grammarPointId=${grammarPointId}:`, forcedMetrics);
+        yield* clientLog("info", `[StudySession] Force mastered knowledgePointId=${knowledgePointId}:`, forcedMetrics);
 
         const { hlcStore } = yield* Effect.promise(() => import("../lib/client/stores/hlcStore.ts"));
         const currentHlc = yield* hlcStore.tick();
 
-        yield* grammarPointStore.put({
-          id: grammarPointId,
+        yield* knowledgePointStore.put({
+          id: knowledgePointId,
           easeFactor: forcedMetrics.easeFactor,
           repetitions: forcedMetrics.repetitions,
           intervalDays: forcedMetrics.intervalDays,
@@ -345,7 +345,7 @@ export class StudySession extends LitElement {
         });
 
         yield* enqueueTransaction("record_review", {
-          grammarPointId,
+          knowledgePointId: knowledgePointId,
           easeFactor: forcedMetrics.easeFactor,
           repetitions: forcedMetrics.repetitions,
           intervalDays: forcedMetrics.intervalDays,
@@ -365,11 +365,11 @@ export class StudySession extends LitElement {
       }
 
             if (action.type === "SUBMIT_GRADE") {
-        const { grammarPointId, isCorrect } = action;
+        const { knowledgePointId, isCorrect } = action;
         
         // Retrieve existing progress metadata for this grammar rule from IndexedDB, or fallback to standard N5 defaults
-        const currentProgress = grammarPointStore.state.peek().find(p => p.id === grammarPointId) || {
-          id: grammarPointId,
+        const currentProgress = knowledgePointStore.state.peek().find(p => p.id === knowledgePointId) || {
+          id: knowledgePointId,
           easeFactor: 2.5,
           repetitions: 0,
           intervalDays: 0,
@@ -390,14 +390,14 @@ export class StudySession extends LitElement {
           isCorrect
         );
 
-        yield* clientLog("info", `[StudySession] Recalculated SM-2 metrics for grammarPointId=${grammarPointId}:`, metrics);
+        yield* clientLog("info", `[StudySession] Recalculated SM-2 metrics for knowledgePointId=${knowledgePointId}:`, metrics);
 
         const { hlcStore } = yield* Effect.promise(() => import("../lib/client/stores/hlcStore.ts"));
         const currentHlc = yield* hlcStore.tick();
 
         // Persist progress to local store
-        yield* grammarPointStore.put({ 
-          id: grammarPointId,
+        yield* knowledgePointStore.put({
+          id: knowledgePointId,
           easeFactor: metrics.easeFactor,
           repetitions: metrics.repetitions,
           intervalDays: metrics.intervalDays,
@@ -410,7 +410,7 @@ export class StudySession extends LitElement {
 
         // Enqueue queue transaction
         yield* enqueueTransaction("record_review", {
-          grammarPointId,
+          knowledgePointId: knowledgePointId,
           easeFactor: metrics.easeFactor,
           repetitions: metrics.repetitions,
           intervalDays: metrics.intervalDays,
@@ -631,7 +631,7 @@ export class StudySession extends LitElement {
             <div class="grid grid-cols-2 gap-4 w-full">
               <button
                 type="button"
-                @click=${() => this.controller.propose({ type: "SUBMIT_GRADE", grammarPointId: currentCard.grammarPointId, isCorrect: false })}
+                @click=${() => this.controller.propose({ type: "SUBMIT_GRADE", knowledgePointId: currentCard.knowledgePointId, isCorrect: false })}
                 class="py-3 bg-red-650 hover:bg-red-600 text-white font-bold rounded-lg transition-colors text-sm cursor-pointer flex items-center justify-center gap-2"
                 title="Mark answer incorrect (I)"
                 aria-keyshortcuts="I"
@@ -640,7 +640,7 @@ export class StudySession extends LitElement {
               </button>
               <button
                 type="button"
-                @click=${() => this.controller.propose({ type: "SUBMIT_GRADE", grammarPointId: currentCard.grammarPointId, isCorrect: true })}
+                @click=${() => this.controller.propose({ type: "SUBMIT_GRADE", knowledgePointId: currentCard.knowledgePointId, isCorrect: true })}
                 class="py-3 bg-green-650 hover:bg-green-600 text-white font-bold rounded-lg transition-colors text-sm cursor-pointer flex items-center justify-center gap-2"
                 title="Mark answer correct (C)"
                 aria-keyshortcuts="C"
@@ -649,7 +649,7 @@ export class StudySession extends LitElement {
               </button>
             </div>
             <button
-              @click=${() => this.controller.propose({ type: "FORCE_MASTER", grammarPointId: currentCard.grammarPointId })}
+              @click=${() => this.controller.propose({ type: "FORCE_MASTER", knowledgePointId: currentCard.knowledgePointId })}
               class="w-full py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 hover:text-white font-medium rounded-lg transition-colors text-xs cursor-pointer border border-zinc-700 flex items-center justify-center gap-1.5"
             >
               🎓 Mark as Mastered

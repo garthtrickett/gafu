@@ -125,7 +125,10 @@ test.describe("Mastery Gating, Cram Generation, and Preferences Bypass E2E Flow"
       },
     ];
 
-    await db.insertInto("srs_card").values(srsCards).execute();
+    await db.insertInto("srs_card").values(srsCards.map((card) => ({
+      ...card,
+      knowledge_point_id: card.grammar_point_id,
+    }))).execute();
 
     // Seed default preferences with gates enforcement enabled
     await db.insertInto("user_preference").values({

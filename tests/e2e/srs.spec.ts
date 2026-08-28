@@ -136,6 +136,7 @@ test.describe("SRS Pacing, Daily Cap, and Mastery Gating E2E Flow", () => {
     const srsCards = grammarPoints.map((gp) => ({
       id: crypto.randomUUID() as SrsCardId,
       user_id: currentUser.userId,
+      knowledge_point_id: gp.id,
       grammar_point_id: gp.id,
       ease_factor: 2.5,
       repetitions: 1,
@@ -187,6 +188,7 @@ test.describe("SRS Pacing, Daily Cap, and Mastery Gating E2E Flow", () => {
     const srsCards = grammarPoints.map((gp) => ({
       id: crypto.randomUUID() as SrsCardId,
       user_id: currentUser.userId,
+      knowledge_point_id: gp.id,
       grammar_point_id: gp.id,
       ease_factor: 2.5,
       repetitions: 1,

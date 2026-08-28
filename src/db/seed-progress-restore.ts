@@ -106,6 +106,7 @@ export const restoreFirst270MasteredProgress = (targetEmail: string) =>
     const masteredRows: NewSrsCard[] = mastered.map((point) => ({
       id: crypto.randomUUID() as SrsCardId,
       user_id: user.id as UserId,
+      knowledge_point_id: point.id,
       grammar_point_id: point.id,
       ease_factor: 2.5,
       repetitions: 3,
@@ -122,6 +123,7 @@ export const restoreFirst270MasteredProgress = (targetEmail: string) =>
     const learningRows: NewSrsCard[] = learning.map((point) => ({
       id: crypto.randomUUID() as SrsCardId,
       user_id: user.id as UserId,
+      knowledge_point_id: point.id,
       grammar_point_id: point.id,
       ease_factor: 2.5,
       repetitions: 1,

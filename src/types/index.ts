@@ -5,6 +5,12 @@ export type { default as UserTable, User, NewUser, UserUpdate, UserId } from "./
 export type { default as PlatformAdminTable, PlatformAdmin, NewPlatformAdmin, PlatformAdminUpdate, PlatformAdminId } from "./generated/public/PlatformAdmin";
 export type { default as DeckTable, Deck, NewDeck, DeckUpdate, DeckId } from "./generated/public/Deck";
 export type { default as SrsCardTable, SrsCard, NewSrsCard, SrsCardUpdate, SrsCardId } from "./generated/public/SrsCard";
-export type { default as GrammarPointTable, GrammarPoint, NewGrammarPoint, GrammarPointUpdate, GrammarPointId } from "./generated/public/GrammarPoint";
+export type { default as KnowledgePointTable, KnowledgePoint, NewKnowledgePoint, KnowledgePointUpdate, KnowledgePointId } from "./generated/public/KnowledgePoint";
+export type { default as GrammarPointTable, GrammarPoint, NewGrammarPoint, GrammarPointUpdate } from "./generated/public/GrammarPoint";
+// Compatibility alias while grammar-specific callers move to the shared identity.
+export type { KnowledgePointId as GrammarPointId } from "./generated/public/KnowledgePoint";
+export type { default as VocabularyPointTable, VocabularyPoint, NewVocabularyPoint, VocabularyPointUpdate } from "./generated/public/VocabularyPoint";
+export type { default as IntroductionAdmissionTable, IntroductionAdmission, NewIntroductionAdmission, IntroductionAdmissionUpdate, IntroductionAdmissionId } from "./generated/public/IntroductionAdmission";
+export type { default as TtsDailyUsageTable, TtsDailyUsage, NewTtsDailyUsage, TtsDailyUsageUpdate } from "./generated/public/TtsDailyUsage";
 export type { default as UserPreferenceTable, UserPreference, NewUserPreference, UserPreferenceUpdate } from "./generated/public/UserPreference";
 export type { default as SyncEpochTable, SyncEpoch, NewSyncEpoch, SyncEpochUpdate, SyncEpochId } from "./generated/public/SyncEpoch";

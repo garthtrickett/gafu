@@ -364,11 +364,11 @@ it("preserves supplied audio URLs and excludes them from enrichment", async () =
 
   const existingCard =
     activeSessionStore.masterList.value.find(
-      (card) => card.grammarPointId === "gp-existing",
+      (card) => card.knowledgePointId === "gp-existing",
     );
   const generatedCard =
     activeSessionStore.masterList.value.find(
-      (card) => card.grammarPointId === "gp-generated",
+      (card) => card.knowledgePointId === "gp-generated",
     );
 
   expect(existingCard?.audioUrl).toBe(existingUrl);

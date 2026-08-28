@@ -19,6 +19,8 @@ export default interface UserPreferenceTable {
   hlc: ColumnType<string, string | undefined, string>;
 
   enforce_mastery_gates: ColumnType<boolean, boolean | undefined, boolean>;
+
+  learner_time_zone: ColumnType<string, string | undefined, string>;
 }
 
 export type UserPreference = Selectable<UserPreferenceTable>;

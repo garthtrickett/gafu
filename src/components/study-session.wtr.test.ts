@@ -23,7 +23,7 @@ describe("StudySession Component - Comprehension-First Review Loop", () => {
     // Load mock active study session
     activeSessionStore.loadSession([
       {
-        grammarPointId: "gp_tai",
+        knowledgePointId: "gp_tai",
         englishContext: "At a bar, wanting a beer.",
         japaneseSentence: "ビールを飲みたい",
         furigana: [
