@@ -3,7 +3,7 @@ import { ROLE_PERMISSIONS } from '../lib/shared/permissions';
 import { Argon2id } from 'oslo/password';
 import { Effect, Cause, Exit, Data } from 'effect';
 import { db, closeDb } from './client';
-import type { PlatformAdminId, UserId, DeckId, SrsCardId, GrammarPointId } from '../types';
+import type { PlatformAdminId, UserId, DeckId, SrsCardId, GrammarPointId, KnowledgePointId } from '../types';
 
 class SeedingError extends Data.TaggedError("SeedingError")<{
   readonly cause: unknown;
@@ -31,6 +31,13 @@ export const seedDb = (options?: { clearData?: boolean }) =>
       });
       yield* Effect.tryPromise({
         try: () => db.deleteFrom('grammar_point').execute(),
+        catch: (cause) => new SeedingError({ cause })
+      });
+      yield* Effect.tryPromise({
+        try: () => db.deleteFrom('knowledge_point')
+          .where('kind', '=', 'grammar')
+          .where('scope', '=', 'curated')
+          .execute(),
         catch: (cause) => new SeedingError({ cause })
       });
     }
@@ -2780,6 +2787,27 @@ export const seedDb = (options?: { clearData?: boolean }) =>
     ];
 
     for (const point of grammarPoints) {
+      yield* Effect.tryPromise({
+        try: () =>
+          db
+            .insertInto('knowledge_point')
+            .values({
+              id: point.id as unknown as KnowledgePointId,
+              kind: 'grammar',
+              canonical_key: `grammar:${point.formal_name}`,
+              scope: 'curated',
+              owner_user_id: null,
+              catalogue_status: 'active',
+              created_from: 'catalogue',
+              confidence: 1,
+              created_at: new Date(),
+              updated_at: new Date(),
+              hlc: '0000000000000:0000:initial',
+            })
+            .onConflict((oc) => oc.column('id').doNothing())
+            .execute(),
+        catch: (cause) => new SeedingError({ cause }),
+      });
       yield* Effect.tryPromise({
         try: () =>
           db

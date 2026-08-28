@@ -21,6 +21,11 @@ runtime, build time, or release time.
 | `src/style.css` | Player presentation | `src/components/WatchView.ts` | Relevant presentation moved into Gafu's design system |
 | `test/*.test.js` | Parser and alignment regression tests | `src/lib/client/media/adaptive/*.test.ts` | Ported and extended |
 
+The replacement is now owned by Gafu. `jp-player` is deprecated and must not be
+used as a runtime, package, deployment, or documentation dependency. Its README
+points maintainers to Gafu and the repository can be made read-only after the
+internal release checks and external legal/human-review holds are resolved.
+
 ## Dependency and licence inventory
 
 | Package/asset | Declared licence | Migration decision |

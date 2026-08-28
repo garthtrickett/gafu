@@ -93,7 +93,7 @@ test.describe("HLC Client Clock Drift Resiliency", () => {
     await expect(page).toHaveURL("/study");
 
     // Click "Correct"
-    await page.getByRole("button", { name: "Correct", exact: true }).click();
+    await page.getByRole("button", { name: /^Correct/ }).click();
     await expect(page.locator("h2")).toContainText("Review Completed!");
 
     // Return to home to ensure outbox flush starts/completes

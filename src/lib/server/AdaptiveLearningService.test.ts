@@ -3,7 +3,7 @@ import { sql } from "kysely";
 import { describe, expect, it } from "vitest";
 import { db } from "../../db/client.ts";
 import { acceptMediaCandidate, type RecordMediaCandidateInput } from "./MediaCandidateService.ts";
-import { listPendingMediaCheckouts, recordProgressEvent } from "./AdaptiveLearningService.ts";
+import { deleteAdaptiveMediaData, listPendingMediaCheckouts, recordProgressEvent } from "./AdaptiveLearningService.ts";
 
 const setupAcceptedPoint = async () => {
   const userId = crypto.randomUUID();
@@ -63,5 +63,26 @@ describe("adaptive media learning event loop", () => {
     const progress = await db.selectFrom("srs_card").selectAll().where("knowledge_point_id", "=", knowledgePointId as never).executeTakeFirstOrThrow();
     expect(progress).toMatchObject({ learning_state: "learning", checkout_due: true, repetitions: 0, stability: 0 });
     expect(await Effect.runPromise(listPendingMediaCheckouts(userId))).toHaveLength(1);
+  });
+
+  it("deletes adaptive provenance while preserving point-level learning progress", async () => {
+    const { userId, input, knowledgePointId } = await setupAcceptedPoint();
+    await Effect.runPromise(recordProgressEvent(userId, {
+      knowledgePointId, candidateId: input.id, event: "primer_retrieval_completed", idempotencyKey: "delete-primer",
+    }));
+    await Effect.runPromise(recordProgressEvent(userId, {
+      knowledgePointId, candidateId: input.id, event: "cue_reached", idempotencyKey: "delete-cue",
+      encounter: { cueId: input.evidence[0]!.cueId, timingTransformId: "source", effectivePlaybackSeconds: 20 },
+    }));
+    const beforeDelete = await db.selectFrom("srs_card").select("hlc")
+      .where("user_id", "=", userId as never).executeTakeFirstOrThrow();
+    const deleted = await Effect.runPromise(deleteAdaptiveMediaData(userId));
+    expect(deleted).toMatchObject({ deletedAnalysisCount: 1, deletedCheckoutCount: 1, deletedEncounterCount: 1 });
+    expect(await db.selectFrom("media_candidate").select("id").where("user_id", "=", userId as never).execute()).toHaveLength(0);
+    expect(await db.selectFrom("learner_progress_event").select("id").where("user_id", "=", userId as never).execute()).toHaveLength(0);
+    const progress = await db.selectFrom("srs_card").selectAll().where("user_id", "=", userId as never).executeTakeFirstOrThrow();
+    expect(progress.knowledge_point_id).toBe(knowledgePointId);
+    expect(progress.checkout_due).toBe(false);
+    expect(progress.hlc > beforeDelete.hlc).toBe(true);
   });
 });

@@ -8,26 +8,28 @@ import {
 
 const IS_PUNCTUATION = /^[\s。、！？!?…‥・「」『』（）()［］【】〈〉《》〜ー,.]+$/u;
 let tokenizer: kuromoji.Tokenizer<kuromoji.IpadicFeatures> | null = null;
+let tokenizerLoad: Promise<kuromoji.Tokenizer<kuromoji.IpadicFeatures>> | null = null;
 
 const katakanaToHiragana = (value: string): string => value.replace(/[ァ-ヶ]/g, (character) =>
   String.fromCharCode(character.charCodeAt(0) - 0x60));
 
+const beginTokenizerLoad = () => import("kuromoji/build/kuromoji.js").then((module) =>
+  new Promise<kuromoji.Tokenizer<kuromoji.IpadicFeatures>>((resolve, reject) => {
+    module.default.builder({ dicPath: "/dict/" }).build((error, loaded) => {
+      if (error) reject(error);
+      else {
+        tokenizer = loaded;
+        resolve(loaded);
+      }
+    });
+  }));
+
 export const loadJapaneseTokenizer = () => tokenizer
   ? Effect.succeed(tokenizer)
   : Effect.tryPromise({
-      try: () => import("kuromoji/build/kuromoji.js"),
+      try: () => tokenizerLoad ??= beginTokenizerLoad(),
       catch: (cause) => new Error(`Could not load Japanese tokenizer: ${String(cause)}`),
-    }).pipe(
-      Effect.flatMap((module) => Effect.async<kuromoji.Tokenizer<kuromoji.IpadicFeatures>, Error>((resume) => {
-        module.default.builder({ dicPath: "/dict/" }).build((error, loaded) => {
-          if (error) resume(Effect.fail(error));
-          else {
-            tokenizer = loaded;
-            resume(Effect.succeed(loaded));
-          }
-        });
-      })),
-    );
+    });
 
 const span = (start: number, end: number) => ({
   start,

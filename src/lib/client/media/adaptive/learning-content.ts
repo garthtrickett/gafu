@@ -1,5 +1,5 @@
 import { Effect } from "effect";
-import { createStore, get, set } from "idb-keyval";
+import { clear, createStore, get, set } from "idb-keyval";
 import type { LearningExerciseContent, PrimerContent } from "../../../server/ai/schema.ts";
 import {
   NORMALIZED_CUE_VERSION,
@@ -47,6 +47,7 @@ export interface ValidatedBankExercise {
 }
 
 const exerciseCache = createStore("gafu-adaptive-exercise-cache-v1", "validated-exercises");
+const privateSourceStore = createStore("gafu-adaptive-media-private-v1", "source-signatures");
 
 const cacheValidatedExercise = (exercise: ValidatedBankExercise) => Effect.tryPromise({
   try: () => set(`point:${exercise.knowledgePointId}`, exercise, exerciseCache),
@@ -210,6 +211,7 @@ export const submitExerciseReview = (
   idempotencyKey: string,
   responseTimeMs: number | null,
 ): Effect.Effect<{
+  readonly knowledgePointId: string;
   readonly replayed: boolean;
   readonly successfulMaterialContextCount: number;
   readonly masteryLimited: boolean;
@@ -235,6 +237,7 @@ export const submitExerciseReview = (
   if (!response.ok) return yield* Effect.fail(new Error("Exercise result was rejected; the point remains due."));
   const payload = yield* Effect.tryPromise({
     try: () => response.json() as Promise<{ readonly success?: boolean; readonly data?: {
+      readonly knowledgePointId: string;
       readonly replayed: boolean;
       readonly successfulMaterialContextCount: number;
       readonly masteryLimited: boolean;
@@ -324,4 +327,19 @@ export const submitAlternativeCheckout = (
     catch: () => new Error("Checkout action could not be synchronized."),
   });
   if (!response.ok) return yield* Effect.fail(new Error("Checkout action was rejected."));
+});
+
+export const deleteAllAdaptiveMediaData = (token: string) => Effect.gen(function* () {
+  const response = yield* Effect.tryPromise({
+    try: () => fetch("/api/adaptive-media/privacy/data", {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${token}` },
+    }),
+    catch: () => new Error("Adaptive-media deletion service is unreachable."),
+  });
+  if (!response.ok) return yield* Effect.fail(new Error("Adaptive-media data could not be deleted."));
+  yield* Effect.all([
+    Effect.tryPromise({ try: () => clear(exerciseCache), catch: () => new Error("Exercise cache deletion failed.") }),
+    Effect.tryPromise({ try: () => clear(privateSourceStore), catch: () => new Error("Source-signature deletion failed.") }),
+  ]);
 });

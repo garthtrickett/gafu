@@ -30,9 +30,6 @@ export default defineConfig({
     screenshot: "only-on-failure",
     video: process.env.CI ? "retain-on-failure" : "off",
     ignoreHTTPSErrors: true,
-    launchOptions: {
-      executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH,
-    },
   },
 
   projects: [
@@ -40,13 +37,20 @@ export default defineConfig({
       name: "chromium",
       use: { 
         ...devices["Desktop Chrome"],
-        channel: undefined 
+        channel: undefined,
+        launchOptions: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH
+          ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH }
+          : undefined,
       },
+    },
+    {
+      name: "firefox",
+      use: { ...devices["Desktop Firefox"] },
     },
   ],
 
   webServer: {
-    command: "bun run dev:offline",
+    command: "corepack pnpm dlx bun@1.3.5 run dev:offline",
     url: "http://127.0.0.1:3001",
     reuseExistingServer: false,
     stdout: "pipe",

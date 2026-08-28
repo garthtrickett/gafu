@@ -12,6 +12,9 @@ import * as m06 from "./06_backfill_fsrs_lite.ts";
 import * as m07 from "./07_add_sync_epoch.ts";
 import * as m08 from "./08_add_tts_daily_usage.ts";
 import * as migration from "./09_adaptive_knowledge_points.ts";
+import * as m10 from "./10_adaptive_media_candidates.ts";
+import * as m11 from "./11_adaptive_media_learning_loop.ts";
+import * as m12 from "./12_adaptive_exercise_bank.ts";
 
 describe("adaptive knowledge-point migration", () => {
   it("backfills a populated pre-change database without changing review metrics", async () => {
@@ -58,6 +61,9 @@ describe("adaptive knowledge-point migration", () => {
       `.execute(isolatedDb);
 
       await migration.up(isolatedDb);
+      await m10.up(isolatedDb);
+      await m11.up(isolatedDb);
+      await m12.up(isolatedDb);
 
       const migrated = await isolatedDb.selectFrom("srs_card").selectAll().where("id", "=", cardId as never).executeTakeFirstOrThrow();
       expect(migrated.knowledge_point_id).toBe(pointId);
@@ -83,6 +89,17 @@ describe("adaptive knowledge-point migration", () => {
       });
       expect(await isolatedDb.selectFrom("knowledge_point").select("id").where("id", "=", pointId as never).executeTakeFirst())
         .toBeDefined();
+      expect(migrated.checkout_due).toBe(false);
+      const adaptiveTables = await sql<{ table_name: string }>`
+        SELECT table_name FROM information_schema.tables
+        WHERE table_schema = 'public' AND table_name IN (
+          'media_candidate', 'media_encounter', 'media_checkout',
+          'generated_exercise', 'retrieval_evidence'
+        )
+      `.execute(isolatedDb);
+      expect(new Set(adaptiveTables.rows.map((row) => row.table_name))).toEqual(new Set([
+        "media_candidate", "media_encounter", "media_checkout", "generated_exercise", "retrieval_evidence",
+      ]));
     } finally {
       await isolatedDb.destroy();
       await adminPool.query(`DROP DATABASE IF EXISTS "${databaseName}" WITH (FORCE)`);

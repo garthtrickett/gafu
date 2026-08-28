@@ -13,6 +13,7 @@ import {
 } from "../../lib/server/MediaCandidateService.ts";
 import {
   completeAlternativeCheckout,
+  deleteAdaptiveMediaData,
   listPendingMediaCheckouts,
   recordProgressEvent,
 } from "../../lib/server/AdaptiveLearningService.ts";
@@ -22,6 +23,8 @@ import {
   selectValidatedExercise,
   storeValidatedExercise,
 } from "../../lib/server/ExerciseBankService.ts";
+import { requireAdaptiveMediaAiAdmission } from "../../lib/server/AdaptiveMediaRelease.ts";
+import { recordAdaptiveMediaMetric } from "../../lib/server/AdaptiveMediaMetrics.ts";
 
 export const adaptiveMediaRoutes = new Elysia({ prefix: "/api/adaptive-media" })
   .use(effectPlugin)
@@ -31,7 +34,9 @@ export const adaptiveMediaRoutes = new Elysia({ prefix: "/api/adaptive-media" })
       const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
       if (!token) return yield* Effect.fail(new InvalidCredentialsError());
       const user = yield* validateToken(token);
-      return yield* reserveIntroduction(user.id, body.knowledgePointId, body.idempotencyKey);
+      const reservation = yield* reserveIntroduction(user.id, body.knowledgePointId, body.idempotencyKey);
+      yield* recordAdaptiveMediaMetric({ name: "capacity_decision", knowledgePointId: body.knowledgePointId, reason: reservation.reason });
+      return reservation;
     });
     const result = await runEffect(Effect.either(program));
     if (result._tag === "Left") {
@@ -71,7 +76,14 @@ export const adaptiveMediaRoutes = new Elysia({ prefix: "/api/adaptive-media" })
       const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
       if (!token) return yield* Effect.fail(new InvalidCredentialsError());
       yield* validateToken(token);
-      return yield* analyzeMediaExcerpts(body);
+      yield* requireAdaptiveMediaAiAdmission();
+      const recommendations = yield* analyzeMediaExcerpts(body);
+      yield* recordAdaptiveMediaMetric({
+        name: "recommendation_completed",
+        analysisRunId: body.analysisRunId,
+        proposalCount: recommendations.proposals.length,
+      });
+      return recommendations;
     });
     const result = await runEffect(Effect.either(program), { name: "adaptive_media_analysis" });
     if (result._tag === "Left") {
@@ -97,14 +109,19 @@ export const adaptiveMediaRoutes = new Elysia({ prefix: "/api/adaptive-media" })
       if (!token) return yield* Effect.fail(new InvalidCredentialsError());
       const user = yield* validateToken(token);
       if (body.action === "accept") {
-        return yield* acceptMediaCandidate(user.id, body.candidate, body.idempotencyKey);
+        yield* requireAdaptiveMediaAiAdmission();
+        const action = yield* acceptMediaCandidate(user.id, body.candidate, body.idempotencyKey);
+        yield* recordAdaptiveMediaMetric({ name: "candidate_action", candidateId: body.candidate.id, action: body.action, accepted: action.accepted });
+        return action;
       }
       if (body.action === "already_known") {
         yield* markMediaCandidateKnown(user.id, body.candidate);
+        yield* recordAdaptiveMediaMetric({ name: "candidate_action", candidateId: body.candidate.id, action: body.action, accepted: false });
         return { accepted: false as const, reason: "already_known" as const };
       }
       const candidateId = yield* recordMediaCandidate(user.id, body.candidate);
       yield* setMediaCandidateDisposition(user.id, candidateId, body.action);
+      yield* recordAdaptiveMediaMetric({ name: "candidate_action", candidateId: body.candidate.id, action: body.action, accepted: false });
       return { accepted: false as const, reason: body.action };
     });
     const result = await runEffect(Effect.either(program), { name: "adaptive_media_candidate_action" });
@@ -169,7 +186,14 @@ export const adaptiveMediaRoutes = new Elysia({ prefix: "/api/adaptive-media" })
       const token = headers.authorization?.startsWith("Bearer ") ? headers.authorization.slice(7) : null;
       if (!token) return yield* Effect.fail(new InvalidCredentialsError());
       const user = yield* validateToken(token);
-      return yield* recordProgressEvent(user.id, body);
+      const event = yield* recordProgressEvent(user.id, body);
+      if (body.event === "checkout_recalled" || body.event === "checkout_missed") {
+        yield* recordAdaptiveMediaMetric({
+          name: "checkout_completed", knowledgePointId: body.knowledgePointId,
+          outcome: body.event === "checkout_recalled" ? "recalled" : "missed",
+        });
+      }
+      return event;
     });
     const result = await runEffect(Effect.either(program), { name: "adaptive_learning_event" });
     if (result._tag === "Left") {
@@ -200,7 +224,9 @@ export const adaptiveMediaRoutes = new Elysia({ prefix: "/api/adaptive-media" })
       const token = headers.authorization?.startsWith("Bearer ") ? headers.authorization.slice(7) : null;
       if (!token) return yield* Effect.fail(new InvalidCredentialsError());
       const user = yield* validateToken(token);
-      return yield* listPendingMediaCheckouts(user.id);
+      const pending = yield* listPendingMediaCheckouts(user.id);
+      yield* recordAdaptiveMediaMetric({ name: "queue_opened", pendingFreshCount: pending.length, freshOfferedCount: pending.length });
+      return pending;
     });
     const result = await runEffect(Effect.either(program), { name: "adaptive_pending_checkouts" });
     if (result._tag === "Left") {
@@ -217,6 +243,7 @@ export const adaptiveMediaRoutes = new Elysia({ prefix: "/api/adaptive-media" })
       yield* completeAlternativeCheckout(
         user.id, body.knowledgePointId, body.candidateId, body.outcome, body.canonicalDefinitionInvalid,
       );
+      yield* recordAdaptiveMediaMetric({ name: "checkout_completed", knowledgePointId: body.knowledgePointId, outcome: body.outcome });
       return { completed: true as const };
     });
     const result = await runEffect(Effect.either(program), { name: "adaptive_alternative_checkout" });
@@ -238,7 +265,14 @@ export const adaptiveMediaRoutes = new Elysia({ prefix: "/api/adaptive-media" })
       const token = headers.authorization?.startsWith("Bearer ") ? headers.authorization.slice(7) : null;
       if (!token) return yield* Effect.fail(new InvalidCredentialsError());
       const user = yield* validateToken(token);
-      return yield* storeValidatedExercise(user.id, body);
+      const exercise = yield* storeValidatedExercise(user.id, body).pipe(Effect.tapError((error) =>
+        recordAdaptiveMediaMetric({
+          name: "exercise_validation", knowledgePointId: body.knowledgePointId,
+          outcome: "rejected", reason: error.code,
+        }).pipe(Effect.catchAll(() => Effect.void))
+      ));
+      yield* recordAdaptiveMediaMetric({ name: "exercise_validation", knowledgePointId: body.knowledgePointId, outcome: "accepted", reason: "accepted" });
+      return exercise;
     });
     const result = await runEffect(Effect.either(program), { name: "adaptive_exercise_store" });
     if (result._tag === "Left") {
@@ -313,9 +347,15 @@ export const adaptiveMediaRoutes = new Elysia({ prefix: "/api/adaptive-media" })
       const token = headers.authorization?.startsWith("Bearer ") ? headers.authorization.slice(7) : null;
       if (!token) return yield* Effect.fail(new InvalidCredentialsError());
       const user = yield* validateToken(token);
-      return yield* recordExerciseReview(
+      const review = yield* recordExerciseReview(
         user.id, body.exerciseId, body.recalled, body.idempotencyKey, body.responseTimeMs,
       );
+      yield* recordAdaptiveMediaMetric({
+        name: "mastery_review", knowledgePointId: review.knowledgePointId,
+        recalled: body.recalled, variedContextCount: review.successfulMaterialContextCount,
+        masteryLimited: review.masteryLimited,
+      });
+      return review;
     });
     const result = await runEffect(Effect.either(program), { name: "adaptive_exercise_review" });
     if (result._tag === "Left") {
@@ -330,4 +370,18 @@ export const adaptiveMediaRoutes = new Elysia({ prefix: "/api/adaptive-media" })
       idempotencyKey: t.String({ minLength: 1, maxLength: 220 }),
       responseTimeMs: t.Nullable(t.Integer({ minimum: 0 })),
     }),
+  })
+  .delete("/privacy/data", async ({ headers, set, runEffect }) => {
+    const program = Effect.gen(function* () {
+      const token = headers.authorization?.startsWith("Bearer ") ? headers.authorization.slice(7) : null;
+      if (!token) return yield* Effect.fail(new InvalidCredentialsError());
+      const user = yield* validateToken(token);
+      return yield* deleteAdaptiveMediaData(user.id);
+    });
+    const result = await runEffect(Effect.either(program), { name: "adaptive_media_delete" });
+    if (result._tag === "Left") {
+      set.status = result.left instanceof InvalidCredentialsError ? 401 : 500;
+      return { error: result.left instanceof InvalidCredentialsError ? "Unauthorized" : "Adaptive-media deletion failed" };
+    }
+    return { success: true as const, data: result.right };
   });

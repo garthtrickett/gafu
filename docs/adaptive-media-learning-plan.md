@@ -1,12 +1,25 @@
 # Adaptive Media Learning Implementation Plan
 
-**Status:** Refined implementation draft; listed product decisions remain gates
+**Status:** Phases 0–5 implemented; internal rollout ready, general availability held by documented external approvals
 
 **Last updated:** 2026-08-28
 
 **Product specification:** `docs/adaptive-media-learning-prd.md`
 
 **Related product direction:** `PRD.md`
+
+## Implementation status
+
+Phases 0–5 are implemented in Gafu. The shared grammar/vocabulary model, local
+player, adaptive syllabus, prime/encounter/checkout loop, varied exercise bank,
+release controls, privacy deletion, evaluation corpus, metrics, and migration
+rehearsal all have automated evidence. The retained `jp-player` behavior and
+tests have moved into Gafu, and `jp-player` is deprecated as a dependency.
+
+The product remains at the `internal` rollout stage until the pending Japanese
+human-review rows, AI-provider legal review, and optional FFmpeg licence decision
+are signed off. These are release-promotion holds, not missing engineering work;
+the safe fallback keeps playback local with original audio and manual timing.
 
 ## Outcome
 

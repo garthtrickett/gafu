@@ -24,6 +24,7 @@ import {
 } from "../lib/client/media/adaptive/recommendations.ts";
 import {
   fetchPendingMediaCheckouts,
+  deleteAllAdaptiveMediaData,
   fetchNextValidatedExercise,
   generateValidateAndStoreExercise,
   requestLearningContent,
@@ -499,6 +500,21 @@ export class WatchView extends LitElement {
     return this.markersEnabled && this.acceptedTargets.some((target) => target.primed && target.cueIds.includes(cueId));
   }
 
+  private deleteAdaptiveData() {
+    const token = tokenState.value;
+    if (!token || !globalThis.confirm("Delete synced adaptive-media provenance, checkouts, exercises, and this browser's private source signatures? Knowledge-point review progress is kept.")) return;
+    void runClientPromise(deleteAllAdaptiveMediaData(token).pipe(
+      Effect.tap(() => Effect.sync(() => {
+        this.acceptedTargets = [];
+        this.pendingCheckouts = [];
+        this.checkout = null;
+        this.primer = null;
+        this.learningStatus = "Adaptive-media data was deleted. Existing point-level review progress was kept.";
+      })),
+      Effect.catchAll((error) => Effect.sync(() => { this.learningStatus = error.message; })),
+    ));
+  }
+
   private renderToken(cue: NormalizedCue) {
     return cue.tokens.map((token) => token.lineBreak ? html`<br>` : html`
       <span class=${token.punctuation ? "" : "inline-block"} style=${`margin-right:${token.punctuation ? 0 : this.spacing}em`}>
@@ -542,8 +558,10 @@ export class WatchView extends LitElement {
             <label class="block text-sm">Manual offset (${this.transform.offsetSeconds.toFixed(1)}s)<input class="w-full" type="range" min="-10" max="10" step="0.1" .value=${String(this.transform.offsetSeconds)} @input=${(event: Event) => { this.transform = { id: "manual", version: "timing_transform_v1", scale: 1, offsetSeconds: Number((event.target as HTMLInputElement).value) }; this.updateCues(); }}></label>
             <div class="border-t border-zinc-700 pt-3"><h2 class="font-semibold">Episode syllabus</h2><p class="mb-2 text-xs text-zinc-500">Up to three targets; dialogue is not shown here.</p>${this.aiRecommendations.length ? this.aiRecommendations.slice(0, 3).map((item) => { const later = this.isLaterRecommendation(item); return html`<div class="mb-2 space-y-2 rounded bg-zinc-900 p-2"><strong>${item.canonicalKey}</strong><p class="text-xs text-zinc-400">${item.reading ? `${item.reading} · ` : ""}${item.meaning} · about ${Math.round(item.firstTimeSeconds / 60)} min · ${item.occurrenceCount} encounters · ${Math.round(item.confidence * 100)}% confidence</p>${later ? html`<label class="flex gap-2 text-xs text-amber-300"><input type="checkbox" .checked=${Boolean(this.laterAccepted[item.candidateId])} @change=${(event: Event) => { this.laterAccepted = { ...this.laterAccepted, [item.candidateId]: (event.target as HTMLInputElement).checked }; }}> This target appears outside the early window; teach it anyway.</label>` : ""}<div class="flex flex-wrap gap-1 text-xs"><button class="rounded bg-emerald-700 px-2 py-1 disabled:opacity-40" ?disabled=${later && !this.laterAccepted[item.candidateId]} @click=${() => this.actOnRecommendation(item, "accept")}>Accept</button><button class="rounded border border-zinc-600 px-2 py-1" @click=${() => this.actOnRecommendation(item, "replace")}>Replace</button><button class="rounded border border-zinc-600 px-2 py-1" @click=${() => this.actOnRecommendation(item, "reduce")}>Reduce</button><button class="rounded border border-zinc-600 px-2 py-1" @click=${() => this.actOnRecommendation(item, "already_known")}>Already known</button><button class="rounded border border-zinc-600 px-2 py-1" @click=${() => this.actOnRecommendation(item, "not_useful")}>Not useful</button></div>${this.candidateStatuses[item.candidateId] ? html`<p class="text-xs text-emerald-300">${this.candidateStatuses[item.candidateId]}</p>` : ""}</div>`; }) : this.syllabus.items.length ? this.syllabus.items.map((item) => html`<div class="mb-2 rounded bg-zinc-900 p-2"><strong>${item.label}</strong><p class="text-xs text-zinc-400">${item.kind} · ${item.occurrenceCount} encounters</p></div>`) : html`<p class="text-sm text-zinc-500">Load subtitles to analyze candidates.</p>`}</div>
             <div class="space-y-2 border-t border-zinc-700 pt-3">
-              <label class="flex gap-2 text-xs"><input type="checkbox" .checked=${this.analysisConsent} @change=${(event: Event) => { this.analysisConsent = (event.target as HTMLInputElement).checked; }}> Send at most 12 shortlisted subtitle excerpts for optional AI recommendations. Video and audio are never sent.</label>
+              <label class="flex gap-2 text-xs"><input type="checkbox" .checked=${this.analysisConsent} @change=${(event: Event) => { this.analysisConsent = (event.target as HTMLInputElement).checked; }}> Send at most 12 shortlisted subtitle excerpts for optional AI recommendations. Video and audio are never sent. Gafu does not store raw excerpts in its database; the configured AI provider's retention policy still applies.</label>
               <button class="rounded border border-zinc-600 px-3 py-2 text-sm disabled:opacity-40" ?disabled=${!this.analysisConsent || this.cues.length === 0} @click=${this.analyzeRecommendations}>Analyze consented excerpts</button>
+              <button class="rounded border border-rose-900 px-3 py-2 text-xs text-rose-300" @click=${this.deleteAdaptiveData}>Delete adaptive-media data</button>
+              <p class="text-xs text-zinc-500">Deletion removes synced provenance, candidates, checkouts, and generated exercises plus this browser's private signatures. Point-level study progress is kept so deleting media history cannot erase unrelated learning.</p>
               <p class="text-xs text-zinc-500" role="status">${this.aiStatus}</p>
             </div>
             <p class="border-t border-zinc-700 pt-3 text-xs text-amber-300">Audio repair falls back to original audio while the FFmpeg core licence gate remains unresolved.</p>

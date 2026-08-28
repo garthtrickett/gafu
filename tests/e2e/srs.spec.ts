@@ -61,9 +61,9 @@ test.describe("SRS Pacing, Daily Cap, and Mastery Gating E2E Flow", () => {
 
     test("should enforce lock-step daily pacing and caps during study desk operations", async ({ page, context }) => {
     if (!testUser) {
-      await context.grantPermissions(["clipboard-read", "clipboard-write"]);
       throw new Error("testUser is undefined");
     }
+    await context.grantPermissions(["clipboard-read", "clipboard-write"]);
 
     // 1. Authenticate the test user
     await page.goto("/login");
@@ -273,7 +273,7 @@ test.describe("SRS Pacing, Daily Cap, and Mastery Gating E2E Flow", () => {
     await expect(page).toHaveURL("/study");
 
     // Grade the card as Correct (difficulty: 4.5, stability: 1.0, repetitions: 1)
-    await page.getByRole("button", { name: "Correct", exact: true }).click();
+    await page.getByRole("button", { name: /^Correct/ }).click();
     await expect(page.locator("h2")).toContainText("Review Completed!");
 
     // Return to study desk

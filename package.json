@@ -29,6 +29,7 @@
     "test:node": "vitest run src/features src/lib/server src/db",
     "test:browser": "web-test-runner --coverage",
     "test:e2e": "playwright test",
+    "test:adaptive-eval": "vitest run src/lib/server/ai/AdaptiveMediaEvaluation.test.ts src/lib/client/media/adaptive/source-signatures.test.ts src/lib/server/ExerciseBankService.test.ts",
     "test:e2e:ui": "playwright test --ui",
     "test:all": "bun run test && (bun run test:browser || true) && bun run test:e2e"
   },

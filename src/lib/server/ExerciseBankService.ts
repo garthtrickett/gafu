@@ -314,6 +314,7 @@ export const selectValidatedExercise = (
 });
 
 export interface ExerciseReviewResult {
+  readonly knowledgePointId: string;
   readonly replayed: boolean;
   readonly successfulMaterialContextCount: number;
   readonly masteryLimited: boolean;
@@ -360,6 +361,7 @@ export const recordExerciseReview = (
     const masteryLimited = metrics.intervalDays !== unrestricted.intervalDays;
     const learningState = recalled && contexts.size >= 2 && metrics.stability >= 7 ? "stable" as const : "learning" as const;
     const result: ExerciseReviewResult = {
+      knowledgePointId: exercise.knowledge_point_id,
       replayed: false,
       successfulMaterialContextCount: contexts.size,
       masteryLimited,

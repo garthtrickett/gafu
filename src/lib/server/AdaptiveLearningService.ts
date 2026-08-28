@@ -266,3 +266,32 @@ export const listPendingMediaCheckouts = (userId: string) => Effect.tryPromise({
     }))),
   catch: () => new AdaptiveLearningError({ code: "storage_failed" }),
 });
+
+export const deleteAdaptiveMediaData = (userId: string) => Effect.tryPromise({
+  try: () => db.transaction().execute(async (trx) => {
+    const owner = userId as UserId;
+    const now = new Date();
+    const cards = await trx.selectFrom("srs_card").select(["id", "hlc"])
+      .where("user_id", "=", owner).execute();
+    const exercises = await trx.deleteFrom("generated_exercise").where("user_id", "=", owner).executeTakeFirst();
+    const encounters = await trx.deleteFrom("media_encounter").where("user_id", "=", owner).executeTakeFirst();
+    const checkouts = await trx.deleteFrom("media_checkout").where("user_id", "=", owner).executeTakeFirst();
+    const events = await trx.deleteFrom("learner_progress_event").where("user_id", "=", owner).executeTakeFirst();
+    const analyses = await trx.deleteFrom("media_analysis_run").where("user_id", "=", owner).executeTakeFirst();
+    for (const card of cards) {
+      await trx.updateTable("srs_card").set({
+        checkout_due: false,
+        updated_at: now,
+        hlc: packHlc(receiveHlc(initHlc("server-adaptive-delete", now.getTime()), card.hlc, now.getTime())),
+      }).where("id", "=", card.id).execute();
+    }
+    return {
+      deletedExerciseCount: Number(exercises.numDeletedRows),
+      deletedEncounterCount: Number(encounters.numDeletedRows),
+      deletedCheckoutCount: Number(checkouts.numDeletedRows),
+      deletedEventCount: Number(events.numDeletedRows),
+      deletedAnalysisCount: Number(analyses.numDeletedRows),
+    };
+  }),
+  catch: () => new AdaptiveLearningError({ code: "storage_failed" }),
+});
