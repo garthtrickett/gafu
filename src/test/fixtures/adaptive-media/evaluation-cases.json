@@ -1,0 +1,102 @@
+{
+  "version": "adaptive_media_eval_v1",
+  "copyright": "synthetic",
+  "recommendationCases": [
+    {
+      "id": "early-contracted-grammar",
+      "learner": {
+        "knownGrammar": ["〜ている"],
+        "knownVocabulary": ["入れる", "鞄"],
+        "remainingCapacity": 1
+      },
+      "cue": "うん、もう鞄に入れといたよ。",
+      "expectedCanonicalKey": "grammar:〜ておく",
+      "expectedDisposition": "recommend"
+    },
+    {
+      "id": "zero-capacity",
+      "learner": {
+        "knownGrammar": [],
+        "knownVocabulary": [],
+        "remainingCapacity": 0
+      },
+      "cue": "電車に間に合った！",
+      "expectedDisposition": "reinforcement_or_none"
+    },
+    {
+      "id": "polite-inflected-vocabulary",
+      "learner": {
+        "knownGrammar": ["〜てみる"],
+        "knownVocabulary": ["料理"],
+        "remainingCapacity": 2
+      },
+      "cue": "この料理も試してみませんか。",
+      "expectedCanonicalKey": "vocabulary:試す:ためす:動詞",
+      "expectedDisposition": "recommend"
+    },
+    {
+      "id": "ambiguous-name",
+      "learner": {
+        "knownGrammar": [],
+        "knownVocabulary": [],
+        "remainingCapacity": 2
+      },
+      "cue": "佐藤さんもすぐ来るって。",
+      "expectedDisposition": "none_or_low_confidence"
+    },
+    {
+      "id": "malformed-empty",
+      "learner": {
+        "knownGrammar": [],
+        "knownVocabulary": [],
+        "remainingCapacity": 2
+      },
+      "cue": "",
+      "expectedDisposition": "none"
+    }
+  ],
+  "sourceSimilarityCases": [
+    {
+      "id": "exact",
+      "source": "今日は早めに準備しておく。",
+      "candidate": "今日は早めに準備しておく。",
+      "expected": "reject"
+    },
+    {
+      "id": "lexical-near-copy",
+      "source": "今日は早めに準備しておく。",
+      "candidate": "明日は早めに準備しておく。",
+      "expected": "reject"
+    },
+    {
+      "id": "varied-context",
+      "source": "今日は早めに準備しておく。",
+      "candidate": "旅行の前にホテルを予約しておきます。",
+      "expected": "accept"
+    },
+    {
+      "id": "cosmetic-substitution",
+      "source": "今日は新しい方法を試す。",
+      "candidate": "今日は古い方法を試す。",
+      "expected": "reject_recent_frame"
+    }
+  ],
+  "humanReviewSamples": [
+    {
+      "id": "casual-contracted-grammar",
+      "register": "casual",
+      "targetCanonicalKey": "grammar:〜ておく",
+      "context": "A friend confirms a task was completed before leaving.",
+      "sentence": "もう鞄に入れといたよ。",
+      "reviewStatus": "pending_human"
+    },
+    {
+      "id": "polite-vocabulary-request",
+      "register": "polite",
+      "targetCanonicalKey": "vocabulary:試す:ためす:動詞",
+      "context": "A customer asks permission to try an item in a shop.",
+      "sentence": "こちらを試してもよろしいですか。",
+      "reviewStatus": "pending_human"
+    }
+  ]
+}

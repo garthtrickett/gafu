@@ -7,6 +7,8 @@ import "../../components/AiGenerator.ts";
 import "../../components/StudyDesk.ts";
 import "../../components/LoginView.ts";
 import "../../components/SignupView.ts";
+import "../../components/WatchView.ts";
+import { adaptiveMediaWatchEnabled } from "./media/adaptive/feature.ts";
 
 const NotFoundView = (): ViewResult => ({
   template: html`
@@ -63,6 +65,8 @@ const generateView = (): ViewResult => {
   };
 };
 
+const watchView = (): ViewResult => ({ template: html`<watch-view></watch-view>` });
+
 const routes: Route[] = [
   {
     pattern: /^\/$/,
@@ -79,6 +83,11 @@ const routes: Route[] = [
     view: generateView,
     meta: { requiresAuth: true },
   },
+  ...(adaptiveMediaWatchEnabled ? [{
+    pattern: /^\/watch$/,
+    view: watchView,
+    meta: { requiresAuth: true },
+  }] : []),
   {
     pattern: /^\/login$/,
     view: loginView,

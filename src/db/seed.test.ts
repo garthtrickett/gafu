@@ -24,6 +24,7 @@ describe("Database Seeder", () => {
     await db.insertInto("srs_card").values({
       id: "12345678-1234-1234-1234-1234567890ab" as any,
       user_id: user.id,
+      knowledge_point_id: sampleGp.id,
       grammar_point_id: sampleGp.id,
       ease_factor: 2.5,
       repetitions: 5,

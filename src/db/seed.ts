@@ -3,7 +3,7 @@ import { ROLE_PERMISSIONS } from '../lib/shared/permissions';
 import { Argon2id } from 'oslo/password';
 import { Effect, Cause, Exit, Data } from 'effect';
 import { db, closeDb } from './client';
-import type { PlatformAdminId, UserId, DeckId, SrsCardId, GrammarPointId } from '../types';
+import type { PlatformAdminId, UserId, DeckId, SrsCardId, GrammarPointId, KnowledgePointId } from '../types';
 
 class SeedingError extends Data.TaggedError("SeedingError")<{
   readonly cause: unknown;
@@ -31,6 +31,13 @@ export const seedDb = (options?: { clearData?: boolean }) =>
       });
       yield* Effect.tryPromise({
         try: () => db.deleteFrom('grammar_point').execute(),
+        catch: (cause) => new SeedingError({ cause })
+      });
+      yield* Effect.tryPromise({
+        try: () => db.deleteFrom('knowledge_point')
+          .where('kind', '=', 'grammar')
+          .where('scope', '=', 'curated')
+          .execute(),
         catch: (cause) => new SeedingError({ cause })
       });
     }
@@ -2783,6 +2790,27 @@ export const seedDb = (options?: { clearData?: boolean }) =>
       yield* Effect.tryPromise({
         try: () =>
           db
+            .insertInto('knowledge_point')
+            .values({
+              id: point.id as unknown as KnowledgePointId,
+              kind: 'grammar',
+              canonical_key: `grammar:${point.formal_name}`,
+              scope: 'curated',
+              owner_user_id: null,
+              catalogue_status: 'active',
+              created_from: 'catalogue',
+              confidence: 1,
+              created_at: new Date(),
+              updated_at: new Date(),
+              hlc: '0000000000000:0000:initial',
+            })
+            .onConflict((oc) => oc.column('id').doNothing())
+            .execute(),
+        catch: (cause) => new SeedingError({ cause }),
+      });
+      yield* Effect.tryPromise({
+        try: () =>
+          db
             .insertInto('grammar_point')
             .values({
               ...point,
@@ -2801,6 +2829,7 @@ export const seedDb = (options?: { clearData?: boolean }) =>
       return {
         id: `d0eebc99-9c0b-4ef8-bb6d-6bb9bd38${hexIndex}` as SrsCardId,
         user_id: SAMPLE_LEARNER_ID,
+        knowledge_point_id: gp.id,
         grammar_point_id: gp.id,
         ease_factor: 2.5,
         repetitions: 0,

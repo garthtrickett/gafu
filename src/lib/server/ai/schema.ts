@@ -14,4 +14,117 @@ export const SentenceGenerationSchema = z.object({
 export type FuriganaSegment = z.infer<typeof FuriganaSegmentSchema>;
 export type SentenceGeneration = z.infer<typeof SentenceGenerationSchema>;
 
+export const DailySessionQueueItemSchema = z.object({
+  grammar_point_id: z.string().min(1).max(100),
+  formal_name: z.string().min(1).max(200),
+  repetitions: z.number().int().nonnegative(),
+  ease_factor: z.number().finite().positive(),
+});
 
+export const DailySessionGenerationRequestSchema = z.object({
+  mode: z.enum(["standard", "cram"]),
+  queue: z.array(DailySessionQueueItemSchema).min(1).max(15),
+  vocabulary_pool: z.array(z.string().min(1).max(100)).min(1).max(2_000),
+});
+
+export const DailySessionCardSchema = z.object({
+  grammar_point_id: z.string().min(1).max(100),
+  english_context: z.string().min(1).max(1_000),
+  japanese_sentence: z.string().min(1).max(500),
+  furigana: z.array(FuriganaSegmentSchema).max(100),
+  audio_url: z.null(),
+  explanation: z.string().min(1).max(2_000),
+});
+
+export const DailySessionGenerationSchema = z.object({
+  cards: z.array(DailySessionCardSchema).min(1).max(15),
+});
+
+export type DailySessionGenerationRequest = z.infer<
+  typeof DailySessionGenerationRequestSchema
+>;
+export type DailySessionGeneration = z.infer<
+  typeof DailySessionGenerationSchema
+>;
+
+export const MediaRecommendationEvidenceSchema = z.object({
+  cueId: z.string().min(1),
+  start: z.number().int().nonnegative(),
+  end: z.number().int().positive(),
+  observedSurface: z.string().min(1),
+});
+
+export const MediaRecommendationProposalSchema = z.object({
+  kind: z.enum(["grammar", "vocabulary"]),
+  canonicalKey: z.string().min(1),
+  reading: z.string(),
+  meaning: z.string().min(1),
+  observedForms: z.array(z.string().min(1)).min(1).max(8),
+  occurrenceCount: z.number().int().positive(),
+  firstTimeSeconds: z.number().nonnegative(),
+  prerequisiteCanonicalKeys: z.array(z.string().min(1)).max(8),
+  confidence: z.number().min(0).max(1),
+  reviewCostClass: z.enum(["light_vocabulary", "difficult_vocabulary", "grammar"]),
+  evidence: z.array(MediaRecommendationEvidenceSchema).min(1).max(8),
+});
+
+export const MediaRecommendationResultSchema = z.object({
+  proposals: z.array(MediaRecommendationProposalSchema).max(5),
+});
+
+export type MediaRecommendationProposal = z.infer<typeof MediaRecommendationProposalSchema>;
+export type MediaRecommendationResult = z.infer<typeof MediaRecommendationResultSchema>;
+
+export const LearningFuriganaSegmentSchema = z.object({
+  text: z.string().min(1),
+  reading: z.string().optional(),
+});
+
+export const PrimerContentSchema = z.object({
+  form: z.string().min(1),
+  reading: z.string(),
+  senseOrFunction: z.string().min(1),
+  formation: z.string().min(1),
+  exampleContext: z.string().min(1),
+  exampleSentence: z.string().min(1),
+  exampleTargetStart: z.number().int().nonnegative(),
+  exampleTargetEnd: z.number().int().positive(),
+  furigana: z.array(LearningFuriganaSegmentSchema),
+  retrievalPrompt: z.string().min(1),
+  retrievalAnswer: z.string().min(1),
+  listeningMission: z.string().min(1),
+});
+
+export const LearningExerciseContentSchema = z.object({
+  targetCanonicalKey: z.string().min(1),
+  context: z.string().min(1),
+  japaneseSentence: z.string().min(1),
+  targetStart: z.number().int().nonnegative(),
+  targetEnd: z.number().int().positive(),
+  answer: z.string().min(1),
+  explanation: z.string().min(1),
+  furigana: z.array(LearningFuriganaSegmentSchema),
+  modality: z.enum(["text_recognition", "listening_recognition", "production"]),
+  variationTags: z.array(z.string().min(1)).min(2).max(12),
+  variationProfile: z.object({
+    situation: z.string().min(1),
+    surroundingVocabulary: z.array(z.string().min(1)).max(12),
+    conjugation: z.string().min(1),
+    politeness: z.enum(["casual", "polite", "neutral"]),
+    register: z.string().min(1),
+    speakerIntention: z.string().min(1),
+    polarity: z.enum(["positive", "negative"]),
+    questionForm: z.boolean(),
+  }),
+  qualityChecks: z.object({
+    intendedSenseOrFunction: z.literal(true),
+    unambiguousAnswer: z.literal(true),
+    naturalJapanese: z.literal(true),
+    registerMatches: z.literal(true),
+  }),
+  prerequisiteCanonicalKeys: z.array(z.string().min(1)).max(20),
+  confidence: z.number().min(0).max(1),
+});
+
+export type PrimerContent = z.infer<typeof PrimerContentSchema>;
+export type LearningExerciseContent = z.infer<typeof LearningExerciseContentSchema>;

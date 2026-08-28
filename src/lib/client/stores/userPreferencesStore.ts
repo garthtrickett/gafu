@@ -8,6 +8,7 @@ export interface UserPreferences {
   readonly dailyReviewLimit: number;
   readonly dailyNewRuleLimit: number;
   readonly enforceMasteryGates: boolean;
+  readonly learnerTimeZone: string;
   readonly hlc?: string;
 }
 
@@ -26,6 +27,7 @@ export const userPreferencesStore = {
           dailyReviewLimit: 20,
           dailyNewRuleLimit: 3,
           enforceMasteryGates: true,
+          learnerTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
         });
       } else {
         const settings = current.find((p) => p.id === "settings");
@@ -33,6 +35,7 @@ export const userPreferencesStore = {
           yield* basePreferencesStore.put({
             ...settings,
             enforceMasteryGates: true,
+            learnerTimeZone: settings.learnerTimeZone || "UTC",
           });
         }
       }
@@ -50,6 +53,7 @@ export const userPreferencesStore = {
         dailyReviewLimit,
         dailyNewRuleLimit,
         enforceMasteryGates,
+        learnerTimeZone: basePreferencesStore.state.peek().find((p) => p.id === "settings")?.learnerTimeZone ?? "UTC",
         hlc: currentHlc,
       };
       yield* basePreferencesStore.put(updated);
@@ -57,6 +61,7 @@ export const userPreferencesStore = {
         dailyReviewLimit,
         dailyNewRuleLimit,
         enforceMasteryGates,
+        learnerTimeZone: updated.learnerTimeZone,
       });
     });
     return effect;

@@ -3,7 +3,6 @@ import { customElement } from "lit/decorators.js";
 import { ReactiveSamController } from "../lib/client/reactive-sam-controller";
 import { tokenState } from "../lib/client/stores/authStore";
 import { srsStore } from "../lib/client/stores/srsStore";
-import { enqueueTransaction } from "../lib/client/sync/OutboxQueue";
 import { clientLog } from "../lib/client/clientLog";
 import { runClientUnscoped, runClientPromise, type BaseClientContext } from "../lib/client/runtime";
 import { navigate } from "../lib/client/router";
@@ -152,15 +151,6 @@ export class AiGenerator extends LitElement {
       Effect.gen(function* () {
         yield* clientLog("info", `[AiGenerator] Storing generated card in offline store, ID: ${cardId}`);
         yield* srsStore.put(srsCardData);
-
-        yield* clientLog("info", "[AiGenerator] Enqueuing record_review outbox transaction for background sync...");
-        yield* enqueueTransaction("record_review", {
-          cardId,
-          easeFactor: 2.5,
-          repetitions: 0,
-          intervalDays: 0,
-          nextReview: srsCardData.nextReview,
-        });
 
         yield* clientLog("info", "[AiGenerator] Save sequence successfully completed. Routing home.");
         yield* navigate("/");

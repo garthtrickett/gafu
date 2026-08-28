@@ -1,7 +1,7 @@
 import { Schema } from "effect";
 
 export const CamelCaseReviewSchema = Schema.Struct({
-  grammarPointId: Schema.UUID,
+  knowledgePointId: Schema.UUID,
   easeFactor: Schema.optional(Schema.Number).pipe(Schema.withDecodingDefault(() => 2.5)),
   repetitions: Schema.Int,
   intervalDays: Schema.optional(Schema.Int).pipe(Schema.withDecodingDefault(() => 0)),
@@ -12,6 +12,30 @@ export const CamelCaseReviewSchema = Schema.Struct({
 });
 
 export const SnakeCaseReviewSchema = Schema.Struct({
+  knowledge_point_id: Schema.UUID,
+  ease_factor: Schema.optional(Schema.Number).pipe(Schema.withDecodingDefault(() => 2.5)),
+  repetitions: Schema.Int,
+  interval_days: Schema.optional(Schema.Int).pipe(Schema.withDecodingDefault(() => 0)),
+  next_review: Schema.String,
+  difficulty: Schema.optional(Schema.Number).pipe(Schema.withDecodingDefault(() => 5.0)),
+  stability: Schema.optional(Schema.Number).pipe(Schema.withDecodingDefault(() => 0.0)),
+  last_reviewed_at: Schema.optional(Schema.NullOr(Schema.String)).pipe(Schema.withDecodingDefault(() => null)),
+});
+
+// Kept only for the migration window. Encoding always emits the canonical
+// knowledge-point contract, so new outbox entries cannot regress.
+export const LegacyCamelCaseReviewSchema = Schema.Struct({
+  grammarPointId: Schema.UUID,
+  easeFactor: Schema.optional(Schema.Number).pipe(Schema.withDecodingDefault(() => 2.5)),
+  repetitions: Schema.Int,
+  intervalDays: Schema.optional(Schema.Int).pipe(Schema.withDecodingDefault(() => 0)),
+  nextReview: Schema.String,
+  difficulty: Schema.optional(Schema.Number).pipe(Schema.withDecodingDefault(() => 5.0)),
+  stability: Schema.optional(Schema.Number).pipe(Schema.withDecodingDefault(() => 0.0)),
+  lastReviewedAt: Schema.optional(Schema.NullOr(Schema.String)).pipe(Schema.withDecodingDefault(() => null)),
+});
+
+export const LegacySnakeCaseReviewSchema = Schema.Struct({
   grammar_point_id: Schema.UUID,
   ease_factor: Schema.optional(Schema.Number).pipe(Schema.withDecodingDefault(() => 2.5)),
   repetitions: Schema.Int,
@@ -23,9 +47,14 @@ export const SnakeCaseReviewSchema = Schema.Struct({
 });
 
 export const RecordReviewPayloadSchema = Schema.transform(
-  Schema.Union(CamelCaseReviewSchema, SnakeCaseReviewSchema),
+  Schema.Union(
+    CamelCaseReviewSchema,
+    SnakeCaseReviewSchema,
+    LegacyCamelCaseReviewSchema,
+    LegacySnakeCaseReviewSchema
+  ),
   Schema.Struct({
-    grammarPointId: Schema.UUID,
+    knowledgePointId: Schema.UUID,
     easeFactor: Schema.Number,
     repetitions: Schema.Int,
     intervalDays: Schema.Int,
@@ -36,9 +65,9 @@ export const RecordReviewPayloadSchema = Schema.transform(
   }),
   {
     decode: (input) => {
-      if ("grammar_point_id" in input) {
+      if ("knowledge_point_id" in input) {
         return {
-          grammarPointId: input.grammar_point_id,
+          knowledgePointId: input.knowledge_point_id,
           easeFactor: input.ease_factor,
           repetitions: input.repetitions,
           intervalDays: input.interval_days,
@@ -48,8 +77,32 @@ export const RecordReviewPayloadSchema = Schema.transform(
           lastReviewedAt: input.last_reviewed_at,
         };
       }
+      if ("grammar_point_id" in input) {
+        return {
+          knowledgePointId: input.grammar_point_id,
+          easeFactor: input.ease_factor,
+          repetitions: input.repetitions,
+          intervalDays: input.interval_days,
+          nextReview: input.next_review,
+          difficulty: input.difficulty,
+          stability: input.stability,
+          lastReviewedAt: input.last_reviewed_at,
+        };
+      }
+      if ("grammarPointId" in input) {
+        return {
+          knowledgePointId: input.grammarPointId,
+          easeFactor: input.easeFactor,
+          repetitions: input.repetitions,
+          intervalDays: input.intervalDays,
+          nextReview: input.nextReview,
+          difficulty: input.difficulty,
+          stability: input.stability,
+          lastReviewedAt: input.lastReviewedAt,
+        };
+      }
       return {
-        grammarPointId: input.grammarPointId,
+        knowledgePointId: input.knowledgePointId,
         easeFactor: input.easeFactor,
         repetitions: input.repetitions,
         intervalDays: input.intervalDays,
@@ -60,7 +113,7 @@ export const RecordReviewPayloadSchema = Schema.transform(
       };
     },
     encode: (normalized) => ({
-      grammarPointId: normalized.grammarPointId,
+      knowledgePointId: normalized.knowledgePointId,
       easeFactor: normalized.easeFactor,
       repetitions: normalized.repetitions,
       intervalDays: normalized.intervalDays,
@@ -78,6 +131,7 @@ export const UpdatePreferencesPayloadSchema = Schema.Struct({
   dailyReviewLimit: Schema.Int.pipe(Schema.nonNegative()),
   dailyNewRuleLimit: Schema.Int.pipe(Schema.nonNegative()),
   enforceMasteryGates: Schema.optional(Schema.Boolean).pipe(Schema.withDecodingDefault(() => true)),
+  learnerTimeZone: Schema.optional(Schema.String).pipe(Schema.withDecodingDefault(() => "UTC")),
 });
 
 export type UpdatePreferencesPayload = Schema.Schema.Type<typeof UpdatePreferencesPayloadSchema>;

@@ -1,8 +1,8 @@
-import { createStore, get, set } from "idb-keyval";
+import { createStore, get, keys, set } from "idb-keyval";
 import { Effect } from "effect";
 import { clientLog } from "../clientLog";
 
-export const CURRENT_CLIENT_DB_VERSION = 2; // Version 2 introduces deterministic FSRS-Lite parameters
+export const CURRENT_CLIENT_DB_VERSION = 3;
 
 const metadataStore = createStore("bedrock-lang-sync-v1", "metadata");
 const collectionsStore = createStore("bedrock-lang-storage-v1", "collections");
@@ -109,6 +109,82 @@ const migrateV1ToV2 = () =>
     yield* clientLog("info", "[ClientMigration] V1 to V2 migration completed successfully.");
   });
 
+interface LegacyCatalogItem {
+  readonly id: string;
+  readonly formal_name: string;
+  readonly base_meaning: string;
+  readonly difficulty_level: string;
+  readonly hlc?: string;
+}
+
+const destinationKey = (sourceKey: string, destinationCollection: string) => {
+  const suffix = sourceKey.endsWith(":grammar_points")
+    ? ":grammar_points"
+    : ":grammar_point_catalog";
+  return `${sourceKey.slice(0, -suffix.length)}:${destinationCollection}`;
+};
+
+const mergeById = <T extends { readonly id: string }>(existing: readonly T[], incoming: readonly T[]): T[] => {
+  const merged = new Map(existing.map((item) => [item.id, item]));
+  for (const item of incoming) merged.set(item.id, item);
+  return [...merged.values()];
+};
+
+const migrateV2ToV3 = () =>
+  Effect.gen(function* () {
+    yield* clientLog("info", "[ClientMigration] Running V2 to V3 shared knowledge-point migration...");
+    const collectionKeys = yield* Effect.tryPromise({
+      try: () => keys(collectionsStore),
+      catch: (e) => new Error(`Failed to enumerate local collections: ${String(e)}`),
+    });
+
+    const sourceKeys = collectionKeys.filter(
+      (key): key is string => typeof key === "string" &&
+        (key.endsWith(":grammar_points") || key.endsWith(":grammar_point_catalog")),
+    );
+
+    for (const sourceKey of sourceKeys) {
+      if (sourceKey.endsWith(":grammar_points")) {
+        const source = (yield* Effect.tryPromise({
+          try: () => get<LegacyGrammarPointProgress[]>(sourceKey, collectionsStore),
+          catch: (e) => new Error(`Failed to read ${sourceKey}: ${String(e)}`),
+        })) ?? [];
+        const targetKey = destinationKey(sourceKey, "learner_progress");
+        const existing = (yield* Effect.tryPromise({
+          try: () => get<Array<LegacyGrammarPointProgress & { kind: "grammar" }>>(targetKey, collectionsStore),
+          catch: (e) => new Error(`Failed to read ${targetKey}: ${String(e)}`),
+        })) ?? [];
+        const migrated = source.map((item) => ({
+          ...item,
+          kind: "grammar" as const,
+          participationStatus: "active" as const,
+          learningState: (item.stability ?? 0) >= 21 ? "stable" as const : "learning" as const,
+        }));
+        yield* Effect.tryPromise({
+          try: () => set(targetKey, mergeById(existing, migrated), collectionsStore),
+          catch: (e) => new Error(`Failed to write ${targetKey}: ${String(e)}`),
+        });
+      } else {
+        const source = (yield* Effect.tryPromise({
+          try: () => get<LegacyCatalogItem[]>(sourceKey, collectionsStore),
+          catch: (e) => new Error(`Failed to read ${sourceKey}: ${String(e)}`),
+        })) ?? [];
+        const targetKey = destinationKey(sourceKey, "knowledge_point_catalog");
+        const existing = (yield* Effect.tryPromise({
+          try: () => get<Array<LegacyCatalogItem & { kind: "grammar" }>>(targetKey, collectionsStore),
+          catch: (e) => new Error(`Failed to read ${targetKey}: ${String(e)}`),
+        })) ?? [];
+        const migrated = source.map((item) => ({ ...item, kind: "grammar" as const }));
+        yield* Effect.tryPromise({
+          try: () => set(targetKey, mergeById(existing, migrated), collectionsStore),
+          catch: (e) => new Error(`Failed to write ${targetKey}: ${String(e)}`),
+        });
+      }
+    }
+
+    yield* clientLog("info", `[ClientMigration] Migrated ${sourceKeys.length} user-scoped knowledge collections.`);
+  });
+
 export const runClientMigrations = () =>
   Effect.gen(function* () {
     yield* clientLog("info", "[ClientMigration] Checking local database schema version...");
@@ -130,6 +206,11 @@ export const runClientMigrations = () =>
     if (version < 2) {
       yield* migrateV1ToV2();
       version = 2;
+    }
+
+    if (version < 3) {
+      yield* migrateV2ToV3();
+      version = 3;
     }
 
     // Persist the upgraded version marker

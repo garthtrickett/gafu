@@ -9,6 +9,23 @@ export default defineConfig(({ command, mode }) => {
   return {
     base: "/",
     plugins: [
+      {
+        name: "raw-kuromoji-dictionaries",
+        configureServer(server) {
+          server.middlewares.use((request, response, next) => {
+            if (!request.url?.startsWith("/dict/") || !request.url.includes(".dat.gz")) {
+              next();
+              return;
+            }
+            const setHeader = response.setHeader.bind(response);
+            response.setHeader = ((name: string, value: number | string | readonly string[]) =>
+              name.toLowerCase() === "content-encoding"
+                ? response
+                : setHeader(name, value)) as typeof response.setHeader;
+            next();
+          });
+        },
+      },
       tailwindcss(),
       VitePWA({
         strategies: "injectManifest",

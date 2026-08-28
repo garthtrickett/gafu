@@ -19,11 +19,11 @@ describe("StudySession Component - Comprehension-First Review Loop", () => {
     expect(heading?.textContent).to.contain("Review Completed!");
   });
 
-  it("should render English context and Japanese sentence directly on front face", async () => {
+  it("should render English context and reveal the Japanese sentence on request", async () => {
     // Load mock active study session
     activeSessionStore.loadSession([
       {
-        grammarPointId: "gp_tai",
+        knowledgePointId: "gp_tai",
         englishContext: "At a bar, wanting a beer.",
         japaneseSentence: "ビールを飲みたい",
         furigana: [
@@ -42,7 +42,13 @@ describe("StudySession Component - Comprehension-First Review Loop", () => {
     expect(contextText).to.exist;
     expect(contextText?.textContent).to.contain("At a bar, wanting a beer.");
 
-    // Check Furigana rendering element is present
+    const reveal = el.querySelector<HTMLButtonElement>('button[title="Toggle Japanese sentence (J)"]');
+    expect(reveal).to.exist;
+    reveal!.click();
+    await new Promise((resolve) => setTimeout(resolve, 15));
+    await el.updateComplete;
+
+    // Check Furigana rendering element is present after the recall gate.
     const furiganaSentence = el.querySelector("furigana-sentence");
     expect(furiganaSentence).to.exist;
   });

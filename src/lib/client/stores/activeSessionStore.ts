@@ -11,7 +11,8 @@ export interface FuriganaSegment {
 }
 
 export interface SessionCard {
-  readonly grammarPointId: string;
+  readonly knowledgePointId: string;
+  readonly exerciseId?: string;
   readonly englishContext: string;
   readonly japaneseSentence: string;
   readonly furigana: readonly FuriganaSegment[];
@@ -75,38 +76,38 @@ export const weaveSessionCards = (cards: readonly SessionCard[]): readonly Sessi
     return [];
   }
 
-  // Group cards by grammarPointId
+  // Group cards by knowledgePointId
   const bins: Record<string, SessionCard[]> = {};
   for (const card of cards) {
-    if (!bins[card.grammarPointId]) {
-      bins[card.grammarPointId] = [];
+    if (!bins[card.knowledgePointId]) {
+      bins[card.knowledgePointId] = [];
     }
-    bins[card.grammarPointId]!.push(card);
+    bins[card.knowledgePointId]!.push(card);
   }
 
-  runClientUnscoped(clientLog("info", `[activeSessionStore] Grouped cards into ${Object.keys(bins).length} unique grammar bins.`));
+  runClientUnscoped(clientLog("info", `[activeSessionStore] Grouped cards into ${Object.keys(bins).length} unique knowledge-point bins.`));
 
   // Shuffle cards within each bin initially
-  for (const gpId of Object.keys(bins)) {
-    bins[gpId] = bins[gpId]!.sort(() => Math.random() - 0.5);
+  for (const pointId of Object.keys(bins)) {
+    bins[pointId] = bins[pointId]!.sort(() => Math.random() - 0.5);
   }
 
   interface Bin {
-    gpId: string;
+    pointId: string;
     cards: SessionCard[];
   }
 
-  const activeBins: Bin[] = Object.entries(bins).map(([gpId, binCards]) => ({
-    gpId,
+  const activeBins: Bin[] = Object.entries(bins).map(([pointId, binCards]) => ({
+    pointId,
     cards: binCards,
   }));
 
   activeBins.forEach(b => {
-    runClientUnscoped(clientLog("info", `[activeSessionStore] Bin gpId=${b.gpId} has ${b.cards.length} cards.`));
+    runClientUnscoped(clientLog("info", `[activeSessionStore] Bin pointId=${b.pointId} has ${b.cards.length} cards.`));
   });
 
   const result: SessionCard[] = [];
-  let lastGpId: string | null = null;
+  let lastPointId: string | null = null;
   let step = 1;
 
   while (true) {
@@ -116,8 +117,8 @@ export const weaveSessionCards = (cards: readonly SessionCard[]): readonly Sessi
       break;
     }
 
-    const allowedBins = binsWithCards.filter(b => b.gpId !== lastGpId);
-    runClientUnscoped(clientLog("info", `[activeSessionStore] Step ${step}: lastGpId=${lastGpId}. Bins with cards: ${binsWithCards.map(b => `${b.gpId}(${b.cards.length})`).join(", ")}`));
+    const allowedBins = binsWithCards.filter(b => b.pointId !== lastPointId);
+    runClientUnscoped(clientLog("info", `[activeSessionStore] Step ${step}: lastPointId=${lastPointId}. Bins with cards: ${binsWithCards.map(b => `${b.pointId}(${b.cards.length})`).join(", ")}`));
 
     let chosenBin: Bin | undefined;
 
@@ -125,16 +126,16 @@ export const weaveSessionCards = (cards: readonly SessionCard[]): readonly Sessi
       const maxCount = Math.max(...allowedBins.map(b => b.cards.length));
       const candidates = allowedBins.filter(b => b.cards.length === maxCount);
       chosenBin = candidates[Math.floor(Math.random() * candidates.length)]!;
-      runClientUnscoped(clientLog("info", `[activeSessionStore] Step ${step}: Selected ${chosenBin.gpId} from allowed candidates: ${candidates.map(b => b.gpId).join(", ")}`));
+      runClientUnscoped(clientLog("info", `[activeSessionStore] Step ${step}: Selected ${chosenBin.pointId} from allowed candidates: ${candidates.map(b => b.pointId).join(", ")}`));
     } else {
       chosenBin = binsWithCards[0]!;
-      runClientUnscoped(clientLog("warn", `[activeSessionStore] Step ${step}: Forced to select adjacent duplicate of lastGpId=${lastGpId} from bin ${chosenBin.gpId}`));
+      runClientUnscoped(clientLog("warn", `[activeSessionStore] Step ${step}: Forced to select adjacent duplicate of lastPointId=${lastPointId} from bin ${chosenBin.pointId}`));
     }
 
     if (chosenBin && chosenBin.cards.length > 0) {
       const card = chosenBin.cards.shift()!;
       result.push(card);
-      lastGpId = chosenBin.gpId;
+      lastPointId = chosenBin.pointId;
     } else {
       runClientUnscoped(clientLog("error", `[activeSessionStore] Step ${step}: chosenBin is invalid or has no cards. Breaking.`));
       break;

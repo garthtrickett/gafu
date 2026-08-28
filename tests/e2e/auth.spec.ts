@@ -40,7 +40,7 @@ test.describe("Authentication and Onboarding Flow", () => {
     await expect(page).toHaveURL("/");
     await expect(page.locator("h1")).toContainText("Language Study Desk");
 
-        // 6. Confirm the core interactive elements are rendered
-    await expect(page.locator("button", { hasText: "Import & Start Study" })).toBeVisible();
+    // 6. Confirm the primary API-driven session action is rendered
+    await expect(page.getByRole("button", { name: /Generate & Start Session/ })).toBeVisible();
   });
 });

@@ -29,6 +29,7 @@
     "test:node": "vitest run src/features src/lib/server src/db",
     "test:browser": "web-test-runner --coverage",
     "test:e2e": "playwright test",
+    "test:adaptive-eval": "vitest run src/lib/server/ai/AdaptiveMediaEvaluation.test.ts src/lib/client/media/adaptive/source-signatures.test.ts src/lib/server/ExerciseBankService.test.ts",
     "test:e2e:ui": "playwright test --ui",
     "test:all": "bun run test && (bun run test:browser || true) && bun run test:e2e"
   },
@@ -40,7 +41,8 @@
     "@tailwindcss/vite": "^4.1.11",
     "@testing-library/dom": "^10.4.0",
     "@testing-library/user-event": "^14.6.1",
-        "@types/bun": "^1.2.18",
+    "@types/bun": "^1.2.18",
+    "@types/kuromoji": "0.1.3",
     "@types/mocha": "^10.0.10",
     "@types/node": "^22.8.6",
     "@types/pdfmake": "^0.2.11",
@@ -57,7 +59,7 @@
     "eslint": "^9.31.0",
     "eslint-plugin-lit": "^2.1.1",
     "eslint-plugin-lit-a11y": "^5.1.0",
-        "eslint-plugin-wc": "^3.0.1",
+    "eslint-plugin-wc": "^3.0.1",
     "fake-indexeddb": "^6.0.0",
     "jsdom": "^26.1.0",
     "postcss": "^8.5.6",
@@ -77,7 +79,6 @@
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.995.0",
-    "@google-cloud/text-to-speech": "^6.4.1",
     "@aws-sdk/lib-storage": "^3.844.0",
     "@aws-sdk/s3-request-presigner": "^3.995.0",
     "@effect/opentelemetry": "^0.54.0",
@@ -88,6 +89,8 @@
     "@elysiajs/cors": "^1.4.0",
     "@elysiajs/eden": "^1.4.5",
     "@elysiajs/static": "^1.4.7",
+    "@google-cloud/text-to-speech": "^6.4.1",
+    "@mastra/core": "^1.34.0",
     "@opentelemetry/sdk-logs": "^0.218.0",
     "@opentelemetry/sdk-metrics": "^2.7.1",
     "@opentelemetry/sdk-trace-node": "^2.7.1",
@@ -108,8 +111,10 @@
     "kanel": "^3.14.1",
     "kanel-kysely": "^0.7.1",
     "koa-proxies": "^0.12.4",
+    "kuromoji": "0.1.2",
     "kysely": "^0.28.2",
     "lit": "^3.3.1",
+    "lit-html": "^3.3.1",
     "marked": "^16.1.1",
     "oslo": "^1.2.1",
     "pdfmake": "^0.2.18",
@@ -118,7 +123,7 @@
     "qrcode": "^1.5.4",
     "tesseract.js": "^7.0.0",
     "web-push": "^3.6.7",
-    "@mastra/core": "^1.34.0",
+    "workbox-core": "^7.4.0",
     "zod": "^3.24.1"
   }
 }

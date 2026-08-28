@@ -24,7 +24,7 @@ interface DeltaResponse {
   }>;
   readonly srsUpdates: Array<{
     readonly id: string;
-    readonly grammarPointId: string;
+    readonly knowledgePointId: string;
     readonly easeFactor: number;
     readonly repetitions: number;
     readonly intervalDays: number;
@@ -32,6 +32,10 @@ interface DeltaResponse {
     readonly difficulty: number;
     readonly stability: number;
     readonly lastReviewedAt: string | null;
+    readonly participationStatus: "active" | "archived";
+    readonly learningState: "introduced" | "primed" | "encountered" | "learning" | "stable" | "known";
+    readonly introducedAt: string | null;
+    readonly checkoutDue?: boolean;
     readonly hlc: string;
   }>;
   readonly grammarPoints: Array<{
@@ -41,10 +45,28 @@ interface DeltaResponse {
     readonly difficulty_level: string;
     readonly hlc: string;
   }>;
+  readonly knowledgePoints: Array<{
+    readonly id: string;
+    readonly kind: "grammar" | "vocabulary";
+    readonly canonical_key: string;
+    readonly scope: "curated" | "personal";
+    readonly catalogue_status: "active" | "archived" | "quarantined";
+    readonly formal_name: string | null;
+    readonly base_meaning: string | null;
+    readonly difficulty_level: string | null;
+    readonly lemma: string | null;
+    readonly reading: string | null;
+    readonly part_of_speech: string | null;
+    readonly sense_key: string | null;
+    readonly meaning: string | null;
+    readonly register: string | null;
+    readonly hlc: string;
+  }>;
   readonly userPreference?: {
     readonly dailyReviewLimit: number;
     readonly dailyNewRuleLimit: number;
     readonly enforceMasteryGates: boolean;
+    readonly learnerTimeZone: string;
     readonly hlc: string;
   };
 }
@@ -109,12 +131,12 @@ export const executeDeltaPull = (): Effect.Effect<void, unknown, never> =>
 
     const { deckStore } = yield* Effect.promise(() => import("../stores/deckStore"));
     const { srsStore } = yield* Effect.promise(() => import("../stores/srsStore"));
-    const { grammarPointStore, grammarPointCatalogStore } = yield* Effect.promise(() => import("../stores/grammarPointStore"));
+    const { knowledgePointStore, knowledgePointCatalogStore } = yield* Effect.promise(() => import("../stores/knowledgePointStore"));
     const { userPreferencesStore } = yield* Effect.promise(() => import("../stores/userPreferencesStore"));
 
     const deckCount = deckStore?.state?.peek()?.length ?? 0;
-    const gpCount = grammarPointStore?.state?.peek()?.length ?? 0;
-    const catalogCount = grammarPointCatalogStore?.state?.peek()?.length ?? 0;
+    const gpCount = knowledgePointStore?.state?.peek()?.length ?? 0;
+    const catalogCount = knowledgePointCatalogStore?.state?.peek()?.length ?? 0;
     
     yield* clientLog("info", `[DeltaPull] Local state inspection - deckCount: ${deckCount}, gpCount: ${gpCount}, catalogCount: ${catalogCount}, lastPull: ${lastPull}, cachedEpochId: ${cachedEpochId}`);
     
@@ -181,14 +203,15 @@ export const executeDeltaPull = (): Effect.Effect<void, unknown, never> =>
     const decksLen = delta?.decks?.length ?? 0;
     const srsUpdatesLen = delta?.srsUpdates?.length ?? 0;
     const gpLen = delta?.grammarPoints?.length ?? 0;
+    const knowledgePointLen = delta?.knowledgePoints?.length ?? 0;
 
     yield* clientLog(
       "info",
-      `[DeltaPull] Received pull payload - Decks: ${decksLen}, SRS updates: ${srsUpdatesLen}, Grammar Points: ${gpLen}, serverHlc: ${delta?.serverHlc}`
+      `[DeltaPull] Received pull payload - Decks: ${decksLen}, SRS updates: ${srsUpdatesLen}, Knowledge Points: ${knowledgePointLen}, serverHlc: ${delta?.serverHlc}`
     );
 
-    if (decksLen > 0 || srsUpdatesLen > 0 || gpLen > 0 || delta.userPreference) {
-      yield* clientLog("info", `[DeltaPull] Applying updates: ${decksLen} decks, ${srsUpdatesLen} SRS metrics, ${gpLen} catalog items.`);
+    if (decksLen > 0 || srsUpdatesLen > 0 || knowledgePointLen > 0 || delta.userPreference) {
+      yield* clientLog("info", `[DeltaPull] Applying updates: ${decksLen} decks, ${srsUpdatesLen} SRS metrics, ${knowledgePointLen} catalog items.`);
       
       if (decksLen > 0 && deckStore) {
         const existingDecks = deckStore.state.peek();
@@ -198,25 +221,40 @@ export const executeDeltaPull = (): Effect.Effect<void, unknown, never> =>
         }
       }
       
-      if (gpLen > 0 && grammarPointCatalogStore && delta.grammarPoints) {
-        const existingCatalog = grammarPointCatalogStore.state.peek();
-        const mappedGps = delta.grammarPoints.map(gp => ({
-          id: gp.id,
-          formal_name: gp.formal_name,
-          base_meaning: gp.base_meaning,
-          difficulty_level: gp.difficulty_level,
-          hlc: gp.hlc
+      if (knowledgePointLen > 0 && knowledgePointCatalogStore) {
+        const existingCatalog = knowledgePointCatalogStore.state.peek();
+        const mappedGps = delta.knowledgePoints.map(point => point.kind === "grammar" ? ({
+          id: point.id,
+          kind: "grammar" as const,
+          formal_name: point.formal_name ?? "",
+          base_meaning: point.base_meaning ?? "",
+          difficulty_level: point.difficulty_level ?? "",
+          hlc: point.hlc
+        }) : ({
+          id: point.id,
+          kind: "vocabulary" as const,
+          canonical_key: point.canonical_key,
+          scope: point.scope,
+          catalogue_status: point.catalogue_status,
+          lemma: point.lemma ?? "",
+          reading: point.reading ?? "",
+          part_of_speech: point.part_of_speech ?? "",
+          sense_key: point.sense_key ?? "",
+          meaning: point.meaning ?? "",
+          register: point.register,
+          hlc: point.hlc,
         }));
         const filteredGps = filterCausal(mappedGps, existingCatalog);
         if (filteredGps.length > 0) {
-          yield* grammarPointCatalogStore.putAll(filteredGps);
+          yield* knowledgePointCatalogStore.putAll(filteredGps);
         }
       }
 
-      if (srsUpdatesLen > 0 && srsStore && grammarPointStore) {
+      if (srsUpdatesLen > 0 && srsStore && knowledgePointStore) {
         const existingSrs = srsStore.state.peek();
         const mappedSrs = delta.srsUpdates.map(u => ({ 
           id: u.id,
+          knowledgePointId: u.knowledgePointId,
           front: "",
           back: "",
           easeFactor: u.easeFactor,
@@ -226,6 +264,7 @@ export const executeDeltaPull = (): Effect.Effect<void, unknown, never> =>
           difficulty: u.difficulty,
           stability: u.stability,
           lastReviewedAt: u.lastReviewedAt,
+          checkoutDue: u.checkoutDue ?? false,
           hlc: u.hlc
         }));
         const filteredSrs = filterCausal(mappedSrs, existingSrs);
@@ -233,9 +272,11 @@ export const executeDeltaPull = (): Effect.Effect<void, unknown, never> =>
           yield* srsStore.putAll(filteredSrs);
         }
 
-        const existingProgress = grammarPointStore.state.peek();
+        const existingProgress = knowledgePointStore.state.peek();
         const mappedProgress = delta.srsUpdates.map(u => ({ 
-          id: u.grammarPointId,
+          id: u.knowledgePointId,
+          participationStatus: u.participationStatus,
+          learningState: u.learningState,
           easeFactor: u.easeFactor,
           repetitions: u.repetitions,
           intervalDays: u.intervalDays,
@@ -243,11 +284,13 @@ export const executeDeltaPull = (): Effect.Effect<void, unknown, never> =>
           difficulty: u.difficulty,
           stability: u.stability,
           lastReviewedAt: u.lastReviewedAt,
+          unlockedAt: u.introducedAt ?? undefined,
+          checkoutDue: u.checkoutDue ?? false,
           hlc: u.hlc
         }));
         const filteredProgress = filterCausal(mappedProgress, existingProgress);
         if (filteredProgress.length > 0) {
-          yield* grammarPointStore.putAll(filteredProgress);
+          yield* knowledgePointStore.putAll(filteredProgress);
         }
       }
 
@@ -259,6 +302,7 @@ export const executeDeltaPull = (): Effect.Effect<void, unknown, never> =>
             dailyReviewLimit: delta.userPreference.dailyReviewLimit,
             dailyNewRuleLimit: delta.userPreference.dailyNewRuleLimit,
             enforceMasteryGates: delta.userPreference.enforceMasteryGates,
+            learnerTimeZone: delta.userPreference.learnerTimeZone,
             hlc: delta.userPreference.hlc
           });
         }

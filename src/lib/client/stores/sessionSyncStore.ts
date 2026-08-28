@@ -1,16 +1,17 @@
 import { Effect } from "effect";
 import {
-  grammarPointStore,
-  grammarPointCatalogStore,
+  knowledgePointStore,
   canUnlockMoreRules,
   getDailyUnlockAllowance,
   calculateRetrievability,
-  type GrammarPointProgress
-} from "./grammarPointStore.ts";
+  type KnowledgePointProgress
+} from "./knowledgePointStore.ts";
+import { grammarPointCatalogStore } from "./grammarPointStore.ts";
 import { activeSessionStore, type SessionCard, type FuriganaSegment } from "./activeSessionStore.ts";
 import { clientLog } from "../clientLog.ts";
 import { prewarmAudioUrls } from "../media/MediaPrewarmService.ts";
 import kaishiPool from "./kaishiPool.json";
+import { orderReviewQueue } from "../../shared/adaptive-scheduling.ts";
 
 export interface ExportedGrammarProgress {
   readonly grammar_point_id: string;
@@ -28,16 +29,26 @@ export interface ExportPayload {
 /**
  * Collects N5/N4 grammar states from IndexedDB and copies a lightweight payload to the clipboard
  */
-export const generateExportPayload = (options?: { isCram?: boolean }) => {
+export interface GenerateExportPayloadOptions {
+  readonly isCram?: boolean;
+  readonly copyToClipboard?: boolean;
+  readonly persistIntroductions?: boolean;
+}
+
+export const generateExportPayload = (
+  options: GenerateExportPayloadOptions = {},
+) => {
   const effect = Effect.gen(function* () {
     const isCram = options?.isCram ?? false;
+    const copyToClipboard = options.copyToClipboard ?? true;
+    const persistIntroductions = options.persistIntroductions ?? true;
     yield* clientLog("info", `[SessionSync] Compiling study progress payload (isCram=${isCram})...`);
     
     // Ensure both stores are loaded and updated
-    yield* grammarPointStore.load();
+    yield* knowledgePointStore.load();
     yield* grammarPointCatalogStore.load();
     
-    const localProgress = grammarPointStore.state.peek();
+    const localProgress = knowledgePointStore.state.peek();
     const catalog = grammarPointCatalogStore.state.peek();
     
     const now = new Date();
@@ -88,8 +99,16 @@ export const generateExportPayload = (options?: { isCram?: boolean }) => {
       const dueReviewsTargetCount = Math.max(0, dailyReviewLimit - nextIntroductions.length);
 
       // 1. Sort all active progress rules by lowest retrievability (most in need of review) first
-      const activeDueProgress = [...localProgress]
-        .sort((a, b) => calculateRetrievability(a) - calculateRetrievability(b));
+      const progressById = new Map(localProgress.map((progress) => [progress.id, progress]));
+      const activeDueProgress = orderReviewQueue(localProgress.map((progress) => ({
+        knowledgePointId: progress.id,
+        participationStatus: progress.participationStatus ?? "active",
+        learningState: progress.learningState ?? ((progress.stability ?? 0) >= 21 ? "stable" : "learning"),
+        introducedAt: progress.unlockedAt ?? null,
+        nextReview: progress.nextReview,
+        checkoutDue: progress.checkoutDue ?? false,
+        risk: 1 - calculateRetrievability(progress),
+      })), now).map((item) => progressById.get(item.knowledgePointId)!).filter(Boolean);
 
       const activeDueSliced = activeDueProgress.slice(0, dueReviewsTargetCount);
       
@@ -104,32 +123,38 @@ export const generateExportPayload = (options?: { isCram?: boolean }) => {
         };
       });
 
-            // 2. Process and save new introductions if eligible
+            // 2. Include new introductions, persisting only after API success
+            // when the caller has requested deferred activation.
           if (eligible && nextIntroductions.length > 0) {
-        yield* clientLog("info", `[SessionSync] Unlocking ${nextIntroductions.length} new grammar points.`);
-        
-                const { hlcStore } = yield* Effect.promise(() => import("./hlcStore.ts"));
+        if (persistIntroductions) {
+          yield* clientLog("info", `[SessionSync] Unlocking ${nextIntroductions.length} new grammar points.`);
+          const { hlcStore } = yield* Effect.promise(() => import("./hlcStore.ts"));
 
-        const newProgressRecords: GrammarPointProgress[] = [];
-        for (const item of nextIntroductions) {
-          const currentHlc = yield* hlcStore.tick();
-          newProgressRecords.push({
-            id: item.id,
-            easeFactor: 2.5,
-            repetitions: 0,
-            intervalDays: 0,
-            nextReview: now.toISOString(),
-            difficulty: 5.0,
-            stability: 0.0,
-            lastReviewedAt: null,
-            unlockedAt: now.toISOString(),
-            hlc: currentHlc,
-          });
+          const newProgressRecords: KnowledgePointProgress[] = [];
+          for (const item of nextIntroductions) {
+            const currentHlc = yield* hlcStore.tick();
+            newProgressRecords.push({
+              id: item.id,
+              easeFactor: 2.5,
+              repetitions: 0,
+              intervalDays: 0,
+              nextReview: now.toISOString(),
+              difficulty: 5.0,
+              stability: 0.0,
+              lastReviewedAt: null,
+              unlockedAt: now.toISOString(),
+              hlc: currentHlc,
+            });
+          }
+
+          // Manual exports retain their historical immediate activation.
+          yield* knowledgePointStore.putAll(newProgressRecords);
+        } else {
+          yield* clientLog(
+            "info",
+            `[SessionSync] Deferring activation of ${nextIntroductions.length} new grammar points until the generated session passes import validation.`,
+          );
         }
-
-        
-        // Save these new rules to grammarPointStore immediately so they count toward today's limit
-        yield* grammarPointStore.putAll(newProgressRecords);
         
         for (const item of nextIntroductions) {
           queue.push({
@@ -227,16 +252,26 @@ CRITICAL CONSTRAINTS:
     const jsonString = JSON.stringify(payload, null, 2);
     
     // Write the compiled payload string directly to the user's system clipboard if API is available
-    if (typeof navigator !== "undefined" && navigator.clipboard) {
+    if (
+      copyToClipboard &&
+      typeof navigator !== "undefined" &&
+      navigator.clipboard
+    ) {
       yield* Effect.tryPromise({
         try: () => navigator.clipboard.writeText(jsonString),
         catch: (e) => new Error(`Failed to write text to system clipboard: ${String(e)}`),
       });
-    } else {
+    } else if (copyToClipboard) {
       yield* clientLog("warn", "[SessionSync] Clipboard API not available in this environment.");
     }
 
-    yield* clientLog("info", "[SessionSync] Study progress successfully copied to clipboard.", { wordPoolSize: kaishiPool.length, queueSize: queueLength });
+    yield* clientLog(
+      "info",
+      copyToClipboard
+        ? "[SessionSync] Study progress successfully copied to clipboard."
+        : "[SessionSync] Study progress compiled for server-side generation.",
+      { wordPoolSize: kaishiPool.length, queueSize: queueLength },
+    );
     return jsonString;
   });
 
@@ -258,7 +293,7 @@ interface ImportedPayload {
 
 interface ValidatedImportedCard {
   readonly sourceIndex: number;
-  readonly grammarPointId: string;
+  readonly knowledgePointId: string;
   readonly englishContext: string;
   readonly japaneseSentence: string;
   readonly furigana: readonly FuriganaSegment[];
@@ -400,7 +435,7 @@ const validateImportedCards = (
       }
 
       const card = rawCard as ImportedCard;
-      const grammarPointId =
+      const knowledgePointId =
         typeof card.grammar_point_id === "string"
           ? card.grammar_point_id.trim()
           : "";
@@ -414,7 +449,7 @@ const validateImportedCards = (
           : "";
 
       if (
-        grammarPointId.length === 0 ||
+        knowledgePointId.length === 0 ||
         englishContext.length === 0 ||
         japaneseSentence.length === 0
       ) {
@@ -476,7 +511,7 @@ const validateImportedCards = (
 
       validatedCards.push({
         sourceIndex,
-        grammarPointId,
+        knowledgePointId,
         englishContext,
         japaneseSentence,
         furigana: isFuriganaSegments(furiganaValue)
@@ -628,7 +663,7 @@ const requestSessionAudioEnrichment: SessionAudioEnricher = {
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-const isAcceptedGrammarPointId = (grammarPointId: string): boolean => {
+const isAcceptedGrammarPointId = (knowledgePointId: string): boolean => {
   const isTest =
     typeof process !== "undefined" &&
     (
@@ -636,13 +671,13 @@ const isAcceptedGrammarPointId = (grammarPointId: string): boolean => {
       process.env?.VITEST_WORKER_ID
     );
   const isMockId =
-    grammarPointId.startsWith("gp-") ||
-    grammarPointId.startsWith("gp");
+    knowledgePointId.startsWith("gp-") ||
+    knowledgePointId.startsWith("gp");
 
   return Boolean(
     isTest ||
       isMockId ||
-      UUID_REGEX.test(grammarPointId),
+      UUID_REGEX.test(knowledgePointId),
   );
 };
 
@@ -703,10 +738,10 @@ export const importSessionPayload = (
 
     const acceptedCards: ValidatedImportedCard[] = [];
     for (const card of validatedCards) {
-      if (!isAcceptedGrammarPointId(card.grammarPointId)) {
+      if (!isAcceptedGrammarPointId(card.knowledgePointId)) {
         yield* clientLog(
           "warn",
-          `[SessionSync] Skipping card with non-UUID grammar_point_id: "${card.grammarPointId}"`,
+          `[SessionSync] Skipping card with non-UUID grammar_point_id: "${card.knowledgePointId}"`,
         );
         continue;
       }
@@ -813,19 +848,19 @@ export const importSessionPayload = (
 
     // Load the local progress store state only after the entire payload has
     // passed schema validation and audio enrichment has completed.
-    yield* grammarPointStore.load();
-    const localProgress = grammarPointStore.state.peek();
+    yield* knowledgePointStore.load();
+    const localProgress = knowledgePointStore.state.peek();
     const activeIds = new Set(localProgress.map((progress) => progress.id));
     const now = new Date();
 
     const sessionCards: SessionCard[] = [];
     for (const card of acceptedCards) {
-      const grammarPointId = card.grammarPointId;
+      const knowledgePointId = card.knowledgePointId;
 
-      if (!activeIds.has(grammarPointId)) {
+      if (!activeIds.has(knowledgePointId)) {
         yield* clientLog(
           "info",
-          `[SessionSync] Activating newly introduced grammar point ID: ${grammarPointId}`,
+          `[SessionSync] Activating newly introduced grammar point ID: ${knowledgePointId}`,
         );
 
         const { hlcStore } = yield* Effect.promise(
@@ -834,7 +869,7 @@ export const importSessionPayload = (
         const currentHlc = yield* hlcStore.tick();
 
         const initialProgress = {
-          id: grammarPointId,
+          id: knowledgePointId,
           easeFactor: 2.5,
           repetitions: 0,
           intervalDays: 0,
@@ -845,20 +880,20 @@ export const importSessionPayload = (
           hlc: currentHlc,
         };
 
-        yield* grammarPointStore.put(initialProgress);
+        yield* knowledgePointStore.put(initialProgress);
 
         const { enqueueTransaction } = yield* Effect.promise(
           () => import("../sync/OutboxQueue"),
         );
         yield* enqueueTransaction("record_review", {
-          grammarPointId,
+          knowledgePointId: knowledgePointId,
           easeFactor: 2.5,
           repetitions: 0,
           intervalDays: 0,
           nextReview: initialProgress.nextReview,
         });
 
-        activeIds.add(grammarPointId);
+        activeIds.add(knowledgePointId);
       }
 
       const generatedAudioUrl = audioUrlByRequestId.get(
@@ -866,7 +901,7 @@ export const importSessionPayload = (
       );
 
       sessionCards.push({
-        grammarPointId,
+        knowledgePointId,
         englishContext: card.englishContext,
         japaneseSentence: card.japaneseSentence,
         furigana: card.furigana,

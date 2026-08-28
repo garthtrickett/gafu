@@ -2,6 +2,8 @@
 import { esbuildPlugin } from "@web/dev-server-esbuild";
 import proxy from "koa-proxies";
 import { config } from "dotenv";
+import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
 
 config();
 
@@ -44,6 +46,18 @@ export default {
         }
       },
     },
+    {
+      name: "json-module",
+      async serve(context) {
+        if (context.path.endsWith(".json")) {
+          const source = await readFile(resolve(process.cwd(), `.${context.path}`), "utf8");
+          return {
+            body: `export default ${source};`,
+            type: "js",
+          };
+        }
+      },
+    },
     esbuildPlugin({
       ts: true,
       target: "es2022",
@@ -51,6 +65,8 @@ export default {
       define: {
         "import.meta.env.VITE_API_BASE_URL": JSON.stringify(process.env.VITE_API_BASE_URL || "http://127.0.0.1:42070"),
         "import.meta.env.VITE_WS_URL": JSON.stringify(process.env.VITE_WS_URL || "ws://127.0.0.1:42070"),
+        "import.meta.env.VITE_ADAPTIVE_MEDIA_WATCH_ENABLED": JSON.stringify(process.env.VITE_ADAPTIVE_MEDIA_WATCH_ENABLED || "true"),
+        "import.meta.env.VITE_SILENT_CLIENT_LOGGING": JSON.stringify("true"),
         "import.meta.env.DEV": "true",
         "import.meta.env.PROD": "false",
         "import.meta.env.SSR": "false",

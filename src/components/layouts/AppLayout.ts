@@ -3,6 +3,7 @@ import { customElement, property } from "lit/decorators.js";
 import { effect } from "@preact/signals-core";
 import { localeState, t } from "../../lib/client/stores/i18nStore";
 import { isUpdateAvailableState, applyAppUpdate } from "../../lib/client/stores/pwaStore.ts";
+import { adaptiveMediaWatchEnabled } from "../../lib/client/media/adaptive/feature.ts";
 
 @customElement("app-layout")
 export class AppLayout extends LitElement {
@@ -38,6 +39,7 @@ export class AppLayout extends LitElement {
         <header class="z-10 flex shrink-0 items-center justify-between border-b border-zinc-800 bg-zinc-950 px-6 py-4 shadow-md">
           <div class="flex items-center gap-4">
             <a href="/" class="text-lg font-bold text-zinc-50 tracking-tight hover:text-white transition-colors">Bedrock Lang</a>
+            ${adaptiveMediaWatchEnabled ? html`<a href="/watch" class="text-sm ${this.currentPath === "/watch" ? "text-emerald-400" : "text-zinc-400"} hover:text-white">Watch</a>` : ""}
           </div>
           <div class="flex items-center gap-4 text-sm font-medium text-zinc-400">
             <span>${t("common.language")}: ${localeState.value.toUpperCase()}</span>

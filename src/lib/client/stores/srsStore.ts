@@ -2,6 +2,7 @@ import { createLocalStore } from "../storage/LocalStoreFactory";
 
 export interface SrsCardClient {
   readonly id: string;
+  readonly knowledgePointId?: string;
   readonly front: string;
   readonly back: string;
   readonly audioUrl?: string | null;

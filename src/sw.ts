@@ -57,6 +57,17 @@ registerRoute(
   }),
 );
 
+registerRoute(
+  ({ url }) => url.origin === self.location.origin && url.pathname.startsWith("/dict/") && url.pathname.endsWith(".gz"),
+  new CacheFirst({
+    cacheName: "japanese-tokenizer-dictionary-v1",
+    plugins: [
+      new CacheableResponsePlugin({ statuses: [200] }),
+      new ExpirationPlugin({ maxEntries: 20, maxAgeSeconds: 365 * 24 * 60 * 60, purgeOnQuotaError: true }),
+    ],
+  }),
+);
+
 const navigationStrategy = new NetworkFirst({
   cacheName: "html-cache",
   plugins: [

@@ -15,7 +15,7 @@ describe("OutboxQueue - Client Synchronization", () => {
 
   it("should successfully serialize and enqueue a record_review transaction with a structurally valid HLC string", async () => {
     const mockPayload = {
-      grammarPointId: "e0eebc99-9c0b-4ef8-bb6d-6bb9bd380e55",
+      knowledgePointId: "e0eebc99-9c0b-4ef8-bb6d-6bb9bd380e55",
       easeFactor: 2.65,
       repetitions: 1,
       intervalDays: 1,

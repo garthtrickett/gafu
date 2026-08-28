@@ -82,7 +82,7 @@ describe("DeltaPullEngine - Client Causal Merging", () => {
       srsUpdates: [
         {
           id: "srs-causal-test",
-          grammarPointId: "gp-causal-test",
+          knowledgePointId: "gp-causal-test",
           easeFactor: 1.5, // older clobbered ease factor
           repetitions: 1,
           intervalDays: 1,
@@ -221,7 +221,7 @@ describe("DeltaPullEngine - Client Causal Merging", () => {
       srsUpdates: [
         {
           id: "srs-causal-bug-test",
-          grammarPointId: "gp-causal-bug-test",
+          knowledgePointId: "gp-causal-bug-test",
           easeFactor: 2.5,
           repetitions: 1,
           intervalDays: 1,

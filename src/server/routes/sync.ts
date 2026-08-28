@@ -5,7 +5,7 @@ import { db } from "../../db/client.ts";
 import { validateToken } from "../../lib/server/JwtService.ts";
 import { InvalidCredentialsError, AuthDatabaseError } from "../../features/auth/Errors.ts";
 import { initHlc, receiveHlc, packHlc } from "../../lib/shared/hlc.ts";
-import type { UserId, SrsCardId, GrammarPointId } from "../../types/index.ts";
+import type { UserId, SrsCardId, KnowledgePointId } from "../../types/index.ts";
 import { OutboxTransactionSchema } from "../../lib/shared/sync-schemas.ts";
 import { Schema } from "effect";
 import { TreeFormatter } from "effect/ParseResult";
@@ -60,7 +60,8 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
             serverHlc,
             decks: [],
             srsUpdates: [],
-            grammarPoints: []
+            grammarPoints: [],
+            knowledgePoints: []
           };
         }
 
@@ -100,6 +101,39 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
         });
         yield* Effect.logInfo(`[Sync:Pull] Retrieved ${grammarPoints.length} matching grammar points from database`);
 
+        const knowledgePoints = yield* Effect.tryPromise({
+          try: () => db.selectFrom("knowledge_point")
+            .leftJoin("grammar_point", "grammar_point.id", "knowledge_point.id")
+            .leftJoin("vocabulary_point", "vocabulary_point.knowledge_point_id", "knowledge_point.id")
+            .select([
+              "knowledge_point.id",
+              "knowledge_point.kind",
+              "knowledge_point.canonical_key",
+              "knowledge_point.scope",
+              "knowledge_point.owner_user_id",
+              "knowledge_point.catalogue_status",
+              "knowledge_point.created_from",
+              "knowledge_point.confidence",
+              "knowledge_point.hlc",
+              "grammar_point.formal_name",
+              "grammar_point.base_meaning",
+              "grammar_point.difficulty_level",
+              "vocabulary_point.lemma",
+              "vocabulary_point.reading",
+              "vocabulary_point.part_of_speech",
+              "vocabulary_point.sense_key",
+              "vocabulary_point.meaning",
+              "vocabulary_point.register",
+            ])
+            .where("knowledge_point.hlc", op, since)
+            .where((eb) => eb.or([
+              eb("knowledge_point.scope", "=", "curated"),
+              eb("knowledge_point.owner_user_id", "=", user.id as UserId),
+            ]))
+            .execute(),
+          catch: (cause) => new AuthDatabaseError({ cause })
+        });
+
         const decksResult = decks.map(d => ({
           id: d.id,
           name: d.name,
@@ -110,7 +144,7 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
 
         const srsUpdatesResult = srsCards.map(c => ({
           id: c.id,
-          grammarPointId: c.grammar_point_id,
+          knowledgePointId: c.knowledge_point_id,
           easeFactor: c.ease_factor,
           repetitions: c.repetitions,
           intervalDays: c.interval_days,
@@ -118,6 +152,10 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
           difficulty: Number(c.difficulty),
           stability: Number(c.stability),
           lastReviewedAt: c.last_reviewed_at ? c.last_reviewed_at.toISOString() : null,
+          participationStatus: c.participation_status,
+          learningState: c.learning_state,
+          introducedAt: c.introduced_at ? c.introduced_at.toISOString() : null,
+          checkoutDue: c.checkout_due,
           hlc: c.hlc
         }));
 
@@ -168,10 +206,12 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
           decks: decksResult,
           srsUpdates: srsUpdatesResult,
           grammarPoints: grammarPointsResult,
+          knowledgePoints,
           userPreference: showPreference ? {
             dailyReviewLimit: userPreference.daily_review_limit,
             dailyNewRuleLimit: userPreference.daily_new_rule_limit,
             enforceMasteryGates: userPreference.enforce_mastery_gates,
+            learnerTimeZone: userPreference.learner_time_zone,
             hlc: userPreference.hlc
           } : undefined
         };
@@ -243,7 +283,7 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
 
         if (decodedTx.type === "record_review") {
           const payload = decodedTx.payload;
-          const grammarPointId = payload.grammarPointId;
+          const knowledgePointId = payload.knowledgePointId;
           const easeFactor = payload.easeFactor;
           const repetitions = payload.repetitions;
           const intervalDays = payload.intervalDays;
@@ -252,19 +292,18 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
           const stability = payload.stability;
           const lastReviewedAt = payload.lastReviewedAt;
 
-          yield* Effect.logInfo(`[Sync:Push] Recording review grammarPointId=${grammarPointId}. easeFactor=${easeFactor}, reps=${repetitions}, nextReview=${nextReview}`);
+          yield* Effect.logInfo(`[Sync:Push] Recording review knowledgePointId=${knowledgePointId}. easeFactor=${easeFactor}, reps=${repetitions}, nextReview=${nextReview}`);
 
-          // Verify grammar_point exists first to prevent foreign key violations from legacy/obsolete IDs
-          const gpExists = yield* Effect.tryPromise({ 
-            try: () => db.selectFrom("grammar_point")
-              .select("id")
-              .where("id", "=", grammarPointId as GrammarPointId)
+          const knowledgePoint = yield* Effect.tryPromise({
+            try: () => db.selectFrom("knowledge_point")
+              .select(["id", "kind", "catalogue_status"])
+              .where("id", "=", knowledgePointId as KnowledgePointId)
               .executeTakeFirst(),
             catch: (cause) => new AuthDatabaseError({ cause })
           });
 
-          if (!gpExists) {
-            yield* Effect.logWarning(`[Sync:Push] grammarPointId=${grammarPointId} not found in database. Discarding review to clear outbox queue.`);
+          if (!knowledgePoint || knowledgePoint.catalogue_status !== "active") {
+            yield* Effect.logWarning(`[Sync:Push] knowledgePointId=${knowledgePointId} is missing or inactive. Discarding review to clear the compatibility outbox queue.`);
             return { success: true };
           }
 
@@ -273,7 +312,8 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
               .values({
                 id: crypto.randomUUID() as SrsCardId,
                 user_id: user.id as UserId,
-                grammar_point_id: grammarPointId as GrammarPointId,
+                knowledge_point_id: knowledgePointId as KnowledgePointId,
+                grammar_point_id: knowledgePoint.kind === "grammar" ? knowledgePointId as KnowledgePointId : null,
                 ease_factor: easeFactor,
                 repetitions: repetitions,
                 interval_days: intervalDays,
@@ -281,12 +321,14 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
                 difficulty: difficulty,
                 stability: stability,
                 last_reviewed_at: lastReviewedAt ? new Date(lastReviewedAt) : null,
+                learning_state: repetitions > 0 ? "learning" : "introduced",
+                introduced_at: new Date(),
                 created_at: new Date(),
                 updated_at: new Date(),
                 hlc: convergedPacked
               })
               .onConflict((oc) => oc
-                .columns(["user_id", "grammar_point_id"])
+                .columns(["user_id", "knowledge_point_id"])
                 .doUpdateSet({
                   ease_factor: easeFactor,
                   repetitions: repetitions,
@@ -295,6 +337,7 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
                   difficulty: difficulty,
                   stability: stability,
                   last_reviewed_at: lastReviewedAt ? new Date(lastReviewedAt) : null,
+                  learning_state: stability >= 21 ? "stable" : "learning",
                   updated_at: new Date(),
                   hlc: convergedPacked
                 })
@@ -302,12 +345,13 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
               .execute(),
             catch: (cause) => new AuthDatabaseError({ cause })
           });
-          yield* Effect.logInfo(`[Sync:Push] Review recorded for grammarPointId=${grammarPointId}`);
+          yield* Effect.logInfo(`[Sync:Push] Review recorded for knowledgePointId=${knowledgePointId}`);
         } else if (decodedTx.type === "update_preferences") {
           const payload = decodedTx.payload;
           const dailyReviewLimit = payload.dailyReviewLimit;
           const dailyNewRuleLimit = payload.dailyNewRuleLimit;
           const enforceMasteryGates = payload.enforceMasteryGates !== undefined ? payload.enforceMasteryGates : true;
+          const learnerTimeZone = payload.learnerTimeZone;
 
           yield* Effect.logInfo(`[Sync:Push] Updating preferences for user_id=${user.id}. dailyReviewLimit=${dailyReviewLimit}, dailyNewRuleLimit=${dailyNewRuleLimit}, enforceMasteryGates=${enforceMasteryGates}`);
 
@@ -318,6 +362,7 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
                 daily_review_limit: dailyReviewLimit,
                 daily_new_rule_limit: dailyNewRuleLimit,
                 enforce_mastery_gates: enforceMasteryGates,
+                learner_time_zone: learnerTimeZone,
                 created_at: new Date(),
                 updated_at: new Date(),
                 hlc: convergedPacked
@@ -328,6 +373,7 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
                   daily_review_limit: dailyReviewLimit,
                   daily_new_rule_limit: dailyNewRuleLimit,
                   enforce_mastery_gates: enforceMasteryGates,
+                  learner_time_zone: learnerTimeZone,
                   updated_at: new Date(),
                   hlc: convergedPacked
                 })

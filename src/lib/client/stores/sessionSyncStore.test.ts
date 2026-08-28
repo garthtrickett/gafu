@@ -31,6 +31,39 @@ describe("sessionSyncStore export payload gating integration tests", () => {
     await runClientPromise(grammarPointCatalogStore.clear());
   });
 
+  it("defers new-point activation until an API-generated session is validated", async () => {
+    await runClientPromise(grammarPointCatalogStore.putAll([
+      {
+        id: "gp-deferred-1",
+        formal_name: "です",
+        base_meaning: "polite copula",
+        difficulty_level: "N5",
+        hlc: "0000000000000:0000:initial",
+      },
+      {
+        id: "gp-deferred-2",
+        formal_name: "から",
+        base_meaning: "from",
+        difficulty_level: "N5",
+        hlc: "0000000000000:0000:initial",
+      },
+    ]));
+    const preferences = await import("./userPreferencesStore.ts");
+    await runClientPromise(
+      preferences.userPreferencesStore.updateLimits(20, 3, true),
+    );
+
+    const compiled = await runClientPromise(
+      generateExportPayload({
+        copyToClipboard: false,
+        persistIntroductions: false,
+      }),
+    );
+
+    expect(JSON.parse(compiled).queue).toHaveLength(2);
+    expect(grammarPointStore.state.peek()).toEqual([]);
+  });
+
   it("should cap massive backlogs of due rules to a maximum of 15 items in the exported queue sorted by retrievability", async () => {
     const catalogItems = Array.from({ length: 50 }, (_, i) => ({
       id: `gp-${i}`,
@@ -69,6 +102,23 @@ describe("sessionSyncStore export payload gating integration tests", () => {
     // gp-0 has been reviewed longest ago, so it has the lowest retrievability and is placed first
     expect(payload.queue[0]?.grammar_point_id).toBe("gp-0");
     expect(payload.queue[14]?.grammar_point_id).toBe("gp-14");
+  });
+
+  it("puts checkout and recent media points ahead of mature backlog", async () => {
+    await runClientPromise(grammarPointCatalogStore.putAll(["checkout", "recent", "mature"].map((id) => ({
+      id, formal_name: id, base_meaning: id, difficulty_level: "N5", hlc: "0000000000000:0000:initial",
+    }))));
+    const now = Date.now();
+    const old = new Date(now - 30 * 86_400_000).toISOString();
+    const recent = new Date(now - 2 * 86_400_000).toISOString();
+    await runClientPromise(grammarPointStore.putAll([
+      { id: "mature", easeFactor: 2.5, repetitions: 10, intervalDays: 30, stability: 30, difficulty: 5, lastReviewedAt: old, nextReview: old, learningState: "stable", unlockedAt: old, checkoutDue: false },
+      { id: "recent", easeFactor: 2.5, repetitions: 1, intervalDays: 1, stability: 1, difficulty: 5, lastReviewedAt: recent, nextReview: recent, learningState: "learning", unlockedAt: recent, checkoutDue: false },
+      { id: "checkout", easeFactor: 2.5, repetitions: 0, intervalDays: 0, stability: 0, difficulty: 5, lastReviewedAt: null, nextReview: recent, learningState: "primed", unlockedAt: recent, checkoutDue: true },
+    ]));
+    const payload = JSON.parse(await runClientPromise(generateExportPayload()));
+    expect(payload.queue.map((item: { grammar_point_id: string }) => item.grammar_point_id).slice(0, 3))
+      .toEqual(["checkout", "recent", "mature"]);
   });
 
   it("should unlock and append up to 3 new rules for eligible users who meet the 80% mastery gate", async () => {
@@ -364,11 +414,11 @@ it("preserves supplied audio URLs and excludes them from enrichment", async () =
 
   const existingCard =
     activeSessionStore.masterList.value.find(
-      (card) => card.grammarPointId === "gp-existing",
+      (card) => card.knowledgePointId === "gp-existing",
     );
   const generatedCard =
     activeSessionStore.masterList.value.find(
-      (card) => card.grammarPointId === "gp-generated",
+      (card) => card.knowledgePointId === "gp-generated",
     );
 
   expect(existingCard?.audioUrl).toBe(existingUrl);

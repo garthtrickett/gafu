@@ -3,12 +3,20 @@ import { customElement, state } from "lit/decorators.js";
 import { effect } from "@preact/signals-core";
 import { grammarPointStore, grammarPointCatalogStore, calculateRetrievability } from "../lib/client/stores/grammarPointStore.ts";
 import { userPreferencesStore } from "../lib/client/stores/userPreferencesStore.ts";
-import { logout } from "../lib/client/stores/authStore.ts";
-import { generateExportPayload, importSessionPayload, type ImportSessionProgress } from "../lib/client/stores/sessionSyncStore.ts";
+import { logout, tokenState } from "../lib/client/stores/authStore.ts";
+import {
+  generateExportPayload,
+  importSessionPayload,
+  type ImportSessionProgress,
+} from "../lib/client/stores/sessionSyncStore.ts";
 import { clientLog } from "../lib/client/clientLog.ts";
 import { runClientUnscoped } from "../lib/client/runtime.ts";
 import { navigate } from "../lib/client/router.ts";
 import { Effect } from "effect";
+import { fetchNextValidatedExercise } from "../lib/client/media/adaptive/learning-content.ts";
+import { activeSessionStore, type SessionCard } from "../lib/client/stores/activeSessionStore.ts";
+import { requestDailySessionGeneration } from "../lib/client/ai/daily-session-generation.ts";
+import { DailySessionGenerationRequestSchema } from "../lib/server/ai/schema.ts";
 
 @customElement("study-desk")
 export class StudyDesk extends LitElement {
@@ -26,6 +34,12 @@ export class StudyDesk extends LitElement {
 
   @state()
   private saveSuccessMessage: string | null = null;
+
+  @state()
+  private adaptiveReviewLoading = false;
+
+  @state()
+  private sessionGenerationLoading = false;
 
   private _disposeEffect?: () => void;
 
@@ -112,6 +126,95 @@ export class StudyDesk extends LitElement {
     );
   };
 
+  private startGeneratedSession = (isCram: boolean) => {
+    const token = tokenState.peek();
+    if (!token) {
+      this.importError =
+        "AI session generation requires an authenticated session.";
+      return;
+    }
+
+    this.importError = null;
+    this.sessionGenerationLoading = true;
+    const program = Effect.gen(this, function* () {
+      yield* clientLog(
+        "info",
+        `[StudyDesk] Starting ${isCram ? "cram" : "standard"} API session generation.`,
+      );
+      const compiledJson = yield* generateExportPayload({
+        isCram,
+        copyToClipboard: false,
+        persistIntroductions: false,
+      });
+      const parsedPayload = yield* Effect.try({
+        try: () => JSON.parse(compiledJson) as unknown,
+        catch: (cause) =>
+          new Error(
+            `The locally compiled session request was invalid: ${String(cause)}`,
+          ),
+      });
+      const validatedPayload = DailySessionGenerationRequestSchema.safeParse(
+        typeof parsedPayload === "object" &&
+          parsedPayload !== null &&
+          "queue" in parsedPayload &&
+          "vocabulary_pool" in parsedPayload
+          ? {
+              mode: isCram ? "cram" : "standard",
+              queue: parsedPayload.queue,
+              vocabulary_pool: parsedPayload.vocabulary_pool,
+            }
+          : parsedPayload,
+      );
+      if (!validatedPayload.success) {
+        return yield* Effect.fail(
+          new Error("The locally compiled session request failed validation."),
+        );
+      }
+
+      const generated = yield* requestDailySessionGeneration(
+        token,
+        validatedPayload.data,
+      );
+      yield* importSessionPayload(JSON.stringify(generated), {
+        onProgress: (progress) => {
+          this.importProgress = progress;
+          this.requestUpdate();
+          runClientUnscoped(
+            clientLog(
+              "info",
+              `[StudyDesk] Generated session import phase=${progress.phase}, completed=${progress.audioCompletedCount}/${progress.totalCards}.`,
+            ),
+          );
+        },
+      });
+      yield* clientLog(
+        "info",
+        "[StudyDesk] Generated session validated and stored; opening study view.",
+      );
+      yield* navigate("study");
+    }).pipe(
+      Effect.catchAll((error) =>
+        Effect.gen(this, function* () {
+          this.importProgress = null;
+          this.importError =
+            error instanceof Error ? error.message : String(error);
+          yield* clientLog(
+            "error",
+            "[StudyDesk] API session generation failed.",
+            error,
+          );
+        }),
+      ),
+      Effect.ensuring(
+        Effect.sync(() => {
+          this.sessionGenerationLoading = false;
+        }),
+      ),
+    );
+
+    runClientUnscoped(program);
+  };
+
   private handleImport = (e: Event) => {
     e.preventDefault();
     this.importError = null;
@@ -155,6 +258,59 @@ export class StudyDesk extends LitElement {
 
   private toggleQueue = () => {
     this.showQueue = !this.showQueue;
+  };
+
+  private startAdaptiveReview = () => {
+    const token = tokenState.peek();
+    if (!token) {
+      this.importError = "Adaptive review requires an authenticated session.";
+      return;
+    }
+    this.adaptiveReviewLoading = true;
+    this.importError = null;
+    const now = Date.now();
+    const due = grammarPointStore.state.peek()
+      .filter((progress) =>
+        progress.participationStatus !== "archived"
+        && progress.learningState !== "known"
+        && (progress.checkoutDue || new Date(progress.nextReview).getTime() <= now)
+      )
+      .slice(0, userPreferencesStore.dailyReviewLimit.peek());
+    const program = Effect.gen(this, function* () {
+      const cards: SessionCard[] = [];
+      for (const progress of due) {
+        const selected = yield* Effect.either(fetchNextValidatedExercise(token, progress.id));
+        if (selected._tag === "Left") continue;
+        const exercise = selected.right;
+        cards.push({
+          knowledgePointId: progress.id,
+          exerciseId: exercise.id,
+          englishContext: exercise.content.context,
+          japaneseSentence: exercise.content.japaneseSentence,
+          furigana: exercise.content.furigana.map((segment) => ({
+            kanji: segment.text,
+            ...(segment.reading ? { kana: segment.reading } : {}),
+          })),
+          audioUrl: null,
+          explanation: exercise.content.explanation,
+        });
+      }
+      if (cards.length === 0) {
+        return yield* Effect.fail(new Error(
+          due.length === 0
+            ? "No adaptive knowledge points are due."
+            : "No source-validated cached exercises are available. Due points were not graded or postponed.",
+        ));
+      }
+      yield* Effect.sync(() => activeSessionStore.loadSession(cards));
+      yield* navigate("study");
+    }).pipe(
+      Effect.catchAll((error) => Effect.sync(() => {
+        this.importError = error.message;
+      })),
+      Effect.ensuring(Effect.sync(() => { this.adaptiveReviewLoading = false; })),
+    );
+    runClientUnscoped(program);
   };
 
   private handlePreferenceUpdate = (e: Event, type: "review" | "newRule") => {
@@ -505,14 +661,15 @@ export class StudyDesk extends LitElement {
 
             <div class='pt-2.5 border-t border-zinc-900/40 flex items-center justify-between gap-4'>
               <p class='text-2xs text-zinc-400 leading-relaxed'>
-                💡 <strong>Stuck?</strong> Copy a specialized Cram Payload to generate highly focused practice sentences targeting your troublesome unmastered rules.
+                💡 <strong>Stuck?</strong> Generate a focused cram session targeting your troublesome unmastered rules.
               </p>
               <button 
-                @click=${this.triggerCramExport}
+                @click=${() => this.startGeneratedSession(true)}
+                ?disabled=${this.sessionGenerationLoading || this.importProgress !== null}
                 class='px-3.5 py-1.5 bg-yellow-500 hover:bg-yellow-600 text-zinc-950 font-bold rounded text-2xs transition-colors cursor-pointer shrink-0'
-                id='btn-cram-export'
+                id='btn-cram-generate'
               >
-                📋 Copy Cram Payload
+                ${this.sessionGenerationLoading ? "Generating…" : "Generate Cram Session"}
               </button>
             </div>
           </div>
@@ -525,7 +682,7 @@ export class StudyDesk extends LitElement {
         ` : ""}
 
         <div class="grid gap-6 md:grid-cols-2">
-          <!-- Setup Wizard Deck Card (Manual Handshake Compiler) -->
+          <!-- Generated session setup and manual fallback -->
           <div class="p-6 bg-zinc-950 border border-zinc-800 rounded-lg shadow-sm space-y-5">
             <div>
               <h2 class="text-lg font-semibold text-zinc-200">Conversational Japanese</h2>
@@ -534,52 +691,82 @@ export class StudyDesk extends LitElement {
 
             <div class="space-y-4 pt-2 border-t border-zinc-900">
               <div class="space-y-2">
-                <span class="text-xs font-semibold text-zinc-400 uppercase tracking-wider block">1. Export Progress</span>
+                <span class="text-xs font-semibold text-emerald-400 uppercase tracking-wider block">Adaptive media reviews</span>
+                <button
+                  @click=${this.startAdaptiveReview}
+                  ?disabled=${this.adaptiveReviewLoading}
+                  class="w-full py-2.5 bg-emerald-700 hover:bg-emerald-600 disabled:bg-zinc-800 text-white font-bold rounded text-sm transition-colors cursor-pointer"
+                >${this.adaptiveReviewLoading ? "Loading validated exercises…" : "Start adaptive review"}</button>
+                <p class="text-2xs text-zinc-500">Uses varied exercises already validated against the original subtitle on a source-capable device. If none exist, the point stays due.</p>
+              </div>
+              <div class="space-y-2">
+                <span class="text-xs font-semibold text-zinc-400 uppercase tracking-wider block">AI-generated daily session</span>
                 ${showMasteryGateWarning
                   ? html`
                       <button 
                         disabled
                         class="w-full py-2.5 bg-zinc-900/40 text-zinc-500 font-medium rounded text-sm border border-zinc-800/60 flex items-center justify-center gap-2 cursor-not-allowed"
-                        id="btn-export-progress"
+                        id="btn-generate-session"
                       >
                         🔒 Progression Locked (Gate Active)
                       </button>
                       <p class="text-2xs text-yellow-500/80 leading-normal">
-                        ⚠️ Your progress is locked under the 80% mastery threshold. Please use the <strong>Cram Payload</strong> above to review unmastered concepts first.
+                        ⚠️ Your progress is locked under the 80% mastery threshold. Generate a <strong>Cram Session</strong> above to review unmastered concepts first.
                       </p>
                     `
                   : html`
                       <button 
-                        @click=${this.triggerExport}
-                        class="w-full py-2.5 bg-zinc-900 hover:bg-zinc-850 text-zinc-100 hover:text-white font-medium rounded text-sm transition-colors cursor-pointer border border-zinc-800 flex items-center justify-center gap-2"
-                        id="btn-export-progress"
+                        @click=${() => this.startGeneratedSession(false)}
+                        ?disabled=${this.sessionGenerationLoading || this.importProgress !== null}
+                        class="w-full py-2.5 bg-green-650 hover:bg-green-600 disabled:bg-zinc-800 disabled:text-zinc-500 text-white font-bold rounded text-sm transition-colors cursor-pointer flex items-center justify-center gap-2"
+                        id="btn-generate-session"
                       >
-                        📋 Copy Progress Payload
+                        ${this.sessionGenerationLoading
+                          ? "Generating session…"
+                          : "✨ Generate & Start Session"}
                       </button>
-                      <p class="text-2xs text-zinc-500">Copies your due progress rules so the AI can compile matching cards.</p>
+                      <p class="text-2xs text-zinc-500">Uses the server's OPENAI_API_KEY. Your key is never sent to or stored by the browser.</p>
                     `}
               </div>
 
-              <form @submit=${this.handleImport} class="space-y-2 pt-2 border-t border-zinc-900">
-                <span class="text-xs font-semibold text-zinc-400 uppercase tracking-wider block">2. Import Session</span>
-                <textarea
-                  @input=${(e: Event) => { this.pasteValue = (e.target as HTMLTextAreaElement).value; }}
-                  placeholder="Paste the compiled JSON session payload here..."
-                  class="w-full h-24 px-3 py-2 bg-zinc-900 border border-zinc-800 rounded text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-zinc-700 text-xs font-mono"
-                ></textarea>
-                
-                ${this.importError ? html`<p class="text-xs text-red-400 font-medium">${this.importError}</p>` : ""}
+              ${this.importError
+                ? html`<p class="text-xs text-red-400 font-medium" role="alert">${this.importError}</p>`
+                : ""}
 
-                <button 
-                  type="submit"
-                  ?disabled=${this.importProgress !== null}
-                  class="w-full py-2.5 bg-green-650 hover:bg-green-600 disabled:bg-zinc-800 disabled:text-zinc-500 disabled:cursor-wait text-white font-bold rounded text-sm transition-colors cursor-pointer"
-                >
-                  ${this.importProgress
-                    ? "Generating audio..."
-                    : "🚀 Import & Start Study"}
-                </button>
-              </form>
+              <details class="space-y-3 border-t border-zinc-900 pt-3">
+                <summary class="cursor-pointer text-xs font-semibold text-zinc-500 hover:text-zinc-300">Manual JSON fallback</summary>
+                <div class="space-y-2 pt-2">
+                  <button
+                    @click=${this.triggerExport}
+                    class="w-full py-2 bg-zinc-900 hover:bg-zinc-850 text-zinc-300 rounded text-xs border border-zinc-800"
+                    id="btn-export-progress"
+                  >
+                    📋 Copy Progress Payload
+                  </button>
+                  <button
+                    @click=${this.triggerCramExport}
+                    class="w-full py-2 bg-zinc-900 hover:bg-zinc-850 text-zinc-300 rounded text-xs border border-zinc-800"
+                    id="btn-cram-export"
+                  >
+                    📋 Copy Cram Payload
+                  </button>
+                  <form @submit=${this.handleImport} class="space-y-2">
+                    <textarea
+                      @input=${(e: Event) => { this.pasteValue = (e.target as HTMLTextAreaElement).value; }}
+                      placeholder="Paste a compiled JSON session payload here..."
+                      aria-label="Manual session JSON"
+                      class="w-full h-24 px-3 py-2 bg-zinc-900 border border-zinc-800 rounded text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-zinc-700 text-xs font-mono"
+                    ></textarea>
+                    <button
+                      type="submit"
+                      ?disabled=${this.importProgress !== null || this.sessionGenerationLoading}
+                      class="w-full py-2 bg-zinc-800 hover:bg-zinc-700 disabled:text-zinc-500 text-zinc-200 font-medium rounded text-xs"
+                    >
+                      Import JSON & Start Study
+                    </button>
+                  </form>
+                </div>
+              </details>
             </div>
           </div>
 
@@ -681,7 +868,7 @@ export class StudyDesk extends LitElement {
               ` : ""}
             </div>
             <div class="p-4 bg-zinc-900/40 border border-zinc-900 rounded-lg text-xs text-zinc-400 leading-relaxed">
-              💡 <strong>Handshake Flow</strong>: Click "Copy Progress", paste it to your https://aistudio.google.com with 3.5 Flash selected in the playground to generate your daily review cards, then paste the returned JSON back here to review with zero latency.
+              💡 <strong>API flow</strong>: Gafu sends the bounded study queue to its authenticated server endpoint, validates the structured response, optionally generates audio, and starts the session automatically. Manual JSON remains available as an offline fallback.
             </div>
           </div>
         </div>

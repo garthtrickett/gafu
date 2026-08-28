@@ -61,9 +61,9 @@ test.describe("SRS Pacing, Daily Cap, and Mastery Gating E2E Flow", () => {
 
     test("should enforce lock-step daily pacing and caps during study desk operations", async ({ page, context }) => {
     if (!testUser) {
-      await context.grantPermissions(["clipboard-read", "clipboard-write"]);
       throw new Error("testUser is undefined");
     }
+    await context.grantPermissions(["clipboard-read", "clipboard-write"]);
 
     // 1. Authenticate the test user
     await page.goto("/login");
@@ -78,6 +78,8 @@ test.describe("SRS Pacing, Daily Cap, and Mastery Gating E2E Flow", () => {
     // 2. Initial state: Active queue is empty, but Fallback values are displayed on empty store
     await page.locator("button", { hasText: "View Active Queue" }).click();
     await expect(page.locator("text=Due Today - Daily Target (11 rules)")).toBeVisible();
+
+    await page.getByText("Manual JSON fallback", { exact: true }).click();
 
     // 3. Export Progress payload: This initiates first-time pacing
     // Click Copy Progress Payload button to compile progress
@@ -136,6 +138,7 @@ test.describe("SRS Pacing, Daily Cap, and Mastery Gating E2E Flow", () => {
     const srsCards = grammarPoints.map((gp) => ({
       id: crypto.randomUUID() as SrsCardId,
       user_id: currentUser.userId,
+      knowledge_point_id: gp.id,
       grammar_point_id: gp.id,
       ease_factor: 2.5,
       repetitions: 1,
@@ -187,6 +190,7 @@ test.describe("SRS Pacing, Daily Cap, and Mastery Gating E2E Flow", () => {
     const srsCards = grammarPoints.map((gp) => ({
       id: crypto.randomUUID() as SrsCardId,
       user_id: currentUser.userId,
+      knowledge_point_id: gp.id,
       grammar_point_id: gp.id,
       ease_factor: 2.5,
       repetitions: 1,
@@ -263,15 +267,16 @@ test.describe("SRS Pacing, Daily Cap, and Mastery Gating E2E Flow", () => {
       ]
     };
 
-    const textarea = page.locator("textarea");
+    await page.getByText("Manual JSON fallback", { exact: true }).click();
+    const textarea = page.getByLabel("Manual session JSON");
     await textarea.fill(JSON.stringify(mockPayload));
-    await page.locator("button", { hasText: "Import & Start Study" }).click();
+    await page.getByRole("button", { name: "Import JSON & Start Study" }).click();
 
     // Confirm transition to the active study session view
     await expect(page).toHaveURL("/study");
 
     // Grade the card as Correct (difficulty: 4.5, stability: 1.0, repetitions: 1)
-    await page.getByRole("button", { name: "Correct", exact: true }).click();
+    await page.getByRole("button", { name: /^Correct/ }).click();
     await expect(page.locator("h2")).toContainText("Review Completed!");
 
     // Return to study desk
