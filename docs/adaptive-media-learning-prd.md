@@ -4,7 +4,7 @@
 
 **Last updated:** 2026-08-28
 
-**Products:** Gafu and Yomikata (`jp-player`)
+**Product:** Gafu, with media capabilities migrated from Yomikata (`jp-player`)
 
 ## Product summary
 
@@ -51,8 +51,9 @@ notice those targets in real context, and makes sure they do not forget them.
 
 1. Convert selected media into a small, personalized learning syllabus.
 2. Explicitly teach targets before their first relevant episode encounter.
-3. Guarantee that newly primed targets receive immediate and next-day retrieval
-   instead of waiting behind an old backlog.
+3. Schedule newly primed targets for immediate and next-day retrieval, and offer
+   them ahead of an old backlog whenever the learner opens Gafu during those
+   review windows.
 4. Store durable knowledge as grammar or vocabulary points with one SRS schedule
    per point.
 5. Test knowledge across varied contexts rather than repeated sentences.
@@ -100,9 +101,11 @@ they do not create independent SRS queues.
 
 ### Capacity before novelty
 
-New targets are admitted only when Gafu can guarantee their early reviews.
-When capacity is exhausted, the episode reinforces existing learning points
-instead of creating more review debt.
+New targets are admitted only when Gafu can reserve capacity for their early
+reviews. Gafu controls when a review becomes due and where it appears in an
+opened session; it cannot guarantee that the learner returns. When capacity is
+exhausted, the episode reinforces existing learning points instead of creating
+more review debt.
 
 ### AI proposes; evidence and validation constrain it
 
@@ -231,8 +234,10 @@ The learner can grade or classify each point as:
 
 Recalled and missed points both enter normal learning, with a shorter interval
 after failure. Already-known points update the learner profile. Wrongly analyzed
-items are quarantined from future generation pending correction. Not-useful
-items are archived without polluting the active queue.
+candidate or encounter evidence is quarantined from future generation pending
+correction; a shared curated point is not globally changed by one report.
+Not-useful items are archived for that learner without polluting the active
+queue.
 
 ### 6. Review through Gafu
 
@@ -241,8 +246,8 @@ bank or generates a new one. The exercise changes context and surface form while
 isolating the same target.
 
 The original episode sentence is never placed in the exercise bank. The system
-may retain a local, non-displayable similarity signature to prevent accidental
-exact or near-exact reuse.
+retains the device-local, non-displayable `source_signature_v1` described below
+to prevent accidental exact or near-exact reuse.
 
 ### 7. Re-encounter in later media
 
@@ -254,8 +259,8 @@ review of the existing knowledge point.
 ## Knowledge lifecycle
 
 ```text
-candidate
-    ↓ accepted and primer started
+media candidate (no knowledge point and no schedule yet)
+    ↓ accepted, canonicalized, and linked to a new or existing point
 introduced
     ↓ primer retrieval completed
 primed
@@ -267,12 +272,32 @@ learning
 stable
 ```
 
-Alternative transitions:
+These labels belong to separate records and must not be collapsed into one
+status column:
 
-- `candidate → known` when the learner reports prior knowledge.
-- `candidate/introduced → archived` when rejected or not useful.
-- `primed → learning` when the episode is abandoned; review remains due.
-- any state → quarantined when the underlying analysis is found to be wrong.
+- A **media candidate** is an analysis result. Its disposition is pending,
+  accepted, rejected, already known, not useful, or wrongly analyzed. It is not
+  itself a scheduled knowledge point.
+- A **knowledge point** is a canonical definition. Its catalogue status is
+  active, archived, or quarantined. Quarantining a personal point prevents that
+  definition from generating exercises; one learner's report must not
+  quarantine a shared curated point globally.
+- **Learner progress** owns `introduced`, `primed`, `encountered`, `learning`,
+  `stable`, and `known`, plus a user-scoped active or archived participation
+  status. This is the only record that owns the SRS schedule.
+
+Alternative transitions and dispositions:
+
+- Marking a candidate already known resolves its canonical point and creates or
+  updates learner progress as `known`; it does not create a primer.
+- Rejecting a candidate or marking it not useful before acceptance creates no
+  knowledge point or schedule.
+- Marking an introduced point not useful archives that learner's participation
+  and removes it from the active queue without archiving a curated definition.
+- `primed → learning` when the episode is abandoned; its review remains due.
+- A wrongly analyzed candidate or encounter is quarantined as analysis
+  evidence. A personal knowledge point is quarantined only when its canonical
+  definition is itself invalid.
 
 No transition from `encountered` to `stable` is allowed based only on passive
 exposure.
@@ -300,9 +325,11 @@ meanings.
 
 Before AI ranking, local deterministic processing should:
 
-1. Parse subtitles into cue IDs, timestamps, and text.
-2. Tokenize vocabulary into surface form, lemma, reading, part of speech, and
-   conjugation where available.
+1. Parse subtitles into stable cue IDs, immutable source timestamps, effective
+   aligned timestamps, and normalized text.
+2. Tokenize vocabulary into cue-relative target spans, surface form, lemma,
+   reading, part of speech, conjugation type, and conjugation form where
+   available.
 3. Match unambiguous vocabulary against a dictionary.
 4. Count occurrences and surface-form diversity.
 5. Remove punctuation, names, obvious noise, and already-known items.
@@ -310,8 +337,37 @@ Before AI ranking, local deterministic processing should:
 7. Calculate first occurrence and recurrence within the episode.
 8. Produce a bounded candidate set for AI analysis.
 
-The current local tokenizer retains surface form and reading; integration will
-need to preserve lemma, part of speech, and conjugation metadata as well.
+Yomikata currently returns only surface form, reading, punctuation, and line
+break metadata even though Kuromoji produces additional fields. Before
+integration, its tokenizer contract must retain the lemma (`basic_form`), full
+part-of-speech hierarchy, conjugation type and form, and cue-relative start/end
+offsets in the normalized cue text. The contract must declare its text
+normalization and offset-unit version so evidence spans can be reproduced.
+Yomikata supplies lexical evidence; Gafu remains responsible for mapping that
+evidence to a canonical grammar alias or vocabulary lemma-sense point.
+
+### Stable cue identity and aligned timing
+
+The current Yomikata IDs (`srt-<index>` and `ass-<index>`) are session-local
+positions and are insufficient for persistent provenance. The extracted parser
+must calculate:
+
+- `subtitle_track_fingerprint`: SHA-256 of the exact subtitle-file bytes;
+- `source_cue_ordinal`: the record's position in the source file before cues are
+  sorted by time; and
+- `cue_id`: SHA-256 of the track fingerprint, subtitle format, and source cue
+  ordinal.
+
+Loading the same subtitle bytes again therefore produces the same cue IDs. An
+edited subtitle file intentionally produces a new track fingerprint and new
+IDs. Cue identity must not depend on text cleanup, automatic alignment, manual
+offset, or playback order.
+
+Each cue retains immutable source start/end timestamps. Automatic drift/offset
+alignment and manual adjustment are stored as a separate versioned timing
+transform from source time to effective playback time. Encounter provenance
+records both the cue ID and the timing-transform version used; changing
+alignment never changes cue identity.
 
 ### AI ranking criteria
 
@@ -406,8 +462,10 @@ compares that cost with:
 - recent completion rate;
 - current unstable-pool size.
 
-New targets are reduced or disabled when Gafu cannot guarantee both an immediate
-checkout and a next-day review.
+New targets are reduced or disabled when projected capacity cannot reserve both
+an immediate checkout slot and a next-day review slot. A reserved slot means the
+point is due and receives queue priority if the learner opens Gafu; it is not a
+claim that the learner will attend.
 
 Suggested policy:
 
@@ -444,7 +502,7 @@ Both kinds share:
 
 - one canonical identity;
 - curated or personal scope;
-- lifecycle state;
+- catalogue status and a separate user-scoped learner state;
 - one user-specific SRS schedule;
 - difficulty and stability;
 - encounter and review history;
@@ -495,8 +553,8 @@ The generator receives:
 - recent exercise fingerprints and variation history;
 - performance weaknesses;
 - desired modality and difficulty;
-- forbidden source-sentence fingerprint and, transiently, text for similarity
-  checking;
+- source-exclusion policy version; the device-local source signature and its key
+  are not sent to the generator;
 - target locale and natural-spoken-language requirements.
 
 It returns structured exercise data containing:
@@ -543,9 +601,32 @@ The exact episode sentence:
   near-exact generated duplicates.
 
 Temporary access to the cue text is allowed only while analyzing the local
-subtitle or checking similarity. Persistent storage should contain the minimum
-metadata needed for provenance and deduplication. Similarity signatures must not
-be rendered back to the learner or sent in logs.
+subtitle or checking similarity. Device-local persistent storage should contain
+the minimum metadata needed for provenance and deduplication. Similarity
+signatures must not be rendered back to the learner or sent in logs.
+
+The MVP uses a versioned, device-local `source_signature_v1` rather than an
+unspecified semantic fingerprint:
+
+1. Normalize the sentence with Unicode NFKC, standardized whitespace, and the
+   same versioned Japanese tokenizer used for candidate evidence.
+2. Store a SHA-256 hash of the normalized sentence for exact-match rejection.
+3. Build a keyed bottom-k lexical sketch from lemma and character n-grams. The
+   shingle hashes use a device-local key so the stored sketch is not a plain
+   dictionary of recoverable source fragments.
+4. Build a quantized sentence embedding with a pinned local model and record its
+   model and normalization version.
+5. For every generated sentence, compute the same values locally and reject an
+   exact hash match or a lexical/embedding similarity above versioned thresholds
+   established by the release evaluation set.
+
+The signature, model inputs, and device key are not learner-visible, do not
+enter application logs, and do not sync by default. The server may return a
+generated candidate, but the client performs the final source-reuse check before
+the exercise can become learner-facing. If a signature cannot be evaluated
+because its tokenizer or embedding model is unavailable or incompatible, the
+candidate remains unvalidated and cannot enter the exercise bank. A previously
+validated cached exercise may still be used.
 
 ### Exercise validation
 
@@ -574,6 +655,23 @@ surface form or modality.
 This section describes product entities rather than committing to exact table
 names or migration structure.
 
+### Media candidate
+
+```text
+id
+analysis_run_id
+kind: grammar | vocabulary
+proposed canonical identity and sense/function
+evidence cue IDs and target spans
+confidence
+disposition: pending | accepted | rejected | already_known | not_useful |
+             wrongly_analyzed
+resolved_knowledge_point_id, when accepted or already known
+```
+
+A candidate has no review schedule. Acceptance or an already-known correction
+must first resolve it to exactly one canonical knowledge point.
+
 ### Knowledge point
 
 ```text
@@ -581,10 +679,14 @@ id
 kind: grammar | vocabulary
 canonical_key
 scope: curated | personal
-status: active | archived | quarantined
+catalogue_status: active | archived | quarantined
 created_from: catalogue | media | manual
 confidence
 ```
+
+Catalogue status describes whether the definition itself is usable. It is not a
+learner's mastery state and is not changed globally by a learner archiving or
+reporting one occurrence.
 
 ### Grammar details
 
@@ -615,7 +717,8 @@ register
 ```text
 user_id
 knowledge_point_id
-learning_state
+participation_status: active | archived
+learning_state: introduced | primed | encountered | learning | stable | known
 difficulty
 stability
 next_review
@@ -629,17 +732,23 @@ introduced_at
 user_id
 knowledge_point_id
 media_fingerprint
+subtitle_track_fingerprint
 user-visible source label
 cue_id
-cue start/end
+source cue start/end
+timing transform ID/version
+effective playback start/end at encounter
 target surface form
-sentence fingerprint
+source signature version
+device-local source signature reference
 encountered_at
 ```
 
 Raw subtitle text is ephemeral by default and is not required in the persistent
-encounter record. The sentence fingerprint includes an exact hash and a
-non-displayable similarity signature; it is not a reversible copy of the line.
+encounter record. Device-local source-exclusion storage contains the versioned
+exact hash, keyed lexical sketch, and local embedding described above; none is a
+renderable copy of the line. Synced encounter provenance need not contain the
+device-local lexical sketch, embedding, or key.
 
 ### Exercise
 
@@ -647,7 +756,7 @@ non-displayable similarity signature; it is not a reversible copy of the line.
 id
 knowledge_point_id
 prompt and answer data
-sentence fingerprint
+generated sentence fingerprint and signature version
 variation tags
 prerequisite IDs
 validation status
@@ -666,17 +775,43 @@ reviewed_at
 scheduling change
 ```
 
+### Migration from the current Gafu schema
+
+Gafu currently models canonical content in `grammar_point`, and each `srs_card`
+has a required `grammar_point_id` with a unique `(user_id, grammar_point_id)`
+schedule. Phase 1 must migrate this rather than layering vocabulary beside the
+grammar-only foreign key:
+
+1. Create the shared knowledge-point identity plus grammar and vocabulary detail
+   records.
+2. Backfill every existing grammar point into a grammar knowledge point,
+   preserving identifiers where possible or retaining an explicit mapping.
+3. Replace `srs_card.grammar_point_id` with `knowledge_point_id`, preserve all
+   existing ease, repetition, interval, difficulty, stability, review-date, HLC,
+   and user ownership data, and enforce one unique `(user_id,
+   knowledge_point_id)` scheduling row.
+4. Migrate server sync contracts, generated database types, client stores,
+   seed/restore utilities, and tests in the same compatibility plan so no path
+   can create a grammar-only or sentence-level sibling schedule.
+5. Add vocabulary lemma-sense details only after the shared identity and
+   scheduling invariant are in place.
+
 ## Functional requirements
 
 ### Material and analysis
 
 - **MAT-1:** The player accepts the existing supported video and subtitle formats.
 - **MAT-2:** Video stays local and remains playable if syllabus generation fails.
-- **MAT-3:** Every parsed subtitle cue has a stable ID and timestamp range.
-- **MAT-4:** Vocabulary candidates preserve lemma, reading, part of speech, and
-  observed surface form.
+- **MAT-3:** Every parsed subtitle cue has an ID namespaced by the exact subtitle
+  track fingerprint and source-record ordinal, plus immutable source timestamps.
+- **MAT-4:** Vocabulary candidates preserve normalized-text target offsets,
+  surface form, lemma, reading, part-of-speech hierarchy, conjugation type, and
+  conjugation form.
 - **MAT-5:** Analysis can identify repeated occurrences without persisting the
   full subtitle transcript.
+- **MAT-6:** Alignment and manual timing adjustments are versioned transforms;
+  they change effective playback time without changing cue identity or source
+  timestamps.
 
 ### Selection
 
@@ -713,7 +848,8 @@ scheduling change
 
 - **GEN-1:** New grammar exercises use stable vocabulary wherever possible.
 - **GEN-2:** New vocabulary exercises use stable grammar wherever possible.
-- **GEN-3:** Exact and near-exact source-sentence reuse is rejected.
+- **GEN-3:** Exact and near-exact source-sentence reuse is rejected locally using
+  the versioned exact hash, keyed lexical sketch, and embedding comparison.
 - **GEN-4:** Recent exercise repetition is rejected or deprioritized.
 - **GEN-5:** Failed validation cannot add learner-facing exercises.
 - **REV-1:** High stability requires success in multiple distinct contexts.
@@ -728,7 +864,10 @@ scheduling change
 - Whole videos, audio tracks, and full subtitle archives are not stored by Gafu.
 - Selected episode lines are transient analysis inputs, not permanent cards.
 - Persistent encounter provenance uses timestamps, source labels, target forms,
-  and sentence fingerprints by default rather than raw dialogue.
+  and cue/track fingerprints by default rather than raw dialogue.
+- Source-exclusion lexical sketches, embeddings, and their device key remain
+  device-local by default. They are not rendered, logged, or automatically
+  synced.
 - Server logs must not include subtitle text, generated answers, local filenames,
   or video metadata beyond non-reversible operational identifiers.
 - Deleting a media-derived personal point deletes its encounter provenance and
@@ -754,11 +893,49 @@ and retained content regardless of legal conclusion.
 
 ## Integration direction
 
-Gafu should become the application shell with a Watch area powered by extracted
-Yomikata modules. An iframe would complicate learner state, keyboard handling,
-persistence, and styling.
+Gafu should become the application shell with a Watch area powered by media
+modules migrated from Yomikata. An iframe would complicate learner state,
+keyboard handling, persistence, and styling.
 
-Yomikata remains responsible for:
+Yomikata is not a Chrome extension and Gafu does not call it as a remote
+service. Its reusable modules are compiled into Gafu's browser application. The
+learner selects local video and subtitle files in the Watch area, and the
+browser retains ownership of those `File` objects for the session.
+
+The `jp-player` repository is a migration source, not a permanent package
+dependency. Relevant source, tests, browser assets, and attribution are moved
+into Gafu, verified there, and thereafter maintained only in Gafu. Once parity
+and the Gafu Watch smoke tests pass, `jp-player` is marked deprecated and made
+read-only or archived with a pointer to Gafu. Deprecation happens only after
+Gafu no longer imports, fetches, or builds anything from that repository.
+
+The current Yomikata implementation centralizes file loading, playback state,
+subtitle rendering, tokenization calls, timing, and DOM events in `src/main.js`.
+Integration therefore begins with a behavior-preserving extraction into
+framework-neutral modules rather than importing the standalone page:
+
+- a pure subtitle parser that returns stable cue records;
+- a tokenizer that returns the full normalized token/evidence contract;
+- a playback controller that exposes the active clock and emits cue-entered,
+  cue-left, stopped, and ended events;
+- audio repair and subtitle-alignment adapters; and
+- a thin Gafu Lit view/controller that renders player state and turns player
+  events into Gafu encounter actions.
+
+The boundary is an in-process typed module API, not HTTP. It exposes parsed
+cues, normalized token metadata, playback time, timing-transform changes, and
+encounter events. It never transfers ownership of the video `File` to Gafu's
+remote server.
+
+Yomikata's current `/api/repair-audio`, `/api/analyze-audio`, and
+`/api/align-subtitles` routes are local Vite middleware backed by local FFmpeg;
+they are not suitable as hosted Gafu endpoints because posting to them remotely
+would upload the video. Hosted Gafu must use browser/WASM processing. A future
+native path may use an explicitly installed loopback-only helper, but absence of
+that helper must leave original playback and manual subtitle offset available.
+It must never cause a remote upload or make playback depend on alignment.
+
+The media modules migrated into Gafu remain responsible for:
 
 - local video and subtitle loading;
 - subtitle parsing and active-cue timing;
@@ -774,9 +951,8 @@ Gafu remains responsible for:
 - AI selection, priming, and exercise generation;
 - checkout, review, and mastery evidence.
 
-The integration boundary should expose parsed cues, normalized token metadata,
-playback time, and encounter events without transferring ownership of the video
-file to Gafu's server.
+Canonical candidate matching and all durable learner-state mutations occur on
+the Gafu side of this boundary.
 
 ## Success metrics
 
@@ -800,11 +976,18 @@ file to Gafu's server.
 - Number and age of overdue points.
 - Size of the unstable recent pool.
 - Projected seven-day review load.
-- Percentage of days where fresh primed points miss their next-day review.
+- Percentage of next-day windows in which the learner returns and the fresh
+  primed point is offered before mature backlog.
+- Learner completion rate for next-day reviews, reported separately from queue
+  ordering failures.
 - Average review-session duration.
 
-The fresh-point starvation rate should be effectively zero. Target volume must
-not be increased merely to improve syllabus acceptance or point-creation metrics.
+The application-controlled fresh-point starvation rate should be effectively
+zero: among review sessions opened while a newly primed point is due, measure
+the percentage in which an eligible fresh point was not offered before mature
+backlog. Days on which the learner does not open Gafu are missed attendance, not
+queue starvation. Target volume must not be increased merely to improve
+syllabus acceptance or point-creation metrics.
 
 ### AI quality guardrails
 
@@ -897,6 +1080,8 @@ The following are release-blocking invariants:
 - every vocabulary recommendation passes lemma and reading validation;
 - no known point is presented as new after canonical alias resolution;
 - no exact source sentence is accepted as a primer or exercise;
+- a source-distinct exercise is not accepted unless the client can evaluate a
+  compatible version of the source signature;
 - no failed or quarantined generation reaches review;
 - each accepted exercise identifies exactly one scheduled target;
 - adding exercises does not increase the number of scheduling records;
@@ -916,6 +1101,9 @@ than logging raw source dialogue.
 ### Phase 1: Knowledge foundation
 
 - Introduce a shared knowledge-point abstraction for grammar and vocabulary.
+- Backfill existing `grammar_point` rows and migrate `srs_card` from
+  `grammar_point_id` to a unique per-user `knowledge_point_id` without losing
+  review or sync state.
 - Add vocabulary lemma-sense progress.
 - Preserve existing grammar progress during migration.
 - Schedule one queue entry per point.
@@ -923,7 +1111,11 @@ than logging raw source dialogue.
 
 ### Phase 2: Episode syllabus
 
-- Integrate subtitle parsing and normalized token data.
+- Extract Yomikata's parser, tokenizer, playback clock, timing transforms, and
+  encounter events from its standalone page into browser modules consumed by
+  Gafu's Watch area.
+- Replace positional cue IDs and truncated surface/reading tokens with the
+  stable cue identity and full normalized token contracts.
 - Compare episode candidates with the learner profile.
 - Add AI ranking with evidence and validation.
 - Enforce a global daily target allowance and reinforcement fallback.
@@ -967,10 +1159,12 @@ The first complete version is successful when:
 6. At least two materially different generated contexts are required before a
    point can gain a long interval.
 7. The original episode line never appears in the card bank or generated review.
-8. An exact hash and non-displayable similarity signature prevent exact and
-   near-exact source reuse while raw source text is not persistently required.
-9. Newly primed targets receive checkout and next-day priority regardless of the
-   mature backlog.
+8. A versioned exact hash, keyed lexical sketch, and local embedding comparison
+   reject exact and near-exact source reuse without persistently storing raw
+   source text.
+9. Newly primed targets are scheduled for checkout and next-day review and,
+   whenever the learner opens an eligible review session, are offered before
+   the mature backlog.
 10. When capacity is exhausted, the system offers reinforcement targets and adds
     no new review debt.
 11. Playback works when AI analysis or exercise generation is unavailable.
@@ -992,6 +1186,11 @@ The first complete version is successful when:
 - Passive exposure does not count as retrieval.
 - A backlog blocks new admissions but cannot starve a point that was already
   primed.
+- Yomikata is integrated as browser modules inside Gafu's Watch area, not as a
+  Chrome extension, iframe, or remote player API.
+- The relevant `jp-player` implementation and tests move into Gafu; Gafu has no
+  runtime or build dependency on `jp-player` before that repository is
+  deprecated.
 
 ## Open product questions
 
@@ -1001,8 +1200,9 @@ The first complete version is successful when:
    placement sampling, gradual correction, or a combination?
 3. Should the player show target highlighting on first encounter by default, or
    require the learner to identify it before revealing the marker?
-4. What similarity threshold is sufficient to reject an AI-generated near-copy
-   of a source sentence?
+4. What lexical-sketch and embedding thresholds on the versioned evaluation set
+   best reject AI-generated near-copies without rejecting legitimately varied
+   examples?
 5. Should stopping mid-episode trigger checkout immediately or offer it on the
    next app visit?
 6. What review-time budget should be the default alongside the existing

@@ -1,0 +1,47 @@
+{
+  "version": "adaptive_media_eval_v1",
+  "copyright": "synthetic",
+  "recommendationCases": [
+    {
+      "id": "early-contracted-grammar",
+      "learner": {
+        "knownGrammar": ["〜ている"],
+        "knownVocabulary": ["入れる", "鞄"],
+        "remainingCapacity": 1
+      },
+      "cue": "うん、もう鞄に入れといたよ。",
+      "expectedCanonicalKey": "grammar:〜ておく",
+      "expectedDisposition": "recommend"
+    },
+    {
+      "id": "zero-capacity",
+      "learner": {
+        "knownGrammar": [],
+        "knownVocabulary": [],
+        "remainingCapacity": 0
+      },
+      "cue": "電車に間に合った！",
+      "expectedDisposition": "reinforcement_or_none"
+    }
+  ],
+  "sourceSimilarityCases": [
+    {
+      "id": "exact",
+      "source": "今日は早めに準備しておく。",
+      "candidate": "今日は早めに準備しておく。",
+      "expected": "reject"
+    },
+    {
+      "id": "lexical-near-copy",
+      "source": "今日は早めに準備しておく。",
+      "candidate": "明日は早めに準備しておく。",
+      "expected": "reject"
+    },
+    {
+      "id": "varied-context",
+      "source": "今日は早めに準備しておく。",
+      "candidate": "旅行の前にホテルを予約しておきます。",
+      "expected": "accept"
+    }
+  ]
+}
