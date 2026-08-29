@@ -21,7 +21,12 @@ export const sentenceGeneratorAgent = new Agent({
     5. Segment the Japanese sentence into a sequence of "furigana" blocks. Each block must either contain simple kana/punctuation (with "kana" field omitted), or a kanji block (with the "kana" field populated with its hiragana reading).
   `,
   model: {
-    id: "openai/gpt-4o-mini",
+    id: "openai/gpt-5.6-luna",
     apiKey: process.env.OPENAI_API_KEY || "",
-  }
+  },
+  defaultOptions: {
+    providerOptions: {
+      openai: { reasoningEffort: "none" },
+    },
+  },
 });

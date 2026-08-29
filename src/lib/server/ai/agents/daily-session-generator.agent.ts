@@ -33,7 +33,12 @@ export const dailySessionGeneratorAgent = new Agent({
     structured object.
   `,
   model: {
-    id: "openai/gpt-4o-mini",
+    id: "openai/gpt-5.6-luna",
     apiKey: process.env.OPENAI_API_KEY || "",
+  },
+  defaultOptions: {
+    providerOptions: {
+      openai: { reasoningEffort: "none" },
+    },
   },
 });
