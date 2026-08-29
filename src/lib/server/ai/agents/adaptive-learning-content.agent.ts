@@ -19,7 +19,12 @@ export const adaptiveLearningContentAgent = new Agent({
     requested structured object. Prefer no content over invented target details.
   `,
   model: {
-    id: "openai/gpt-4o-mini",
+    id: "openai/gpt-5.6-luna",
     apiKey: process.env.OPENAI_API_KEY || "",
+  },
+  defaultOptions: {
+    providerOptions: {
+      openai: { reasoningEffort: "none" },
+    },
   },
 });
