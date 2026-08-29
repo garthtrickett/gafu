@@ -14,7 +14,7 @@ import { syncRoutes } from "./routes/sync.ts";
 import { aiRoutes } from "./routes/ai";
 import { ttsRoutes } from "./routes/tts.ts";
 import { adaptiveMediaRoutes } from "./routes/adaptive-media.ts";
-import { localMediaRoutes } from "./routes/local-media.ts";
+import { localMediaRoutes, requestBodyLimitBytes } from "./routes/local-media.ts";
 import { db } from "../db/client";
 import { seedDb } from "../db/seed";
 import { serverRuntime } from "../lib/server/server-runtime";
@@ -209,7 +209,13 @@ if (process.env.NODE_ENV !== "test" || process.env.PLAYWRIGHT_TEST === "1") {
   );
 
   const startServer = () => {
-    app.listen({ hostname: "0.0.0.0", port });
+    const maxRequestBodySize = requestBodyLimitBytes();
+    void serverRuntime.runPromise(Effect.logInfo("[Server] Starting HTTP listener.", {
+      port,
+      maxRequestBodySize,
+      localMediaHelperEnabled: maxRequestBodySize > 128 * 1024 * 1024,
+    }));
+    app.listen({ hostname: "0.0.0.0", port, maxRequestBodySize });
     console.info(`🦊 Elysia is running at ${app.server?.hostname}:${app.server?.port}`);
   };
 

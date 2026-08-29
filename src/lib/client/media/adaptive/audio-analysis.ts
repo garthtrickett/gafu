@@ -1,9 +1,10 @@
 import { Effect } from "effect";
 import { clientLog } from "../../clientLog.ts";
-import { isLoopbackHostname } from "../../../shared/loopback.ts";
-
-const LOCAL_MEDIA_HELPER_HEADER = "X-Gafu-Local-Media";
-const LOCAL_MEDIA_HELPER_VERSION = "audio-envelope-v1";
+import {
+  LOCAL_MEDIA_HELPER_HEADER,
+  LOCAL_MEDIA_HELPER_VERSION,
+  isLoopbackHostname,
+} from "../../../shared/local-media-helper.ts";
 
 export type SpeechEnvelopeDecoder = (file: File) => Effect.Effect<Float64Array, Error>;
 

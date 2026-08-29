@@ -662,7 +662,12 @@ It requires `ffmpeg` on the local machine's `PATH`; browser decoding and manual
 timing remain the no-helper fallback. Development enables it automatically;
 a production-shaped local run must explicitly set
 `GAFU_LOCAL_MEDIA_HELPER=true` and is still restricted to loopback host and
-origin checks.
+origin checks, plus the backend verifies the TCP peer is loopback. When enabled,
+Bun's streaming body ceiling is raised to 64 GiB
+so ordinary local video files reach FFmpeg; hosted production retains Bun's
+128 MiB default ceiling. The helper stages the upload in an OS-managed,
+session-scoped temporary directory so FFmpeg receives seekable input, then
+removes that directory on both success and failure.
 
 Deferred work cannot be pulled into an earlier phase merely to simplify an
 implementation. If an MVP invariant appears to require it, stop and revise the

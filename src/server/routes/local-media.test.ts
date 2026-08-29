@@ -6,8 +6,14 @@ import {
   isLocalMediaHelperEnabled,
   isLoopbackHostname,
   isLoopbackOrigin,
+  isLoopbackPeerAddress,
   makeLocalMediaRoutes,
+  requestBodyLimitBytes,
 } from "./local-media.ts";
+import {
+  DEFAULT_REQUEST_BODY_LIMIT_BYTES,
+  LOCAL_MEDIA_REQUEST_BODY_LIMIT_BYTES,
+} from "../../lib/shared/local-media-helper.ts";
 
 describe("loopback local-media route", () => {
   it("accepts a guarded localhost stream and returns its speech envelope", async () => {
@@ -77,6 +83,9 @@ describe("loopback local-media route", () => {
     expect(isLoopbackOrigin("http://localhost:3005")).toBe(true);
     expect(isLoopbackOrigin("http://[::1]:3005")).toBe(true);
     expect(isLoopbackOrigin("https://life-io.xyz")).toBe(false);
+    expect(isLoopbackPeerAddress("127.0.0.1")).toBe(true);
+    expect(isLoopbackPeerAddress("::ffff:127.0.0.1")).toBe(true);
+    expect(isLoopbackPeerAddress("192.168.1.20")).toBe(false);
   });
 
   it("keeps the helper disabled in production unless a local operator opts in", () => {
@@ -84,5 +93,11 @@ describe("loopback local-media route", () => {
     expect(isLocalMediaHelperEnabled("production", "false")).toBe(false);
     expect(isLocalMediaHelperEnabled("production", "true")).toBe(true);
     expect(isLocalMediaHelperEnabled("development", undefined)).toBe(true);
+  });
+
+  it("raises Bun's streaming request limit only when the local helper is enabled", () => {
+    expect(requestBodyLimitBytes("development", undefined)).toBe(LOCAL_MEDIA_REQUEST_BODY_LIMIT_BYTES);
+    expect(requestBodyLimitBytes("production", "true")).toBe(LOCAL_MEDIA_REQUEST_BODY_LIMIT_BYTES);
+    expect(requestBodyLimitBytes("production", undefined)).toBe(DEFAULT_REQUEST_BODY_LIMIT_BYTES);
   });
 });
