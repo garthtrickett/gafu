@@ -937,10 +937,16 @@ remote server.
 Yomikata's current `/api/repair-audio`, `/api/analyze-audio`, and
 `/api/align-subtitles` routes are local Vite middleware backed by local FFmpeg;
 they are not suitable as hosted Gafu endpoints because posting to them remotely
-would upload the video. Hosted Gafu must use browser/WASM processing. A future
-native path may use an explicitly installed loopback-only helper, but absence of
+would upload the video. Hosted Gafu must use browser/WASM processing. A native
+path may use an explicitly installed loopback-only helper, but absence of
 that helper must leave original playback and manual subtitle offset available.
-It must never cause a remote upload or make playback depend on alignment.
+The optional native path is now implemented for localhost development: the
+browser tries its decoder first, then may stream the file to the same-machine
+Gafu process for system-FFmpeg analysis. The route is disabled in hosted
+production, rejects non-loopback requests, and is never called by a non-loopback
+browser page. Absence of FFmpeg still leaves original playback and manual
+subtitle offset available. It must never cause a remote upload or make playback
+depend on alignment.
 
 The media modules migrated into Gafu remain responsible for:
 

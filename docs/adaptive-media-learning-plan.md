@@ -363,7 +363,10 @@ a git, npm, runtime, iframe, HTTP, or build dependency on `jp-player`.
   run the migrated pure alignment algorithm over typed arrays; do not call the
   old Node `Buffer`/Vite middleware path.
 - Do not migrate Yomikata's local Vite FFmpeg middleware into hosted Gafu routes.
-- Treat a future loopback helper as deferred and optional.
+- Prefer browser decoding, with an optional development-only loopback helper
+  that streams to system FFmpeg when the browser cannot demux the container.
+  Hosted production disables the route, non-loopback requests are rejected,
+  and a non-loopback browser never sends media bytes to it.
 - Fall back to original audio, original subtitle timing, and manual offset when
   repair or automatic alignment is unavailable.
 - Add tests that fail if video bytes are passed to `fetch`, sync, AI, logging, or
@@ -652,7 +655,14 @@ environment, and rollback/feature-disable procedures are documented.
 - Community or global promotion of personal knowledge points.
 - Target selection from media without Japanese subtitles.
 - Knowledge-point kinds beyond grammar and vocabulary.
-- A native loopback FFmpeg helper; browser/WASM and manual timing are the MVP.
+
+Post-MVP follow-up delivered on 2026-08-29: the optional loopback FFmpeg helper
+restores local `jp-player` codec parity without becoming a hosted dependency.
+It requires `ffmpeg` on the local machine's `PATH`; browser decoding and manual
+timing remain the no-helper fallback. Development enables it automatically;
+a production-shaped local run must explicitly set
+`GAFU_LOCAL_MEDIA_HELPER=true` and is still restricted to loopback host and
+origin checks.
 
 Deferred work cannot be pulled into an earlier phase merely to simplify an
 implementation. If an MVP invariant appears to require it, stop and revise the
@@ -691,7 +701,7 @@ phase exit:
 | Default review-time budget | Phase 2 | Derive from the existing review-count preference until user research selects a time default. |
 | Learner-day time zone | Phase 1 | Store an explicit IANA time zone; do not infer a new zone independently on each device. |
 | Browser support floor | Phase 2 | Current stable Chrome and Firefox; fail explicitly for unsupported codecs/APIs. |
-| Optional native loopback helper | Post-MVP | Browser/WASM and manual timing are the MVP; no helper dependency. |
+| Optional native loopback helper | Resolved 2026-08-29 | Browser decoding remains primary; localhost development may use system FFmpeg, hosted production rejects the route, and manual timing remains available. |
 
 ## MVP acceptance evidence
 
