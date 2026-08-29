@@ -1,7 +1,7 @@
 import { Data, Effect } from "effect";
 import {
   DailySessionGenerationRequestSchema,
-  DailySessionGenerationDraftSchema,
+  DailySessionProviderGenerationSchema,
   type DailySessionGenerationDraft,
   type DailySessionGenerationRequest,
 } from "./schema.ts";
@@ -11,7 +11,7 @@ export interface DailySessionGenerationAgent {
     prompt: string,
     options: {
       readonly structuredOutput: {
-        readonly schema: typeof DailySessionGenerationDraftSchema;
+        readonly schema: typeof DailySessionProviderGenerationSchema;
       };
     },
   ): Promise<{ readonly object?: unknown }>;
@@ -129,12 +129,19 @@ export const generateDailySession = (
             preserveQueueOrder: true,
             preserveGrammarPointIds: true,
             revealAnswerInEnglishContext: false,
+            englishContextPurpose: "surrounding situation immediately before the learner speaks",
+            japaneseSentencePurpose: "the learner's next utterance within that situation",
+            englishContextIsNotTranslationOfJapaneseSentence: true,
+            englishContextMustUseSecondPerson: true,
+            englishContextMustStopBeforeLearnerSpeaks: true,
+            badEnglishContextExample: "She thinks this dress fits her well, given the special occasion.",
+            goodEnglishContextExample: "A close friend is getting ready for a wedding and models a dress in front of a mirror. She turns to you and waits for your honest reaction.",
             contentVocabularyMustComeFromPool: true,
             audioUrlMustBeNull: true,
             furiganaIsDerivedByClient: true,
           },
         }), {
-          structuredOutput: { schema: DailySessionGenerationDraftSchema },
+          structuredOutput: { schema: DailySessionProviderGenerationSchema },
         }),
       catch: () =>
         new DailySessionGenerationError({
@@ -142,21 +149,37 @@ export const generateDailySession = (
         }),
     });
 
-    const parsedResult = DailySessionGenerationDraftSchema.safeParse(
+    const parsedResult = DailySessionProviderGenerationSchema.safeParse(
       response.object,
     );
     if (!parsedResult.success) {
+      const issuePaths = parsedResult.error.issues
+        .map((issue) => issue.path.join("."))
+        .filter((path) => path.length > 0)
+        .join(",");
       yield* Effect.logWarning(
-        "[DailySessionGeneration] Provider returned an invalid structured result.",
+        `[DailySessionGeneration] Provider returned an invalid structured result. issuePaths=${issuePaths || "root"}`,
       );
       return yield* Effect.fail(
         new DailySessionGenerationError({ code: "invalid_result" }),
       );
     }
 
+    yield* Effect.logInfo(
+      `[DailySessionGeneration] Provider attested to the pre-utterance context contract for ${parsedResult.data.cards.length} cards.`,
+    );
+    const draft: DailySessionGenerationDraft = {
+      cards: parsedResult.data.cards.map((card) => ({
+        grammar_point_id: card.grammar_point_id,
+        english_context: card.english_context,
+        japanese_sentence: card.japanese_sentence,
+        audio_url: card.audio_url,
+        explanation: card.explanation,
+      })),
+    };
     const validated = yield* validateGeneratedCards(
       parsedRequest.data,
-      parsedResult.data,
+      draft,
     );
     yield* Effect.logInfo(
       `[DailySessionGeneration] Generated and validated ${validated.cards.length} cards.`,

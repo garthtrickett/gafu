@@ -25,8 +25,14 @@ queue, and vocabulary pool.
    export flow.
 2. The server requests structured output with exactly one card per queue item.
    The generated Japanese sentence is the sole textual authority; the provider
-   is not asked to duplicate it as furigana.
-3. Gafu rejects missing, duplicated, reordered, or malformed cards.
+   is not asked to duplicate it as furigana. The English context describes the
+   surrounding scene immediately before the learner speaks; the Japanese
+   sentence is the learner's next utterance within that scene, not a translation
+   of the context.
+3. The provider must explicitly attest that every context stops before speech
+   and omits the Japanese utterance's meaning. Gafu rejects cards with missing
+   quality checks, missing or duplicated IDs, changed ordering, or malformed
+   fields.
 4. The browser derives full-sentence furigana with the bundled Japanese
    tokenizer. Token spans are checked against every character, including
    whitespace and punctuation. If tokenization is unavailable or inconsistent,
