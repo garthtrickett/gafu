@@ -12,9 +12,10 @@ export const dailySessionGeneratorAgent = new Agent({
     motivation, and social relationship, stop before the learner's utterance, and reveal neither a
     translation nor the target grammar. Avoid formal pronouns unless ambiguity requires them.
     Japanese must be natural and conversational. In cram mode, prioritize practical reinforcement
-    of active, unmastered targets. Furigana segments must concatenate to the full Japanese sentence.
-    audio_url must always be null because audio is added by Gafu after the generated response passes
-    validation. Return only the requested structured object.
+    of active, unmastered targets. Return one authoritative japanese_sentence for each card; Gafu
+    derives full-sentence furigana deterministically after validating your response. audio_url must
+    always be null because audio is added by Gafu after validation. Return only the requested
+    structured object.
   `,
   model: {
     id: "openai/gpt-4o-mini",
