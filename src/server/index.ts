@@ -14,6 +14,7 @@ import { syncRoutes } from "./routes/sync.ts";
 import { aiRoutes } from "./routes/ai";
 import { ttsRoutes } from "./routes/tts.ts";
 import { adaptiveMediaRoutes } from "./routes/adaptive-media.ts";
+import { localMediaRoutes } from "./routes/local-media.ts";
 import { db } from "../db/client";
 import { seedDb } from "../db/seed";
 import { serverRuntime } from "../lib/server/server-runtime";
@@ -46,6 +47,7 @@ export const app = new Elysia()
   .use(aiRoutes)
   .use(ttsRoutes)
   .use(adaptiveMediaRoutes)
+  .use(localMediaRoutes)
   .use(cors({
     origin: [
       /localhost.*/,
@@ -56,7 +58,7 @@ export const app = new Elysia()
       "http://localhost",
     ],
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization", "X-Life-IO-Subdomain", "Cache-Control", "Pragma", "Expires"],
+    allowedHeaders: ["Content-Type", "Authorization", "X-Life-IO-Subdomain", "X-Gafu-Local-Media", "Cache-Control", "Pragma", "Expires"],
     credentials: true,
   }))
   .use(effectPlugin)

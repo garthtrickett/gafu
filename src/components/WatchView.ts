@@ -277,8 +277,15 @@ export class WatchView extends LitElement {
     if (!file || this.cues.length < 8) return;
     this.status = "Analyzing speech timing locally…";
     const program = Effect.gen(this, function* () {
+      yield* clientLog("info", "[WatchView] Automatic subtitle alignment started.", {
+        cueCount: this.cues.length,
+        byteCount: file.size,
+      });
       const envelope = yield* decodeSpeechEnvelope(file);
-      const result = alignSubtitles(envelope, this.cues.map((cue) => ({ start: cue.sourceStartSeconds, end: cue.sourceEndSeconds })));
+      const result = yield* Effect.try({
+        try: () => alignSubtitles(envelope, this.cues.map((cue) => ({ start: cue.sourceStartSeconds, end: cue.sourceEndSeconds }))),
+        catch: (cause) => cause instanceof Error ? cause : new Error(`Subtitle timing analysis failed: ${String(cause)}`),
+      });
       yield* Effect.sync(() => {
         if (result.confidence >= 0.32) {
           this.transform = result.transform;
@@ -289,9 +296,20 @@ export class WatchView extends LitElement {
         }
         this.updateCues();
       });
-    }).pipe(Effect.catchAll(() => Effect.sync(() => {
-      this.transform = SOURCE_TIMING;
-      this.status = "Automatic alignment is unavailable for this codec; use manual offset.";
+      yield* clientLog(result.confidence >= 0.32 ? "info" : "warn", "[WatchView] Automatic subtitle alignment completed.", {
+        confidence: result.confidence,
+        scale: result.transform.scale,
+        offsetSeconds: result.transform.offsetSeconds,
+        cuesAnalyzed: result.cuesAnalyzed,
+      });
+    }).pipe(Effect.catchAll((error) => Effect.gen(this, function* () {
+      yield* clientLog("error", "[WatchView] Automatic subtitle alignment failed.", {
+        reason: error.message,
+      });
+      yield* Effect.sync(() => {
+        this.transform = SOURCE_TIMING;
+        this.status = `${error.message} You can still use the manual offset.`;
+      });
     })));
     void runClientPromise(program);
   }
