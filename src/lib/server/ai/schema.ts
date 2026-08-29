@@ -27,13 +27,20 @@ export const DailySessionGenerationRequestSchema = z.object({
   vocabulary_pool: z.array(z.string().min(1).max(100)).min(1).max(2_000),
 });
 
-export const DailySessionCardSchema = z.object({
+export const DailySessionDraftCardSchema = z.object({
   grammar_point_id: z.string().min(1).max(100),
   english_context: z.string().min(1).max(1_000),
   japanese_sentence: z.string().min(1).max(500),
-  furigana: z.array(FuriganaSegmentSchema).max(100),
   audio_url: z.null(),
   explanation: z.string().min(1).max(2_000),
+});
+
+export const DailySessionGenerationDraftSchema = z.object({
+  cards: z.array(DailySessionDraftCardSchema).min(1).max(15),
+});
+
+export const DailySessionCardSchema = DailySessionDraftCardSchema.extend({
+  furigana: z.array(FuriganaSegmentSchema).min(1).max(500),
 });
 
 export const DailySessionGenerationSchema = z.object({
@@ -42,6 +49,9 @@ export const DailySessionGenerationSchema = z.object({
 
 export type DailySessionGenerationRequest = z.infer<
   typeof DailySessionGenerationRequestSchema
+>;
+export type DailySessionGenerationDraft = z.infer<
+  typeof DailySessionGenerationDraftSchema
 >;
 export type DailySessionGeneration = z.infer<
   typeof DailySessionGenerationSchema

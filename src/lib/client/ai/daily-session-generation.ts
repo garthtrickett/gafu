@@ -1,19 +1,28 @@
 import { Effect } from "effect";
 import { clientLog } from "../clientLog.ts";
-import type {
-  DailySessionGeneration,
-  DailySessionGenerationRequest,
+import {
+  DailySessionGenerationDraftSchema,
+  type DailySessionGenerationDraft,
+  type DailySessionGeneration,
+  type DailySessionGenerationRequest,
 } from "../../server/ai/schema.ts";
+import { enrichDailySessionFurigana } from "./daily-session-furigana.ts";
 
 interface DailySessionGenerationApiResponse {
-  readonly success?: boolean;
-  readonly data?: DailySessionGeneration;
-  readonly error?: string;
+  readonly success?: unknown;
+  readonly data?: unknown;
+  readonly error?: unknown;
 }
+
+export type DailySessionFuriganaEnricher = (
+  draft: DailySessionGenerationDraft,
+) => Effect.Effect<DailySessionGeneration, Error>;
 
 export const requestDailySessionGeneration = (
   token: string,
   request: DailySessionGenerationRequest,
+  furiganaEnricher: DailySessionFuriganaEnricher =
+    enrichDailySessionFurigana,
 ): Effect.Effect<DailySessionGeneration, Error> =>
   Effect.gen(function* () {
     if (!token.trim()) {
@@ -57,17 +66,27 @@ export const requestDailySessionGeneration = (
       );
       return yield* Effect.fail(
         new Error(
-          payload.error ??
+          (typeof payload.error === "string" ? payload.error : undefined) ??
             `AI session generation failed with HTTP ${response.status}.`,
         ),
       );
     }
 
-    if (
-      payload.success !== true ||
-      !payload.data ||
-      !Array.isArray(payload.data.cards)
-    ) {
+    if (payload.success !== true) {
+      return yield* Effect.fail(
+        new Error("AI session generation returned an invalid response."),
+      );
+    }
+
+    const parsedDraft = DailySessionGenerationDraftSchema.safeParse(
+      payload.data,
+    );
+    if (!parsedDraft.success) {
+      yield* clientLog(
+        "warn",
+        "[DailySessionGeneration] Server response failed the session draft schema.",
+        parsedDraft.error,
+      );
       return yield* Effect.fail(
         new Error("AI session generation returned an invalid response."),
       );
@@ -75,7 +94,7 @@ export const requestDailySessionGeneration = (
 
     yield* clientLog(
       "info",
-      `[DailySessionGeneration] Received ${payload.data.cards.length} generated cards.`,
+      `[DailySessionGeneration] Received ${parsedDraft.data.cards.length} generated card drafts; deriving furigana locally.`,
     );
-    return payload.data;
+    return yield* furiganaEnricher(parsedDraft.data);
   });

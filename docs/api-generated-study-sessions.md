@@ -24,10 +24,17 @@ queue, and vocabulary pool.
 1. The client calculates the same due/new or cram queue used by the previous
    export flow.
 2. The server requests structured output with exactly one card per queue item.
-3. Gafu rejects missing, duplicated, reordered, malformed, or mismatched cards.
-4. The existing session importer validates the complete result before making
+   The generated Japanese sentence is the sole textual authority; the provider
+   is not asked to duplicate it as furigana.
+3. Gafu rejects missing, duplicated, reordered, or malformed cards.
+4. The browser derives full-sentence furigana with the bundled Japanese
+   tokenizer. Token spans are checked against every character, including
+   whitespace and punctuation. If tokenization is unavailable or inconsistent,
+   Gafu preserves the complete sentence as plain Japanese instead of rejecting
+   the session or displaying partial text.
+5. The existing session importer validates the complete result before making
    best-effort TTS requests or changing the active session.
-5. The validated session is stored locally and the study view opens.
+6. The validated session is stored locally and the study view opens.
 
 The manual JSON export/import controls remain under **Manual JSON fallback** for
 offline operation and troubleshooting. A missing key produces an actionable

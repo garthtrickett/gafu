@@ -32,10 +32,6 @@ const validResult = {
       grammar_point_id: "point-1",
       english_context: "A classmate waits for your introduction.",
       japanese_sentence: "学生です。",
-      furigana: [
-        { kanji: "学生", kana: "がくせい" },
-        { kanji: "です。" },
-      ],
       audio_url: null,
       explanation: "です marks a polite assertion.",
     },
@@ -43,10 +39,6 @@ const validResult = {
       grammar_point_id: "point-2",
       english_context: "You have just arrived from school.",
       japanese_sentence: "学校から。",
-      furigana: [
-        { kanji: "学校", kana: "がっこう" },
-        { kanji: "から。" },
-      ],
       audio_url: null,
       explanation: "から marks the origin.",
     },
@@ -84,6 +76,10 @@ describe("DailySessionGenerationService", () => {
         }),
       }),
     );
+    expect(agent.generate).toHaveBeenCalledWith(
+      expect.stringContaining('"furiganaIsDerivedByClient":true'),
+      expect.any(Object),
+    );
   });
 
   it("rejects an empty queue before calling the provider", async () => {
@@ -119,25 +115,27 @@ describe("DailySessionGenerationService", () => {
     });
   });
 
-  it("rejects furigana that does not reconstruct the Japanese sentence", async () => {
-    const invalidResult = {
+  it("discards provider furigana so a partial duplicate cannot invalidate the authoritative sentence", async () => {
+    const providerResult = {
       cards: [
         {
           ...validResult.cards[0],
-          furigana: [{ kanji: "違う" }],
+          japanese_sentence:
+            "あなたがあげたプレゼントは、割に良かったかもしれない。",
+          furigana: [{ kanji: "割に良かったかもしれない" }],
         },
         validResult.cards[1],
       ],
     };
 
     const result = await Effect.runPromise(
-      Effect.either(generateDailySession(request, makeAgent(invalidResult))),
+      generateDailySession(request, makeAgent(providerResult)),
     );
 
-    expect(result).toMatchObject({
-      _tag: "Left",
-      left: { code: "invalid_result" },
-    });
+    expect(result.cards[0]!.japanese_sentence).toBe(
+      providerResult.cards[0]!.japanese_sentence,
+    );
+    expect(result.cards[0]).not.toHaveProperty("furigana");
   });
 
   it("reports a missing server API key without loading the provider", async () => {

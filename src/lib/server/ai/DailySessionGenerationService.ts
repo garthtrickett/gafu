@@ -1,8 +1,8 @@
 import { Data, Effect } from "effect";
 import {
   DailySessionGenerationRequestSchema,
-  DailySessionGenerationSchema,
-  type DailySessionGeneration,
+  DailySessionGenerationDraftSchema,
+  type DailySessionGenerationDraft,
   type DailySessionGenerationRequest,
 } from "./schema.ts";
 
@@ -11,7 +11,7 @@ export interface DailySessionGenerationAgent {
     prompt: string,
     options: {
       readonly structuredOutput: {
-        readonly schema: typeof DailySessionGenerationSchema;
+        readonly schema: typeof DailySessionGenerationDraftSchema;
       };
     },
   ): Promise<{ readonly object?: unknown }>;
@@ -67,8 +67,8 @@ const loadAgent = (): Effect.Effect<
 
 const validateGeneratedCards = (
   request: DailySessionGenerationRequest,
-  generated: DailySessionGeneration,
-): Effect.Effect<DailySessionGeneration, DailySessionGenerationError> =>
+  generated: DailySessionGenerationDraft,
+): Effect.Effect<DailySessionGenerationDraft, DailySessionGenerationError> =>
   Effect.gen(function* () {
     const expectedIds = request.queue.map(
       (item) => item.grammar_point_id,
@@ -93,27 +93,13 @@ const validateGeneratedCards = (
       );
     }
 
-    for (const card of generated.cards) {
-      const renderedJapanese = card.furigana
-        .map((segment) => segment.kanji)
-        .join("");
-      if (renderedJapanese !== card.japanese_sentence) {
-        yield* Effect.logWarning(
-          "[DailySessionGeneration] Generated furigana did not reconstruct the Japanese sentence.",
-        );
-        return yield* Effect.fail(
-          new DailySessionGenerationError({ code: "invalid_result" }),
-        );
-      }
-    }
-
     return generated;
   });
 
 export const generateDailySession = (
   request: DailySessionGenerationRequest,
   agentOverride?: DailySessionGenerationAgent,
-): Effect.Effect<DailySessionGeneration, DailySessionGenerationError> =>
+): Effect.Effect<DailySessionGenerationDraft, DailySessionGenerationError> =>
   Effect.gen(function* () {
     const parsedRequest = DailySessionGenerationRequestSchema.safeParse(request);
     if (!parsedRequest.success) {
@@ -145,9 +131,10 @@ export const generateDailySession = (
             revealAnswerInEnglishContext: false,
             contentVocabularyMustComeFromPool: true,
             audioUrlMustBeNull: true,
+            furiganaIsDerivedByClient: true,
           },
         }), {
-          structuredOutput: { schema: DailySessionGenerationSchema },
+          structuredOutput: { schema: DailySessionGenerationDraftSchema },
         }),
       catch: () =>
         new DailySessionGenerationError({
@@ -155,7 +142,7 @@ export const generateDailySession = (
         }),
     });
 
-    const parsedResult = DailySessionGenerationSchema.safeParse(
+    const parsedResult = DailySessionGenerationDraftSchema.safeParse(
       response.object,
     );
     if (!parsedResult.success) {
