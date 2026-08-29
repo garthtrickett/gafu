@@ -52,7 +52,7 @@ describe("WatchView local media boundary", () => {
         ...token,
         surface,
         lemma: surface,
-        reading: index === 0 ? "ねん" : "",
+        reading: ["ねん", "まつ", "に", "は"][index]!,
         span: { ...token.span, start: index, end: index + 1 },
       })),
     };
@@ -75,6 +75,10 @@ describe("WatchView local media boundary", () => {
     expect(Array.from(view.querySelectorAll("[data-subtitle-surface]")).map((surface) => surface.textContent).join(""))
       .toBe("年末には");
     expect(view.querySelector("[data-subtitle-reading]")?.textContent).toBe("ねん");
+    expect(view.querySelectorAll("[data-subtitle-reading]")).toHaveLength(2);
+    expect(Array.from(view.querySelectorAll("[data-subtitle-token]")).filter((element) =>
+      ["に", "は"].includes(element.querySelector("[data-subtitle-surface]")?.textContent ?? ""))
+      .every((element) => !element.querySelector("[data-subtitle-reading]"))).toBe(true);
     expect(view.querySelector("ruby")).toBeNull();
     expect(Array.from(view.querySelectorAll("[data-subtitle-token]")).every((span) =>
       (span as HTMLElement).style.marginRight === "0em")).toBe(true);

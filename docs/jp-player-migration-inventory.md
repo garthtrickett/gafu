@@ -35,7 +35,7 @@ internal release checks and external legal/human-review holds are resolved.
 | `@ffmpeg/ffmpeg` | MIT | Wrapper is eligible, but unusable without an approved core |
 | `@ffmpeg/util` | MIT | Eligible with attribution |
 | `@ffmpeg/core` | GPL-2.0-or-later | Do not add to Gafu until the owner completes a distribution/licence decision |
-| `@fontsource-variable/noto-sans-jp` | OFL-1.1 | Eligible with OFL notice |
+| `@fontsource-variable/noto-sans-jp` | OFL-1.1 | Migrated at `5.3.0`; Gafu ships the OFL notice and applies the bundled variable font to subtitles |
 | `jp-player` repository source | No repository licence file found | Owner-authored source may be moved by the owner; add an explicit Gafu project licence decision before third-party distribution |
 
 ## Parity baseline

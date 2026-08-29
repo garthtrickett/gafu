@@ -57,6 +57,23 @@ test.describe("adaptive local-media privacy and resilience", () => {
     });
     const subtitleOverlay = page.locator("[data-subtitle-overlay]");
     await expect(page.locator("[data-subtitle-cue]")).toBeVisible();
+    const fontState = await subtitleOverlay.evaluate(async (overlay) => {
+      const loaded = await document.fonts.load('700 64px "Noto Sans JP Variable"', "日本語");
+      const redundantReadings = Array.from(overlay.querySelectorAll("[data-subtitle-reading]")).filter((reading) => {
+        const surface = reading.parentElement?.querySelector("[data-subtitle-surface]")?.textContent ?? "";
+        return !/[々〆ヵヶ一-龯]/u.test(surface);
+      }).length;
+      return {
+        family: getComputedStyle(overlay).fontFamily,
+        loadedFaces: loaded.length,
+        readingCount: overlay.querySelectorAll("[data-subtitle-reading]").length,
+        redundantReadings,
+      };
+    });
+    expect(fontState.family).toContain("Noto Sans JP Variable");
+    expect(fontState.loadedFaces).toBeGreaterThan(0);
+    expect(fontState.readingCount).toBeGreaterThan(0);
+    expect(fontState.redundantReadings).toBe(0);
     const subtitleSize = page.getByText("Subtitle size").locator('input[type="range"]');
     await subtitleSize.evaluate((input: HTMLInputElement) => {
       input.value = input.max;

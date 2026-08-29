@@ -1,3 +1,4 @@
+@import "@fontsource-variable/noto-sans-jp";
 @import "tailwindcss";
 
 @theme {
@@ -15,6 +16,11 @@
   border-radius: 0;
   aspect-ratio: auto;
   background: #000;
+}
+
+[data-subtitle-overlay] {
+  font-family: "Noto Sans JP Variable", "Noto Sans JP", sans-serif;
+  font-optical-sizing: auto;
 }
 
 [data-subtitle-cue] {

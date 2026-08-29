@@ -39,6 +39,7 @@ import {
 } from "../lib/client/media/adaptive/learning-content.ts";
 
 const SOURCE_TIMING: TimingTransform = { id: "source", version: "timing_transform_v1", scale: 1, offsetSeconds: 0 };
+const HAS_KANJI = /[々〆ヵヶ一-龯]/u;
 
 interface AcceptedTarget {
   readonly candidateId: string;
@@ -732,7 +733,7 @@ export class WatchView extends LitElement {
   }
 
   private renderToken(token: NormalizedToken) {
-    return html`<span data-subtitle-token style=${`margin-right:${token.punctuation ? 0 : this.spacing}em`}>${this.furigana && token.reading ? html`<span data-subtitle-reading>${token.reading}</span>` : ""}<span data-subtitle-surface>${token.surface}</span></span>`;
+    return html`<span data-subtitle-token style=${`margin-right:${token.punctuation ? 0 : this.spacing}em`}>${this.furigana && token.reading && HAS_KANJI.test(token.surface) ? html`<span data-subtitle-reading>${token.reading}</span>` : ""}<span data-subtitle-surface>${token.surface}</span></span>`;
   }
 
   private renderCue(cue: NormalizedCue) {
