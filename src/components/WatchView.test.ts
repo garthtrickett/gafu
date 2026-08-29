@@ -68,4 +68,46 @@ describe("WatchView local media boundary", () => {
     expect(eventCall).toBeDefined();
     expect(String((eventCall?.[1] as RequestInit).body)).not.toContain(sourceText);
   });
+
+  it("repairs a silent MKV and keeps Firefox-compatible audio synchronized", async () => {
+    vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
+    const play = vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
+    vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(function (this: HTMLMediaElement) {
+      if (this instanceof HTMLAudioElement) queueMicrotask(() => this.dispatchEvent(new Event("loadedmetadata")));
+    });
+    let objectUrlIndex = 0;
+    Object.defineProperties(URL, {
+      createObjectURL: { configurable: true, value: vi.fn(() => `blob:watch-media-${++objectUrlIndex}`) },
+      revokeObjectURL: { configurable: true, value: vi.fn() },
+    });
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(
+      new Blob(["opus audio"], { type: "audio/ogg" }),
+      { status: 200, headers: { "Content-Type": "audio/ogg" } },
+    ));
+    const view = document.createElement("watch-view") as unknown as HTMLElement & {
+      loadVideo: (file: File) => void;
+      repairFirefoxAudio: () => void;
+      readonly updateComplete: Promise<boolean>;
+    };
+    document.body.append(view);
+    view.loadVideo(new File(["local mkv"], "episode.mkv", { type: "video/x-matroska" }));
+    await view.updateComplete;
+
+    view.repairFirefoxAudio();
+    await vi.waitFor(() => expect(view.textContent).toContain("Audio fixed ✓"));
+
+    const video = view.querySelector("video")!;
+    const audio = view.querySelector("audio[data-repaired-audio]") as HTMLAudioElement;
+    expect(video.muted).toBe(true);
+    expect(fetchSpy).toHaveBeenCalledWith("/api/local-media/repair-audio", expect.objectContaining({
+      method: "POST",
+      body: expect.any(File),
+    }));
+    video.currentTime = 12.5;
+    audio.currentTime = 3;
+    video.dispatchEvent(new Event("seeking"));
+    expect(audio.currentTime).toBe(12.5);
+    video.dispatchEvent(new Event("play"));
+    await vi.waitFor(() => expect(play).toHaveBeenCalled());
+  });
 });

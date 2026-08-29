@@ -68,5 +68,6 @@ Before each stage promotion:
    checkout completion, queue starvation, and varied-context mastery.
 
 The FFmpeg browser-core licence remains an explicit optional-capability gate.
-Until approved, audio repair uses original audio and manual/local alignment;
-playback must never fall back to a remote upload.
+Until approved, localhost may use installed system FFmpeg for Firefox-compatible
+Opus repair and alignment; hosted playback uses original audio and manual/local
+alignment. Playback must never fall back to a remote media upload.

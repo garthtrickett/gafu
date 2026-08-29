@@ -1,6 +1,7 @@
 import { Effect } from "effect";
 import { describe, expect, it, vi } from "vitest";
 import {
+  LOCAL_MEDIA_AUDIO_REPAIR_VERSION,
   LOCAL_MEDIA_HELPER_HEADER,
   LOCAL_MEDIA_HELPER_VERSION,
   isLocalMediaHelperEnabled,
@@ -37,6 +38,47 @@ describe("loopback local-media route", () => {
     });
     expect(analyze).toHaveBeenCalledOnce();
     expect(analyze.mock.calls[0]?.[0]).toBeInstanceOf(ReadableStream);
+  });
+
+  it("returns repaired Opus audio only through the guarded loopback route", async () => {
+    const analyze = vi.fn((_mediaStream: ReadableStream<Uint8Array> | null, _abortSignal: AbortSignal) =>
+      Effect.succeed(Float64Array.of(0.1)));
+    const repair = vi.fn((_mediaStream: ReadableStream<Uint8Array> | null, _abortSignal: AbortSignal) =>
+      Effect.succeed(Uint8Array.of(79, 103, 103, 83)));
+    const routes = makeLocalMediaRoutes(analyze, repair);
+    const response = await routes.handle(new Request("http://localhost/api/local-media/repair-audio", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/octet-stream",
+        [LOCAL_MEDIA_HELPER_HEADER]: LOCAL_MEDIA_AUDIO_REPAIR_VERSION,
+      },
+      body: Uint8Array.of(1, 2, 3),
+    }));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Content-Type")).toBe("audio/ogg");
+    expect(response.headers.get("X-Gafu-Audio-Repair")).toBe(LOCAL_MEDIA_AUDIO_REPAIR_VERSION);
+    expect([...new Uint8Array(await response.arrayBuffer())]).toEqual([79, 103, 103, 83]);
+    expect(repair).toHaveBeenCalledOnce();
+  });
+
+  it("rejects an audio repair request using the analysis protocol version", async () => {
+    const analyze = vi.fn((_mediaStream: ReadableStream<Uint8Array> | null, _abortSignal: AbortSignal) =>
+      Effect.succeed(Float64Array.of(0.1)));
+    const repair = vi.fn((_mediaStream: ReadableStream<Uint8Array> | null, _abortSignal: AbortSignal) =>
+      Effect.succeed(Uint8Array.of(79, 103, 103, 83)));
+    const routes = makeLocalMediaRoutes(analyze, repair);
+    const response = await routes.handle(new Request("http://localhost/api/local-media/repair-audio", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/octet-stream",
+        [LOCAL_MEDIA_HELPER_HEADER]: LOCAL_MEDIA_HELPER_VERSION,
+      },
+      body: Uint8Array.of(1, 2, 3),
+    }));
+
+    expect(response.status).toBe(403);
+    expect(repair).not.toHaveBeenCalled();
   });
 
   it("rejects media bytes from non-loopback hosts before analysis", async () => {

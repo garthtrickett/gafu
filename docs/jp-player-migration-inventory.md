@@ -16,7 +16,7 @@ runtime, build time, or release time.
 | `src/media-id.js` | Session media identifier | `src/lib/client/media/adaptive/local-media.ts` | Replaced with versioned cryptographic fingerprints |
 | `server/subtitle-alignment.js` | PCM envelope and drift/offset search | `src/lib/client/media/adaptive/alignment.ts` | Migrated pure algorithm to typed arrays |
 | `src/subtitle-alignment.js` | Local Vite middleware client | `audio-analysis.ts` plus guarded `local-media.ts` fallback | Browser decoder first; localhost development may fall back to system FFmpeg, while hosted Gafu rejects media bytes |
-| `src/audio-repair.js` | Browser and native audio repair | `src/lib/client/media/adaptive/audio-repair.ts` | Adapter and original-audio fallback migrated; FFmpeg core remains gated |
+| `src/audio-repair.js` | Browser and native audio repair | `src/lib/client/media/adaptive/audio-repair.ts` plus guarded `local-media.ts` helper | Native system-FFmpeg Opus repair and synchronized repaired-audio playback migrated; browser-WASM core remains gated |
 | `src/main.js` | File, player, clock, controls, subtitle DOM | `src/components/WatchView.ts` plus adaptive media modules | Extracted into Lit/controller modules |
 | `src/style.css` | Player presentation | `src/components/WatchView.ts` | Relevant presentation moved into Gafu's design system |
 | `test/*.test.js` | Parser and alignment regression tests | `src/lib/client/media/adaptive/*.test.ts` | Ported and extended |

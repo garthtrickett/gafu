@@ -7,13 +7,15 @@ import { knowledgePointCatalogStore, knowledgePointStore } from "../lib/client/s
 import type { NormalizedCue, TimingTransform } from "../lib/shared/adaptive-media.ts";
 import { alignSubtitles } from "../lib/client/media/adaptive/alignment.ts";
 import { decodeSpeechEnvelope } from "../lib/client/media/adaptive/audio-analysis.ts";
+import { localAudioRepairAdapter } from "../lib/client/media/adaptive/audio-repair.ts";
 import { LocalMediaSession } from "../lib/client/media/adaptive/local-media.ts";
-import { CueLifecycleTracker } from "../lib/client/media/adaptive/playback.ts";
+import { CueLifecycleTracker, PlaybackClock } from "../lib/client/media/adaptive/playback.ts";
 import { buildSourceExclusionSignatures, getOrCreateSourceSignatureKey, persistSourceExclusionSignatures } from "../lib/client/media/adaptive/source-signature-store.ts";
 import { buildEpisodeSyllabus, type EpisodeSyllabus } from "../lib/client/media/adaptive/syllabus.ts";
 import { findActiveCues, fingerprintSubtitleBytes, parseSubtitleTrack } from "../lib/client/media/adaptive/subtitles.ts";
 import { tokenizeSubtitleCuesCooperatively } from "../lib/client/media/adaptive/tokenizer.ts";
 import { tokenState } from "../lib/client/stores/authStore.ts";
+import { isLoopbackHostname } from "../lib/shared/local-media-helper.ts";
 import type { LearningExerciseContent, PrimerContent } from "../lib/server/ai/schema.ts";
 import {
   requestMediaRecommendations,
@@ -50,8 +52,16 @@ interface AcceptedTarget {
 @customElement("watch-view")
 export class WatchView extends LitElement {
   @query("video") private video?: HTMLVideoElement;
+  @query("audio[data-repaired-audio]") private repairedAudio?: HTMLAudioElement;
   @state() private videoUrl = "";
   @state() private videoName = "";
+  @state() private repairedAudioUrl = "";
+  @state() private repairedAudioActive = false;
+  @state() private repairingAudio = false;
+  @state() private audioRepairProgress = 0;
+  @state() private audioRepairStatus = "";
+  @state() private repairedAudioMuted = false;
+  @state() private repairedAudioVolume = 1;
   @state() private subtitleName = "";
   @state() private cues: readonly NormalizedCue[] = [];
   @state() private activeCues: readonly NormalizedCue[] = [];
@@ -82,6 +92,7 @@ export class WatchView extends LitElement {
   private canonicalKeys: ReadonlySet<string> = new Set();
   private analysisRunId = "";
   private subtitleTrackFingerprint = "";
+  private audioRepairVersion = 0;
   private readonly media = new LocalMediaSession();
   private readonly lifecycle = new CueLifecycleTracker();
 
@@ -105,6 +116,7 @@ export class WatchView extends LitElement {
       }).pipe(Effect.catchAll(() => Effect.void)));
     }
     this.video?.pause();
+    this.repairedAudio?.pause();
     this.media.releaseAll();
     this.lifecycle.reset();
     super.disconnectedCallback();
@@ -121,15 +133,117 @@ export class WatchView extends LitElement {
       event.preventDefault();
       this.video.currentTime = Math.max(0, Math.min(this.video.duration || Number.POSITIVE_INFINITY,
         this.video.currentTime + (event.code === "ArrowLeft" ? -5 : 5)));
+      this.syncRepairedAudio(true);
       this.updateCues();
     }
   };
 
   private loadVideo(file: File) {
+    this.resetRepairedAudio();
     const handle = this.media.replace("video", file);
     this.videoUrl = handle.objectUrl;
     this.videoName = file.name;
     this.status = "Video ready. Playback remains entirely local.";
+  }
+
+  private resetRepairedAudio() {
+    this.audioRepairVersion += 1;
+    this.repairedAudio?.pause();
+    this.media.release("repaired-audio");
+    this.repairedAudioUrl = "";
+    this.repairedAudioActive = false;
+    this.repairingAudio = false;
+    this.audioRepairProgress = 0;
+    this.audioRepairStatus = "";
+    this.repairedAudioMuted = false;
+    if (this.video) this.video.muted = false;
+  }
+
+  private waitForRepairedAudioMetadata(audio: HTMLAudioElement): Effect.Effect<void, Error> {
+    if (audio.readyState >= HTMLMediaElement.HAVE_METADATA) return Effect.void;
+    return Effect.async((resume) => {
+      const cleanup = () => {
+        audio.removeEventListener("loadedmetadata", loaded);
+        audio.removeEventListener("error", failed);
+      };
+      const loaded = () => {
+        cleanup();
+        resume(Effect.void);
+      };
+      const failed = () => {
+        cleanup();
+        resume(Effect.fail(new Error("Firefox could not open the repaired Opus audio track.")));
+      };
+      audio.addEventListener("loadedmetadata", loaded, { once: true });
+      audio.addEventListener("error", failed, { once: true });
+      audio.load();
+      return Effect.sync(cleanup);
+    });
+  }
+
+  private repairFirefoxAudio() {
+    const file = this.media.get("video")?.file;
+    if (!file || this.repairingAudio || this.repairedAudioActive) return;
+    this.repairingAudio = true;
+    this.audioRepairProgress = 0;
+    this.audioRepairStatus = "Starting local audio repair…";
+    this.video?.pause();
+    const repairVersion = ++this.audioRepairVersion;
+    const program = Effect.gen(this, function* () {
+      const audioBlob = yield* localAudioRepairAdapter.repair(file, ({ progress, message }) => {
+        if (repairVersion !== this.audioRepairVersion) return;
+        this.audioRepairProgress = progress;
+        this.audioRepairStatus = message;
+      });
+      if (repairVersion !== this.audioRepairVersion) {
+        yield* clientLog("info", "[WatchView] Discarded repaired audio after the selected video changed.");
+        return;
+      }
+      const repairedFile = new File([audioBlob], `${file.name.replace(/\.[^.]+$/u, "")}.firefox.ogg`, {
+        type: "audio/ogg",
+      });
+      const handle = this.media.replace("repaired-audio", repairedFile);
+      yield* Effect.sync(() => { this.repairedAudioUrl = handle.objectUrl; });
+      yield* Effect.tryPromise({
+        try: () => this.updateComplete,
+        catch: (cause) => new Error(`Could not prepare repaired audio playback: ${String(cause)}`),
+      });
+      if (repairVersion !== this.audioRepairVersion) return;
+      if (!this.repairedAudio || !this.video) {
+        return yield* Effect.fail(new Error("The repaired audio player was not available."));
+      }
+      this.repairedAudio.volume = this.repairedAudioVolume;
+      this.repairedAudio.muted = this.repairedAudioMuted;
+      this.repairedAudio.playbackRate = this.video.playbackRate;
+      yield* this.waitForRepairedAudioMetadata(this.repairedAudio);
+      if (repairVersion !== this.audioRepairVersion) return;
+      yield* Effect.sync(() => {
+        this.repairedAudioActive = true;
+        this.repairingAudio = false;
+        this.audioRepairProgress = 1;
+        this.audioRepairStatus = "Firefox-compatible audio is ready. Press play.";
+        this.video!.muted = true;
+        this.syncRepairedAudio(true);
+        this.updateCues();
+      });
+      yield* clientLog("info", "[WatchView] Firefox audio repair activated.", {
+        repairedByteCount: repairedFile.size,
+      });
+    }).pipe(Effect.catchAll((error) => Effect.gen(this, function* () {
+      if (repairVersion !== this.audioRepairVersion) {
+        yield* clientLog("info", "[WatchView] Ignored an obsolete audio repair failure after the selected video changed.");
+        return;
+      }
+      yield* clientLog("error", "[WatchView] Firefox audio repair failed.", {
+        reason: error.message,
+      });
+      yield* Effect.sync(() => {
+        this.resetRepairedAudio();
+        this.audioRepairStatus = `Audio repair failed: ${error.message}`;
+        this.status = "Original video playback is still available.";
+      });
+    })));
+    void runClientPromise(program);
   }
 
   private loadSubtitles(file: File) {
@@ -217,12 +331,71 @@ export class WatchView extends LitElement {
 
   private updateCues = () => {
     if (!this.video) return;
-    this.activeCues = findActiveCues(this.cues, this.video.currentTime, this.transform);
-    for (const event of this.lifecycle.update(this.cues, this.video.currentTime, this.transform)) {
+    this.syncRepairedAudio();
+    const playbackSeconds = new PlaybackClock(
+      this.video,
+      this.repairedAudio ?? this.video,
+      this.repairedAudioActive,
+    ).currentTime();
+    this.activeCues = findActiveCues(this.cues, playbackSeconds, this.transform);
+    for (const event of this.lifecycle.update(this.cues, playbackSeconds, this.transform)) {
       this.dispatchEvent(new CustomEvent("gafu-media-cue", { detail: event, bubbles: true, composed: true }));
       if (event.type === "cue-enter") this.recordAcceptedEncounter(event.cueId, event.playbackSeconds);
     }
   };
+
+  private syncRepairedAudio(force = false) {
+    if (!this.repairedAudioActive || !this.repairedAudio || !this.video) return;
+    const difference = Math.abs(this.repairedAudio.currentTime - this.video.currentTime);
+    if (force || difference > 0.3) this.repairedAudio.currentTime = this.video.currentTime;
+  }
+
+  private readonly onVideoPlay = () => {
+    if (!this.repairedAudioActive || !this.repairedAudio) return;
+    this.syncRepairedAudio(true);
+    void runClientPromise(Effect.tryPromise({
+      try: () => this.repairedAudio!.play(),
+      catch: (cause) => new Error(`Firefox could not start repaired audio: ${String(cause)}`),
+    }).pipe(Effect.catchAll((error) => Effect.gen(this, function* () {
+      yield* clientLog("error", "[WatchView] Repaired audio playback failed.", { reason: error.message });
+      yield* Effect.sync(() => {
+        this.video?.pause();
+        this.status = error.message;
+      });
+    }))));
+  };
+
+  private readonly onVideoPause = () => { this.repairedAudio?.pause(); };
+  private readonly onVideoSeeking = () => { this.syncRepairedAudio(true); };
+  private readonly onVideoRateChange = () => {
+    if (this.repairedAudio && this.video) this.repairedAudio.playbackRate = this.video.playbackRate;
+  };
+  private readonly onVideoVolumeChange = () => {
+    if (!this.repairedAudioActive || !this.repairedAudio || !this.video) return;
+    this.repairedAudioVolume = this.video.volume;
+    this.repairedAudio.volume = this.video.volume;
+    if (!this.video.muted) this.video.muted = true;
+  };
+  private readonly onVideoEnded = () => {
+    this.repairedAudio?.pause();
+    this.refreshPendingCheckouts();
+  };
+
+  private toggleRepairedAudioMute() {
+    if (!this.repairedAudio) return;
+    this.repairedAudioMuted = !this.repairedAudioMuted;
+    this.repairedAudio.muted = this.repairedAudioMuted;
+  }
+
+  private setRepairedAudioVolume(event: Event) {
+    const volume = Number((event.target as HTMLInputElement).value);
+    this.repairedAudioVolume = volume;
+    this.repairedAudioMuted = false;
+    if (this.repairedAudio) {
+      this.repairedAudio.volume = volume;
+      this.repairedAudio.muted = false;
+    }
+  }
 
   private refreshPendingCheckouts() {
     const token = tokenState.value;
@@ -554,18 +727,24 @@ export class WatchView extends LitElement {
   }
 
   override render() {
+    const isMatroska = this.videoName.toLowerCase().endsWith(".mkv");
+    const localAudioRepairAvailable = isLoopbackHostname(window.location.hostname);
     return html`
       <section class="mx-auto max-w-6xl space-y-5" data-private-media-boundary
         @dragover=${(event: DragEvent) => event.preventDefault()}
         @drop=${(event: DragEvent) => { event.preventDefault(); if (event.dataTransfer?.files) this.acceptFiles(event.dataTransfer.files); }}>
         <header class="flex flex-wrap items-end justify-between gap-4">
           <div><p class="text-xs font-semibold uppercase tracking-widest text-emerald-400">Watch · local media</p><h1 class="text-3xl font-bold">Adaptive Japanese playback</h1></div>
-          <p class="rounded border border-emerald-800 bg-emerald-950/40 px-3 py-2 text-xs text-emerald-200">Video and audio never leave this browser.</p>
+          <p class="rounded border border-emerald-800 bg-emerald-950/40 px-3 py-2 text-xs text-emerald-200">Video and audio never leave this machine.</p>
         </header>
         <div class="grid gap-5 lg:grid-cols-[minmax(0,1fr)_20rem]">
           <div class="space-y-3">
             <div class="relative aspect-video overflow-hidden rounded-xl border border-zinc-700 bg-black">
-              ${this.videoUrl ? html`<video class="h-full w-full" .src=${this.videoUrl} playsinline controls @timeupdate=${this.updateCues} @ended=${this.refreshPendingCheckouts}></video>` : html`<div class="grid h-full place-items-center text-zinc-500">Choose or drop an MKV, MP4, or WebM file</div>`}
+              ${this.videoUrl ? html`<video class="h-full w-full" .src=${this.videoUrl} playsinline controls
+                @play=${this.onVideoPlay} @pause=${this.onVideoPause} @seeking=${this.onVideoSeeking}
+                @ratechange=${this.onVideoRateChange} @volumechange=${this.onVideoVolumeChange}
+                @timeupdate=${this.updateCues} @ended=${this.onVideoEnded}></video>` : html`<div class="grid h-full place-items-center text-zinc-500">Choose or drop an MKV, MP4, or WebM file</div>`}
+              ${this.repairedAudioUrl ? html`<audio data-repaired-audio hidden .src=${this.repairedAudioUrl} preload="auto" @timeupdate=${this.updateCues}></audio>` : ""}
               <div class="pointer-events-none absolute inset-x-4 bottom-8 text-center font-semibold text-white [text-shadow:0_2px_5px_#000]" style=${`font-size:${this.subtitleSize}px`}>
                 ${this.activeCues.map((cue) => html`<div class=${this.cueHasMarker(cue.id) ? "border-l-4 border-emerald-400 pl-2" : ""}>${this.renderToken(cue)}</div>`)}
               </div>
@@ -586,15 +765,26 @@ export class WatchView extends LitElement {
             <label class="block text-sm">Word spacing<input class="w-full" type="range" min="0" max="0.7" step="0.05" .value=${String(this.spacing)} @input=${(event: Event) => { this.spacing = Number((event.target as HTMLInputElement).value); }}></label>
             <label class="block text-sm">Subtitle size<input class="w-full" type="range" min="22" max="46" step="2" .value=${String(this.subtitleSize)} @input=${(event: Event) => { this.subtitleSize = Number((event.target as HTMLInputElement).value); }}></label>
             <label class="block text-sm">Manual offset (${this.transform.offsetSeconds.toFixed(1)}s)<input class="w-full" type="range" min="-10" max="10" step="0.1" .value=${String(this.transform.offsetSeconds)} @input=${(event: Event) => { this.transform = { id: "manual", version: "timing_transform_v1", scale: 1, offsetSeconds: Number((event.target as HTMLInputElement).value) }; this.updateCues(); }}></label>
+            ${isMatroska ? html`
+              <div class="space-y-2 border-t border-amber-900 pt-3">
+                <div><h2 class="font-semibold text-amber-300">Silent MKV in Firefox?</h2><p class="text-xs text-zinc-400">Convert only the first audio track to Opus on this machine; the original video remains untouched.</p></div>
+                <button class="w-full rounded bg-amber-700 px-3 py-2 text-sm font-semibold disabled:opacity-40"
+                  ?disabled=${this.repairingAudio || this.repairedAudioActive || !localAudioRepairAvailable}
+                  @click=${this.repairFirefoxAudio}>${this.repairedAudioActive ? "Audio fixed ✓" : this.repairingAudio ? "Repairing audio…" : "Fix audio in Firefox"}</button>
+                ${this.repairingAudio ? html`<progress class="w-full" max="1" .value=${this.audioRepairProgress}></progress>` : ""}
+                ${this.repairedAudioActive ? html`<div class="flex items-center gap-2 text-xs"><button class="rounded border border-zinc-600 px-2 py-1" @click=${this.toggleRepairedAudioMute}>${this.repairedAudioMuted ? "Unmute repaired audio" : "Mute repaired audio"}</button><input class="min-w-0 flex-1" aria-label="Repaired audio volume" type="range" min="0" max="1" step="0.05" .value=${String(this.repairedAudioVolume)} @input=${this.setRepairedAudioVolume}></div>` : ""}
+                <p class="text-xs ${this.repairedAudioActive ? "text-emerald-300" : "text-zinc-400"}" role="status">${this.audioRepairStatus || (localAudioRepairAvailable ? "Requires FFmpeg on your PATH." : "Run Gafu locally to use the same-machine repair helper.")}</p>
+              </div>
+            ` : ""}
             <div class="border-t border-zinc-700 pt-3"><h2 class="font-semibold">Episode syllabus</h2><p class="mb-2 text-xs text-zinc-500">Up to three targets; dialogue is not shown here.</p>${this.aiRecommendations.length ? this.aiRecommendations.slice(0, 3).map((item) => { const later = this.isLaterRecommendation(item); return html`<div class="mb-2 space-y-2 rounded bg-zinc-900 p-2"><strong>${item.canonicalKey}</strong><p class="text-xs text-zinc-400">${item.reading ? `${item.reading} · ` : ""}${item.meaning} · about ${Math.round(item.firstTimeSeconds / 60)} min · ${item.occurrenceCount} encounters · ${Math.round(item.confidence * 100)}% confidence</p>${later ? html`<label class="flex gap-2 text-xs text-amber-300"><input type="checkbox" .checked=${Boolean(this.laterAccepted[item.candidateId])} @change=${(event: Event) => { this.laterAccepted = { ...this.laterAccepted, [item.candidateId]: (event.target as HTMLInputElement).checked }; }}> This target appears outside the early window; teach it anyway.</label>` : ""}<div class="flex flex-wrap gap-1 text-xs"><button class="rounded bg-emerald-700 px-2 py-1 disabled:opacity-40" ?disabled=${later && !this.laterAccepted[item.candidateId]} @click=${() => this.actOnRecommendation(item, "accept")}>Accept</button><button class="rounded border border-zinc-600 px-2 py-1" @click=${() => this.actOnRecommendation(item, "replace")}>Replace</button><button class="rounded border border-zinc-600 px-2 py-1" @click=${() => this.actOnRecommendation(item, "reduce")}>Reduce</button><button class="rounded border border-zinc-600 px-2 py-1" @click=${() => this.actOnRecommendation(item, "already_known")}>Already known</button><button class="rounded border border-zinc-600 px-2 py-1" @click=${() => this.actOnRecommendation(item, "not_useful")}>Not useful</button></div>${this.candidateStatuses[item.candidateId] ? html`<p class="text-xs text-emerald-300">${this.candidateStatuses[item.candidateId]}</p>` : ""}</div>`; }) : this.syllabus.items.length ? this.syllabus.items.map((item) => html`<div class="mb-2 rounded bg-zinc-900 p-2"><strong>${item.label}</strong><p class="text-xs text-zinc-400">${item.kind} · ${item.occurrenceCount} encounters</p></div>`) : html`<p class="text-sm text-zinc-500">Load subtitles to analyze candidates.</p>`}</div>
             <div class="space-y-2 border-t border-zinc-700 pt-3">
-              <label class="flex gap-2 text-xs"><input type="checkbox" .checked=${this.analysisConsent} @change=${(event: Event) => { this.analysisConsent = (event.target as HTMLInputElement).checked; }}> Send at most 12 shortlisted subtitle excerpts for optional AI recommendations. Video and audio are never sent. Gafu does not store raw excerpts in its database; the configured AI provider's retention policy still applies.</label>
+              <label class="flex gap-2 text-xs"><input type="checkbox" .checked=${this.analysisConsent} @change=${(event: Event) => { this.analysisConsent = (event.target as HTMLInputElement).checked; }}> Send at most 12 shortlisted subtitle excerpts for optional AI recommendations. Video and audio are never sent to remote services. Gafu does not store raw excerpts in its database; the configured AI provider's retention policy still applies.</label>
               <button class="rounded border border-zinc-600 px-3 py-2 text-sm disabled:opacity-40" ?disabled=${!this.analysisConsent || this.cues.length === 0} @click=${this.analyzeRecommendations}>Analyze consented excerpts</button>
               <button class="rounded border border-rose-900 px-3 py-2 text-xs text-rose-300" @click=${this.deleteAdaptiveData}>Delete adaptive-media data</button>
               <p class="text-xs text-zinc-500">Deletion removes synced provenance, candidates, checkouts, and generated exercises plus this browser's private signatures. Point-level study progress is kept so deleting media history cannot erase unrelated learning.</p>
               <p class="text-xs text-zinc-500" role="status">${this.aiStatus}</p>
             </div>
-            <p class="border-t border-zinc-700 pt-3 text-xs text-amber-300">Audio repair falls back to original audio while the FFmpeg core licence gate remains unresolved.</p>
+            <p class="border-t border-zinc-700 pt-3 text-xs text-zinc-500">The optional browser-WASM FFmpeg core remains disabled pending licence approval; local repair uses your installed system FFmpeg.</p>
           </aside>
         </div>
         <section class="space-y-4 rounded-xl border border-zinc-700 bg-zinc-900 p-5" aria-label="Adaptive learning loop">

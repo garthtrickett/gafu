@@ -36,5 +36,6 @@ Known release holds:
   represented as human approval.
 - Legal approval of the configured AI provider's subtitle-excerpt processing is
   external to the repository.
-- Browser FFmpeg audio repair is disabled pending licence approval; original
-  audio and manual/local timing remain functional.
+- Browser-WASM FFmpeg audio repair is disabled pending licence approval;
+  localhost system-FFmpeg repair, original-audio fallback, and manual/local
+  timing remain functional.
