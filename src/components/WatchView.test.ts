@@ -4,11 +4,18 @@ import { parseSrt } from "../lib/client/media/adaptive/subtitles.ts";
 import { fallbackTokens } from "../lib/client/media/adaptive/tokenizer.ts";
 import "./WatchView.ts";
 
+const requestFullscreenDescriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "requestFullscreen");
+
 describe("WatchView local media boundary", () => {
   afterEach(() => {
     tokenState.value = null;
     document.body.replaceChildren();
     vi.restoreAllMocks();
+    if (requestFullscreenDescriptor) {
+      Object.defineProperty(HTMLElement.prototype, "requestFullscreen", requestFullscreenDescriptor);
+    } else {
+      Reflect.deleteProperty(HTMLElement.prototype, "requestFullscreen");
+    }
   });
 
   it("creates and revokes a local object URL without calling fetch", async () => {
@@ -30,6 +37,47 @@ describe("WatchView local media boundary", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
     view.remove();
     expect(revoke).toHaveBeenCalledWith("blob:watch-video");
+  });
+
+  it("renders readable compact subtitles and fullscreens the complete video stage", async () => {
+    const fullscreen = vi.fn(function (this: HTMLElement) { return Promise.resolve(); });
+    Object.defineProperty(HTMLElement.prototype, "requestFullscreen", {
+      configurable: true,
+      value: fullscreen,
+    });
+    const token = fallbackTokens("年")[0]!;
+    const cue = {
+      ...parseSrt("1\n00:00:01,000 --> 00:00:02,000\n年末には", "subtitle-display")[0]!,
+      tokens: ["年", "末", "に", "は"].map((surface, index) => ({
+        ...token,
+        surface,
+        lemma: surface,
+        span: { ...token.span, start: index, end: index + 1 },
+      })),
+    };
+    const view = document.createElement("watch-view") as unknown as HTMLElement & {
+      activeCues: readonly typeof cue[];
+      furigana: boolean;
+      spacing: number;
+      videoUrl: string;
+      readonly updateComplete: Promise<boolean>;
+    };
+    document.body.append(view);
+    view.furigana = false;
+    view.spacing = 0;
+    view.videoUrl = "blob:test-video";
+    view.activeCues = [cue];
+    await view.updateComplete;
+
+    const overlay = view.querySelector("[data-subtitle-overlay]") as HTMLElement;
+    expect(overlay.style.fontSize).toBe("clamp(30px,5.5cqw,112px)");
+    expect(view.querySelector("[data-subtitle-cue]")?.textContent).toBe("年末には");
+    expect(Array.from(view.querySelectorAll("[data-subtitle-cue] span")).every((span) =>
+      (span as HTMLElement).style.marginRight === "0em")).toBe(true);
+
+    (view.querySelector("[data-fullscreen-button]") as HTMLButtonElement).click();
+    await vi.waitFor(() => expect(fullscreen).toHaveBeenCalledOnce());
+    expect(fullscreen.mock.contexts[0]).toBe(view.querySelector("[data-video-stage]"));
   });
 
   it("records a marker encounter without pausing, seeking, or sending source text", async () => {

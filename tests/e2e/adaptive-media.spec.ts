@@ -46,6 +46,33 @@ test.describe("adaptive local-media privacy and resilience", () => {
     });
     await expect(page.getByText("private-release-fixture.mp4")).toBeVisible();
     await expect(page.locator("video")).toHaveAttribute("src", /^blob:/);
+    await page.locator("watch-view").evaluate((element) => {
+      const view = element as HTMLElement & {
+        cues: readonly object[];
+        activeCues: readonly object[];
+        requestUpdate: () => void;
+      };
+      view.activeCues = view.cues.slice(0, 1);
+      view.requestUpdate();
+    });
+    const subtitleOverlay = page.locator("[data-subtitle-overlay]");
+    await expect(page.locator("[data-subtitle-cue]")).toBeVisible();
+    const normalSubtitle = await subtitleOverlay.evaluate((overlay) => ({
+      fontSize: Number.parseFloat(getComputedStyle(overlay).fontSize),
+      whitespaceNodes: Array.from(overlay.querySelector("[data-subtitle-cue]")!.childNodes)
+        .filter((node) => node.nodeType === Node.TEXT_NODE && /\s/u.test(node.textContent ?? "")).length,
+    }));
+    expect(normalSubtitle.fontSize).toBeGreaterThanOrEqual(40);
+    expect(normalSubtitle.whitespaceNodes).toBe(0);
+
+    await page.getByRole("button", { name: "Fullscreen" }).click();
+    await expect.poll(() => page.evaluate(() => document.fullscreenElement?.hasAttribute("data-video-stage")))
+      .toBe(true);
+    await expect(page.locator("[data-video-stage]:fullscreen [data-subtitle-cue]")).toBeVisible();
+    const fullscreenFontSize = await subtitleOverlay.evaluate((overlay) =>
+      Number.parseFloat(getComputedStyle(overlay).fontSize));
+    expect(fullscreenFontSize).toBeGreaterThan(normalSubtitle.fontSize);
+    await page.evaluate(() => document.exitFullscreen());
 
     await page.route("**/api/adaptive-media/analysis/recommendations", (route) => route.abort("failed"));
     await page.getByText("Send at most 12 shortlisted subtitle excerpts").locator("input").check();
