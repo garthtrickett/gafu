@@ -1,6 +1,7 @@
 import { Effect } from "effect";
 import { LitElement, html } from "lit";
 import { customElement, query, state } from "lit/decorators.js";
+import { clientLog } from "../lib/client/clientLog.ts";
 import { runClientPromise } from "../lib/client/runtime.ts";
 import { knowledgePointCatalogStore, knowledgePointStore } from "../lib/client/stores/knowledgePointStore.ts";
 import type { NormalizedCue, TimingTransform } from "../lib/shared/adaptive-media.ts";
@@ -8,10 +9,10 @@ import { alignSubtitles } from "../lib/client/media/adaptive/alignment.ts";
 import { decodeSpeechEnvelope } from "../lib/client/media/adaptive/audio-analysis.ts";
 import { LocalMediaSession } from "../lib/client/media/adaptive/local-media.ts";
 import { CueLifecycleTracker } from "../lib/client/media/adaptive/playback.ts";
-import { buildSourceExclusionSignatures, enrichSourceSemanticSignatures, getOrCreateSourceSignatureKey, persistSourceExclusionSignatures } from "../lib/client/media/adaptive/source-signature-store.ts";
+import { buildSourceExclusionSignatures, getOrCreateSourceSignatureKey, persistSourceExclusionSignatures } from "../lib/client/media/adaptive/source-signature-store.ts";
 import { buildEpisodeSyllabus, type EpisodeSyllabus } from "../lib/client/media/adaptive/syllabus.ts";
 import { findActiveCues, fingerprintSubtitleBytes, parseSubtitleTrack } from "../lib/client/media/adaptive/subtitles.ts";
-import { tokenizeJapaneseWithFallback } from "../lib/client/media/adaptive/tokenizer.ts";
+import { tokenizeSubtitleCuesCooperatively } from "../lib/client/media/adaptive/tokenizer.ts";
 import { tokenState } from "../lib/client/stores/authStore.ts";
 import type { LearningExerciseContent, PrimerContent } from "../lib/server/ai/schema.ts";
 import {
@@ -132,27 +133,27 @@ export class WatchView extends LitElement {
   }
 
   private loadSubtitles(file: File) {
+    this.status = "Preparing subtitles locally…";
     const program = Effect.gen(this, function* () {
+      yield* clientLog("info", "[WatchView] Subtitle preparation started.", { byteCount: file.size });
       const bytes = new Uint8Array(yield* Effect.tryPromise({
         try: () => file.arrayBuffer(),
         catch: (cause) => new Error(`Could not read subtitle file: ${String(cause)}`),
       }));
       const fingerprint = yield* fingerprintSubtitleBytes(bytes);
       const parsed = parseSubtitleTrack(file.name, new TextDecoder().decode(bytes), fingerprint);
-      const enriched = yield* Effect.forEach(parsed, (cue) => Effect.map(
-        tokenizeJapaneseWithFallback(cue.normalizedText),
-        (tokens) => ({ ...cue, tokens }),
-      ), { concurrency: 4 });
+      yield* clientLog("info", "[WatchView] Parsed local subtitle cues.", { cueCount: parsed.length });
+      const enriched = yield* tokenizeSubtitleCuesCooperatively(parsed);
+      yield* clientLog("info", "[WatchView] Tokenized local subtitle cues.", { cueCount: enriched.length });
       const sourceSignatureKey = yield* getOrCreateSourceSignatureKey();
       const sourceSignatures = yield* buildSourceExclusionSignatures(enriched, sourceSignatureKey);
       if (enriched[0]) yield* persistSourceExclusionSignatures(enriched[0].subtitleTrackFingerprint, sourceSignatures);
-      if (enriched[0]) {
-        const trackFingerprint = enriched[0].subtitleTrackFingerprint;
-        void runClientPromise(enrichSourceSemanticSignatures(enriched, sourceSignatures).pipe(
-          Effect.flatMap((semanticSignatures) => persistSourceExclusionSignatures(trackFingerprint, semanticSignatures)),
-          Effect.catchAll(() => Effect.void),
-        ));
-      }
+      // Semantic embeddings are intentionally lazy: exercise validation enriches these
+      // signatures only when it needs a near-copy check, avoiding a full-track model run here.
+      yield* clientLog("info", "[WatchView] Stored exact and lexical source signatures.", {
+        exactSignatureCount: sourceSignatures.exact.size,
+        lexicalSignatureCount: sourceSignatures.lexical.length,
+      });
       yield* knowledgePointCatalogStore.load();
       yield* knowledgePointStore.load();
       const catalog = knowledgePointCatalogStore.state.peek().map((point) => point.kind === "vocabulary" ? ({
@@ -173,7 +174,15 @@ export class WatchView extends LitElement {
         learningState: progress.learningState ?? ((progress.stability ?? 0) >= 21 ? "stable" as const : "learning" as const),
         participationStatus: progress.participationStatus ?? "active" as const,
       }));
+      yield* clientLog("info", "[WatchView] Loaded knowledge state for subtitles.", {
+        catalogCount: catalog.length,
+        learnerProgressCount: learner.length,
+      });
       const syllabus = buildEpisodeSyllabus(enriched, catalog, learner);
+      yield* clientLog("info", "[WatchView] Built subtitle syllabus.", {
+        syllabusItemCount: syllabus.items.length,
+        rejectedCandidateCount: syllabus.rejectedCandidateIds.length,
+      });
       yield* Effect.sync(() => {
         this.cues = enriched;
         this.subtitleName = file.name;
@@ -190,7 +199,10 @@ export class WatchView extends LitElement {
           : `${enriched.length} timed cues prepared locally.`;
         this.updateCues();
       });
-    }).pipe(Effect.catchAll((error) => Effect.sync(() => { this.status = error.message; })));
+    }).pipe(Effect.catchAll((error) => Effect.gen(this, function* () {
+      yield* clientLog("error", "[WatchView] Subtitle preparation failed.");
+      yield* Effect.sync(() => { this.status = error.message; });
+    })));
     void runClientPromise(program);
   }
 

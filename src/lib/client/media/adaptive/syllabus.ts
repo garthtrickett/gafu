@@ -1,4 +1,5 @@
 import type {
+  CandidateEvidence,
   MediaCandidate,
   NormalizedCue,
   NormalizedToken,
@@ -24,13 +25,25 @@ export interface GrammarEvidenceMatcher {
   readonly match: (cue: NormalizedCue) => readonly { start: number; end: number; surface: string }[];
 }
 
+interface VocabularyCandidateAccumulator {
+  readonly id: string;
+  readonly analysisRunId: string;
+  readonly kind: "vocabulary";
+  readonly canonicalKey: string;
+  readonly meaning: string;
+  readonly confidence: number;
+  readonly disposition: "pending";
+  readonly evidence: CandidateEvidence[];
+  readonly resolvedKnowledgePointId: null;
+}
+
 const canonicalPartOfSpeech = (token: NormalizedToken): string => token.partOfSpeech[0] ?? "unknown";
 
 export const canonicalVocabularyKey = (token: NormalizedToken): string =>
   `vocabulary:${token.lemma.normalize("NFKC")}:${token.reading.normalize("NFKC")}:${canonicalPartOfSpeech(token)}`;
 
 const vocabularyCandidates = (cues: readonly NormalizedCue[]): MediaCandidate[] => {
-  const candidates = new Map<string, MediaCandidate>();
+  const candidates = new Map<string, VocabularyCandidateAccumulator>();
   for (const cue of cues) {
     for (const token of cue.tokens) {
       if (token.punctuation || token.lineBreak || token.lemma.trim().length === 0) continue;
@@ -42,7 +55,7 @@ const vocabularyCandidates = (cues: readonly NormalizedCue[]): MediaCandidate[] 
         observedSurface: token.surface,
       };
       if (existing) {
-        candidates.set(canonicalKey, { ...existing, evidence: [...existing.evidence, evidence] });
+        existing.evidence.push(evidence);
       } else {
         candidates.set(canonicalKey, {
           id: `candidate:${canonicalKey}`,
@@ -112,6 +125,7 @@ export const buildEpisodeSyllabus = (
 ): EpisodeSyllabus => {
   const catalogByKey = new Map(catalog.map((point) => [point.canonicalKey, point]));
   const learnerById = new Map(learner.map((progress) => [progress.knowledgePointId, progress]));
+  const cuesById = new Map(cues.map((cue) => [cue.id, cue]));
   const candidates = [...vocabularyCandidates(cues), ...grammarCandidates(cues, grammarMatchers)];
   const rejectedCandidateIds: string[] = [];
   const eligible = candidates.flatMap((candidate) => {
@@ -122,7 +136,7 @@ export const buildEpisodeSyllabus = (
       return [];
     }
     if (candidate.confidence < 0.6 || candidate.evidence.some((evidence) => {
-      const cue = cues.find((entry) => entry.id === evidence.cueId);
+      const cue = cuesById.get(evidence.cueId);
       return !cue || cue.normalizedText.slice(evidence.targetSpan.start, evidence.targetSpan.end) !== evidence.observedSurface;
     })) {
       rejectedCandidateIds.push(candidate.id);

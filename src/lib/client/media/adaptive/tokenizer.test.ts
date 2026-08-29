@@ -1,6 +1,9 @@
+import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 import type * as kuromoji from "kuromoji";
-import { fallbackTokens, tokenizeJapaneseWith } from "./tokenizer.ts";
+import type { NormalizedCue } from "../../../shared/adaptive-media.ts";
+import { NORMALIZED_CUE_VERSION } from "../../../shared/adaptive-media.ts";
+import { fallbackTokens, tokenizeJapaneseWith, tokenizeSubtitleCuesCooperatively } from "./tokenizer.ts";
 
 const fakeTokenizer = {
   tokenize: () => [{
@@ -42,5 +45,29 @@ describe("adaptive Japanese tokenizer", () => {
       expect(normalized.slice(token.span.start, token.span.end)).toBe(token.surface);
     }
     expect(tokens.find((token) => token.lineBreak)?.span).toMatchObject({ start: 3, end: 4 });
+  });
+
+  it("yields between subtitle tokenization batches", async () => {
+    const cues: NormalizedCue[] = Array.from({ length: 45 }, (_, index) => ({
+      id: `cue-${index}`,
+      subtitleTrackFingerprint: "track",
+      sourceCueOrdinal: index,
+      sourceStartSeconds: index,
+      sourceEndSeconds: index + 1,
+      normalizedText: `字幕${index}`,
+      normalizationVersion: NORMALIZED_CUE_VERSION,
+      tokens: [],
+    }));
+    let yields = 0;
+    const enriched = await Effect.runPromise(tokenizeSubtitleCuesCooperatively(
+      cues,
+      (text) => Effect.succeed(fallbackTokens(text)),
+      20,
+      Effect.sync(() => { yields += 1; }),
+    ));
+
+    expect(enriched).toHaveLength(45);
+    expect(enriched[44]?.tokens[0]?.surface).toBe("字幕44");
+    expect(yields).toBe(2);
   });
 });
