@@ -941,12 +941,14 @@ would upload the video. Hosted Gafu must use browser/WASM processing. A native
 path may use an explicitly installed loopback-only helper, but absence of
 that helper must leave original playback and manual subtitle offset available.
 The optional native path is now implemented for localhost development: the
-browser tries its decoder first, then may stream the file to the same-machine
-Gafu process for system-FFmpeg analysis. The route is disabled in hosted
-production, rejects non-loopback requests, and is never called by a non-loopback
-browser page. Absence of FFmpeg still leaves original playback and manual
-subtitle offset available. It must never cause a remote upload or make playback
-depend on alignment.
+browser may stream the file to the same-machine Gafu process for system-FFmpeg
+analysis or first-track Opus repair when Firefox cannot play the container's
+audio. Repaired audio is synchronized to the untouched video and becomes the
+subtitle clock while active. The routes are disabled in hosted production,
+reject non-loopback requests, and are never called by a non-loopback browser
+page. Absence of FFmpeg still leaves original playback and manual subtitle
+offset available. It must never cause a remote upload or make playback depend
+on repair or alignment.
 
 The media modules migrated into Gafu remain responsible for:
 

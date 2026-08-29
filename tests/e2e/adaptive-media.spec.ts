@@ -2,6 +2,11 @@ import path from "node:path";
 import { test, expect } from "./utils/base-test";
 import { cleanupTestUser, createVerifiedSubscriber } from "./utils/seed";
 
+const FIREFOX_OPUS_FIXTURE = Buffer.from(
+  "T2dnUwACAAAAAAAAAACvEg7XAAAAAI6vwD8BE09wdXNIZWFkAQE4AYC7AAAAAABPZ2dTAAAAAAAAAAAAAK8SDtcBAAAAtr3/8wE+T3B1c1RhZ3MNAAAATGF2ZjYwLjE2LjEwMAEAAAAdAAAAZW5jb2Rlcj1MYXZjNjAuMzEuMTAyIGxpYm9wdXNPZ2dTAAT4EwAAAAAAAK8SDtcCAAAAbvEQZwYDAwMDAwP4//74//74//74//74//74//4=",
+  "base64",
+);
+
 test.describe("adaptive local-media privacy and resilience", () => {
   let user: Awaited<ReturnType<typeof createVerifiedSubscriber>> | undefined;
 
@@ -56,5 +61,42 @@ test.describe("adaptive local-media privacy and resilience", () => {
     await page.setViewportSize({ width: 390, height: 844 });
     const overflows = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
     expect(overflows).toBe(false);
+  });
+
+  test("activates synchronized Opus audio for a silent Firefox MKV", async ({ page }) => {
+    if (!user) throw new Error("Test user was not created.");
+    await page.route("**/api/local-media/repair-audio", (route) => route.fulfill({
+      status: 200,
+      contentType: "audio/ogg",
+      body: FIREFOX_OPUS_FIXTURE,
+    }));
+    await page.goto("/login");
+    await page.locator("#email").fill(user.email);
+    await page.locator("#password").fill(user.password);
+    await page.locator('button[type="submit"]').click();
+    await expect(page).toHaveURL("/");
+    await page.goto("/watch");
+
+    await page.locator('input[type="file"]').nth(0).setInputFiles({
+      name: "silent-firefox.mkv",
+      mimeType: "video/x-matroska",
+      buffer: Buffer.from("local test container"),
+    });
+    await page.getByRole("button", { name: "Fix audio in Firefox" }).click();
+
+    await expect(page.getByRole("button", { name: "Audio fixed ✓" })).toBeVisible();
+    await expect(page.getByRole("status").filter({ hasText: "Firefox-compatible audio is ready" })).toBeVisible();
+    const playback = await page.locator("watch-view").evaluate((view) => {
+      const video = view.querySelector("video");
+      const audio = view.querySelector("audio[data-repaired-audio]") as HTMLAudioElement | null;
+      return {
+        videoMuted: video?.muted,
+        audioSource: audio?.getAttribute("src"),
+        audioDuration: audio?.duration,
+      };
+    });
+    expect(playback.videoMuted).toBe(true);
+    expect(playback.audioSource).toMatch(/^blob:/u);
+    expect(playback.audioDuration).toBeGreaterThan(0);
   });
 });

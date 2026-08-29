@@ -2,7 +2,7 @@
 
 **Status:** Phases 0–5 implemented; internal rollout ready, general availability held by documented external approvals
 
-**Last updated:** 2026-08-28
+**Last updated:** 2026-08-29
 
 **Product specification:** `docs/adaptive-media-learning-prd.md`
 
@@ -18,8 +18,9 @@ tests have moved into Gafu, and `jp-player` is deprecated as a dependency.
 
 The product remains at the `internal` rollout stage until the pending Japanese
 human-review rows, AI-provider legal review, and optional FFmpeg licence decision
-are signed off. These are release-promotion holds, not missing engineering work;
-the safe fallback keeps playback local with original audio and manual timing.
+are signed off. These are release-promotion holds, not missing engineering work.
+Localhost can repair Firefox-incompatible MKV audio through installed system
+FFmpeg; hosted playback safely falls back to original audio and manual timing.
 
 ## Outcome
 
@@ -178,7 +179,7 @@ Record the behavior that must survive migration:
 - active timed subtitles, furigana, spacing, font-size controls, seek shortcuts,
   fullscreen, mute, and repaired-audio clock ownership;
 - automatic alignment, confidence fallback, and manual offset;
-- browser-WASM audio repair fallback; and
+- native system-FFmpeg audio repair plus the gated browser-WASM fallback; and
 - failure behavior when codecs, dictionary, FFmpeg, or alignment are absent.
 
 Pin the exact `jp-player` source commit used for the parity inventory and retain
@@ -363,14 +364,17 @@ a git, npm, runtime, iframe, HTTP, or build dependency on `jp-player`.
   run the migrated pure alignment algorithm over typed arrays; do not call the
   old Node `Buffer`/Vite middleware path.
 - Do not migrate Yomikata's local Vite FFmpeg middleware into hosted Gafu routes.
-- Prefer browser decoding, with an optional development-only loopback helper
-  that streams to system FFmpeg when the browser cannot demux the container.
+- Prefer browser decoding, with an optional loopback helper that streams to
+  system FFmpeg when the browser cannot demux or play the container's audio.
   Hosted production disables the route, non-loopback requests are rejected,
-  and a non-loopback browser never sends media bytes to it.
+  and a non-loopback browser never sends media bytes to it. The same helper may
+  transcode the first audio track to Firefox-compatible Opus while the original
+  video stays browser-owned; repaired audio then owns the subtitle clock.
 - Fall back to original audio, original subtitle timing, and manual offset when
   repair or automatic alignment is unavailable.
-- Add tests that fail if video bytes are passed to `fetch`, sync, AI, logging, or
-  persistent Gafu storage.
+- Add tests that fail if video bytes are passed to remote `fetch`, sync, AI,
+  logging, or persistent Gafu storage; the versioned loopback-only helper is the
+  sole `fetch` exception.
 
 #### 2.4 Implement local material preprocessing
 

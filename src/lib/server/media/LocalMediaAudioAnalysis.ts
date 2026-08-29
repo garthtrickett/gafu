@@ -22,6 +22,11 @@ export interface MediaStreamPumpResult {
   readonly writeFailed: boolean;
 }
 
+export interface StagedLocalMedia {
+  readonly mediaPath: string;
+  readonly receivedByteCount: number;
+}
+
 const settleSinkOperation = (
   operation: () => number | Promise<number>,
 ): Promise<boolean> => Promise.resolve()
@@ -53,12 +58,12 @@ export const pumpMediaStream = async (
   return { receivedByteCount, writeFailed: !inputOpen };
 };
 
-const makeTemporaryMediaDirectory = Effect.try({
+export const makeTemporaryMediaDirectory = Effect.try({
   try: () => mkdtempSync(resolve(tmpdir(), "gafu-local-media-")),
   catch: (cause) => new Error(`Could not create local media workspace: ${String(cause)}`),
 });
 
-const removeTemporaryMediaDirectory = (temporaryDirectory: string) => Effect.gen(function* () {
+export const removeTemporaryMediaDirectory = (temporaryDirectory: string) => Effect.gen(function* () {
   const cleanup = yield* Effect.either(Effect.try({
     try: () => rmSync(temporaryDirectory, { recursive: true, force: true }),
     catch: (cause) => new Error(`Could not remove local media workspace: ${String(cause)}`),
@@ -70,28 +75,35 @@ const removeTemporaryMediaDirectory = (temporaryDirectory: string) => Effect.gen
   }
 });
 
+export const stageLocalMediaUpload = (
+  mediaStream: ReadableStream<Uint8Array> | null,
+  temporaryDirectory: string,
+): Effect.Effect<StagedLocalMedia, Error> => Effect.gen(function* () {
+  if (!mediaStream) return yield* Effect.fail(new Error("The local media request contained no bytes."));
+  const mediaPath = resolve(temporaryDirectory, "media-input");
+  const upload = yield* Effect.tryPromise({
+    try: () => pumpMediaStream(mediaStream, Bun.file(mediaPath).writer({ highWaterMark: 1024 * 1024 })),
+    catch: (cause) => new Error(`Could not stage local media for FFmpeg: ${String(cause)}`),
+  });
+  if (upload.writeFailed) {
+    return yield* Effect.fail(new Error("Could not stage the complete local media file for FFmpeg."));
+  }
+  return { mediaPath, receivedByteCount: upload.receivedByteCount };
+});
+
 export const extractLocalMediaSpeechEnvelope = (
   mediaStream: ReadableStream<Uint8Array> | null,
   abortSignal: AbortSignal,
 ): Effect.Effect<Float64Array, Error> => Effect.gen(function* () {
-  if (!mediaStream) return yield* Effect.fail(new Error("The local media request contained no bytes."));
-
   yield* Effect.logInfo("[LocalMediaAudioAnalysis] Starting loopback FFmpeg analysis.");
   return yield* Effect.acquireUseRelease(
     makeTemporaryMediaDirectory,
     (temporaryDirectory) => Effect.gen(function* () {
-      const mediaPath = resolve(temporaryDirectory, "media-input");
-      const upload = yield* Effect.tryPromise({
-        try: () => pumpMediaStream(mediaStream, Bun.file(mediaPath).writer({ highWaterMark: 1024 * 1024 })),
-        catch: (cause) => new Error(`Could not stage local media for FFmpeg: ${String(cause)}`),
-      });
-      if (upload.writeFailed) {
-        return yield* Effect.fail(new Error("Could not stage the complete local media file for FFmpeg."));
-      }
+      const upload = yield* stageLocalMediaUpload(mediaStream, temporaryDirectory);
       yield* Effect.logInfo("[LocalMediaAudioAnalysis] Local media upload staged for analysis.", {
         receivedByteCount: upload.receivedByteCount,
       });
-      return yield* analyzeTemporaryMedia(mediaPath, upload.receivedByteCount, abortSignal);
+      return yield* analyzeTemporaryMedia(upload.mediaPath, upload.receivedByteCount, abortSignal);
     }),
     removeTemporaryMediaDirectory,
   );
