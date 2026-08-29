@@ -3,6 +3,7 @@ import type * as kuromoji from "kuromoji";
 import {
   NORMALIZED_CUE_VERSION,
   TARGET_OFFSET_UNIT,
+  type NormalizedCue,
   type NormalizedToken,
 } from "../../../shared/adaptive-media.ts";
 
@@ -114,3 +115,25 @@ export const fallbackTokens = (text: string): NormalizedToken[] => {
 export const tokenizeJapaneseWithFallback = (text: string) => tokenizeJapanese(text).pipe(
   Effect.catchAll(() => Effect.succeed(fallbackTokens(text))),
 );
+
+export const DEFAULT_SUBTITLE_TOKENIZATION_BATCH_SIZE = 20;
+
+export const tokenizeSubtitleCuesCooperatively = (
+  cues: readonly NormalizedCue[],
+  tokenize: (text: string) => Effect.Effect<readonly NormalizedToken[], Error> = tokenizeJapaneseWithFallback,
+  batchSize = DEFAULT_SUBTITLE_TOKENIZATION_BATCH_SIZE,
+  yieldToBrowser: Effect.Effect<void> = Effect.sleep("1 millis"),
+): Effect.Effect<readonly NormalizedCue[], Error> => Effect.gen(function* () {
+  const safeBatchSize = Math.max(1, Math.floor(batchSize));
+  const enriched: NormalizedCue[] = [];
+  for (let start = 0; start < cues.length; start += safeBatchSize) {
+    const batch = cues.slice(start, start + safeBatchSize);
+    const tokenized = yield* Effect.forEach(batch, (cue) => Effect.map(
+      tokenize(cue.normalizedText),
+      (tokens) => ({ ...cue, tokens: [...tokens] }),
+    ), { concurrency: 4 });
+    enriched.push(...tokenized);
+    if (start + safeBatchSize < cues.length) yield* yieldToBrowser;
+  }
+  return enriched;
+});

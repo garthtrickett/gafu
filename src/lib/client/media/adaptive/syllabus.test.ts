@@ -50,4 +50,15 @@ describe("episode syllabus preprocessing", () => {
     expect(syllabus.items).toEqual([]);
     expect(syllabus.rejectedCandidateIds).toHaveLength(1);
   });
+
+  it("aggregates heavily repeated subtitle tokens without copying prior evidence", () => {
+    const cues = Array.from({ length: 2_000 }, (_, index) =>
+      cue(`cue-${index}`, "猫", [token("猫", "猫", 0, "名詞")]));
+
+    const syllabus = buildEpisodeSyllabus(cues, [], []);
+
+    expect(syllabus.items).toEqual([
+      expect.objectContaining({ label: "猫", occurrenceCount: 2_000 }),
+    ]);
+  });
 });
