@@ -3,3 +3,26 @@
 @theme {
   --font-sans: "Inter", "Noto Sans JP", ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
 }
+
+[data-video-stage] {
+  container-type: inline-size;
+}
+
+[data-video-stage]:fullscreen {
+  width: 100vw;
+  height: 100vh;
+  border: 0;
+  border-radius: 0;
+  aspect-ratio: auto;
+  background: #000;
+}
+
+[data-subtitle-overlay] ruby {
+  ruby-position: over;
+}
+
+[data-subtitle-overlay] rt {
+  font-size: 0.52em;
+  font-weight: 600;
+  line-height: 1;
+}

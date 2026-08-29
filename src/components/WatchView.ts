@@ -52,6 +52,7 @@ interface AcceptedTarget {
 @customElement("watch-view")
 export class WatchView extends LitElement {
   @query("video") private video?: HTMLVideoElement;
+  @query("[data-video-stage]") private videoStage?: HTMLElement;
   @query("audio[data-repaired-audio]") private repairedAudio?: HTMLAudioElement;
   @state() private videoUrl = "";
   @state() private videoName = "";
@@ -68,8 +69,8 @@ export class WatchView extends LitElement {
   @state() private transform: TimingTransform = SOURCE_TIMING;
   @state() private status = "Choose a local video and subtitle track.";
   @state() private furigana = true;
-  @state() private spacing = 0.32;
-  @state() private subtitleSize = 32;
+  @state() private spacing = 0.1;
+  @state() private subtitleSize = 5.5;
   @state() private syllabus: EpisodeSyllabus = { items: [], rejectedCandidateIds: [] };
   @state() private analysisConsent = false;
   @state() private aiRecommendations: readonly ActionableMediaRecommendation[] = [];
@@ -445,6 +446,18 @@ export class WatchView extends LitElement {
     void runClientPromise(playback.pipe(Effect.catchAll((error) => Effect.sync(() => { this.status = error.message; }))));
   }
 
+  private enterFullscreen() {
+    if (!this.videoUrl || !this.videoStage) return;
+    const fullscreen = Effect.tryPromise({
+      try: () => this.videoStage!.requestFullscreen(),
+      catch: (cause) => new Error(`Fullscreen could not start: ${String(cause)}`),
+    });
+    void runClientPromise(fullscreen.pipe(Effect.catchAll((error) => Effect.gen(this, function* () {
+      yield* clientLog("error", "[WatchView] Video stage fullscreen request failed.", { reason: error.message });
+      yield* Effect.sync(() => { this.status = error.message; });
+    }))));
+  }
+
   private autoAlign() {
     const file = this.media.get("video")?.file;
     if (!file || this.cues.length < 8) return;
@@ -719,11 +732,7 @@ export class WatchView extends LitElement {
   }
 
   private renderToken(cue: NormalizedCue) {
-    return cue.tokens.map((token) => token.lineBreak ? html`<br>` : html`
-      <span class=${token.punctuation ? "" : "inline-block"} style=${`margin-right:${token.punctuation ? 0 : this.spacing}em`}>
-        ${this.furigana && token.reading ? html`<ruby>${token.surface}<rt>${token.reading}</rt></ruby>` : token.surface}
-      </span>
-    `);
+    return cue.tokens.map((token) => token.lineBreak ? html`<br>` : html`<span class=${token.punctuation ? "" : "inline-block"} style=${`margin-right:${token.punctuation ? 0 : this.spacing}em`}>${this.furigana && token.reading ? html`<ruby>${token.surface}<rt>${token.reading}</rt></ruby>` : token.surface}</span>`);
   }
 
   override render() {
@@ -739,14 +748,14 @@ export class WatchView extends LitElement {
         </header>
         <div class="grid gap-5 lg:grid-cols-[minmax(0,1fr)_20rem]">
           <div class="space-y-3">
-            <div class="relative aspect-video overflow-hidden rounded-xl border border-zinc-700 bg-black">
-              ${this.videoUrl ? html`<video class="h-full w-full" .src=${this.videoUrl} playsinline controls
+            <div data-video-stage class="relative aspect-video overflow-hidden rounded-xl border border-zinc-700 bg-black">
+              ${this.videoUrl ? html`<video class="h-full w-full object-contain" .src=${this.videoUrl} playsinline controls
                 @play=${this.onVideoPlay} @pause=${this.onVideoPause} @seeking=${this.onVideoSeeking}
                 @ratechange=${this.onVideoRateChange} @volumechange=${this.onVideoVolumeChange}
                 @timeupdate=${this.updateCues} @ended=${this.onVideoEnded}></video>` : html`<div class="grid h-full place-items-center text-zinc-500">Choose or drop an MKV, MP4, or WebM file</div>`}
               ${this.repairedAudioUrl ? html`<audio data-repaired-audio hidden .src=${this.repairedAudioUrl} preload="auto" @timeupdate=${this.updateCues}></audio>` : ""}
-              <div class="pointer-events-none absolute inset-x-4 bottom-8 text-center font-semibold text-white [text-shadow:0_2px_5px_#000]" style=${`font-size:${this.subtitleSize}px`}>
-                ${this.activeCues.map((cue) => html`<div class=${this.cueHasMarker(cue.id) ? "border-l-4 border-emerald-400 pl-2" : ""}>${this.renderToken(cue)}</div>`)}
+              <div data-subtitle-overlay class="pointer-events-none absolute inset-x-[4%] bottom-[9%] z-10 text-center font-semibold leading-[1.25] text-white [text-shadow:0_2px_5px_#000,0_0_2px_#000]" style=${`font-size:clamp(30px,${this.subtitleSize}cqw,112px)`}>
+                ${this.activeCues.map((cue) => html`<div data-subtitle-cue class=${this.cueHasMarker(cue.id) ? "border-l-4 border-emerald-400 pl-2" : ""}>${this.renderToken(cue)}</div>`)}
               </div>
             </div>
             <div class="flex flex-wrap items-center gap-3 rounded-lg border border-zinc-700 bg-zinc-800 p-3">
@@ -754,7 +763,7 @@ export class WatchView extends LitElement {
               <label class="cursor-pointer rounded border border-zinc-600 px-3 py-2">Video<input hidden type="file" accept=".mkv,.mp4,.webm,video/*" @change=${(event: Event) => { const file = (event.target as HTMLInputElement).files?.[0]; if (file) this.loadVideo(file); }}></label>
               <label class="cursor-pointer rounded border border-zinc-600 px-3 py-2">Subtitles<input hidden type="file" accept=".ass,.ssa,.srt" @change=${(event: Event) => { const file = (event.target as HTMLInputElement).files?.[0]; if (file) this.loadSubtitles(file); }}></label>
               <button class="rounded border border-zinc-600 px-3 py-2 disabled:opacity-40" ?disabled=${!this.videoUrl || this.cues.length < 8} @click=${this.autoAlign}>Auto-align locally</button>
-              <button class="rounded border border-zinc-600 px-3 py-2" @click=${() => this.video?.requestFullscreen()}>Fullscreen</button>
+              <button data-fullscreen-button class="rounded border border-zinc-600 px-3 py-2 disabled:opacity-40" ?disabled=${!this.videoUrl} @click=${this.enterFullscreen}>Fullscreen</button>
             </div>
             <p class="text-sm text-zinc-400" role="status">${this.status}</p>
           </div>
@@ -762,8 +771,8 @@ export class WatchView extends LitElement {
             <div><h2 class="font-semibold">Local files</h2><p class="truncate text-sm text-zinc-400">${this.videoName || "No video"}</p><p class="truncate text-sm text-zinc-400">${this.subtitleName || "No subtitles"}</p></div>
             <label class="flex justify-between">Furigana <input type="checkbox" .checked=${this.furigana} @change=${(event: Event) => { this.furigana = (event.target as HTMLInputElement).checked; }}></label>
             <label class="flex justify-between">Encounter markers <input type="checkbox" .checked=${this.markersEnabled} @change=${(event: Event) => { this.markersEnabled = (event.target as HTMLInputElement).checked; }}></label>
-            <label class="block text-sm">Word spacing<input class="w-full" type="range" min="0" max="0.7" step="0.05" .value=${String(this.spacing)} @input=${(event: Event) => { this.spacing = Number((event.target as HTMLInputElement).value); }}></label>
-            <label class="block text-sm">Subtitle size<input class="w-full" type="range" min="22" max="46" step="2" .value=${String(this.subtitleSize)} @input=${(event: Event) => { this.subtitleSize = Number((event.target as HTMLInputElement).value); }}></label>
+            <label class="block text-sm">Word spacing<input class="w-full" type="range" min="0" max="0.5" step="0.025" .value=${String(this.spacing)} @input=${(event: Event) => { this.spacing = Number((event.target as HTMLInputElement).value); }}></label>
+            <label class="block text-sm">Subtitle size<input class="w-full" type="range" min="3" max="8" step="0.25" .value=${String(this.subtitleSize)} @input=${(event: Event) => { this.subtitleSize = Number((event.target as HTMLInputElement).value); }}></label>
             <label class="block text-sm">Manual offset (${this.transform.offsetSeconds.toFixed(1)}s)<input class="w-full" type="range" min="-10" max="10" step="0.1" .value=${String(this.transform.offsetSeconds)} @input=${(event: Event) => { this.transform = { id: "manual", version: "timing_transform_v1", scale: 1, offsetSeconds: Number((event.target as HTMLInputElement).value) }; this.updateCues(); }}></label>
             ${isMatroska ? html`
               <div class="space-y-2 border-t border-amber-900 pt-3">
