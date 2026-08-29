@@ -52,6 +52,7 @@ describe("WatchView local media boundary", () => {
         ...token,
         surface,
         lemma: surface,
+        reading: index === 0 ? "ねん" : "",
         span: { ...token.span, start: index, end: index + 1 },
       })),
     };
@@ -63,17 +64,30 @@ describe("WatchView local media boundary", () => {
       readonly updateComplete: Promise<boolean>;
     };
     document.body.append(view);
-    view.furigana = false;
+    view.furigana = true;
     view.spacing = 0;
     view.videoUrl = "blob:test-video";
     view.activeCues = [cue];
     await view.updateComplete;
 
     const overlay = view.querySelector("[data-subtitle-overlay]") as HTMLElement;
-    expect(overlay.style.fontSize).toBe("clamp(30px,5.5cqw,112px)");
-    expect(view.querySelector("[data-subtitle-cue]")?.textContent).toBe("年末には");
-    expect(Array.from(view.querySelectorAll("[data-subtitle-cue] span")).every((span) =>
+    expect(overlay.style.fontSize).toBe("clamp(36px,7.5cqw,180px)");
+    expect(Array.from(view.querySelectorAll("[data-subtitle-surface]")).map((surface) => surface.textContent).join(""))
+      .toBe("年末には");
+    expect(view.querySelector("[data-subtitle-reading]")?.textContent).toBe("ねん");
+    expect(view.querySelector("ruby")).toBeNull();
+    expect(Array.from(view.querySelectorAll("[data-subtitle-token]")).every((span) =>
       (span as HTMLElement).style.marginRight === "0em")).toBe(true);
+    expect(Array.from(view.querySelector("[data-subtitle-line]")!.childNodes).filter((node) =>
+      node.nodeType === Node.TEXT_NODE && /\s/u.test(node.textContent ?? ""))).toHaveLength(0);
+
+    const sizeInput = Array.from(view.querySelectorAll('input[type="range"]'))
+      .find((input) => input.parentElement?.textContent?.includes("Subtitle size")) as HTMLInputElement;
+    expect(sizeInput.max).toBe("14");
+    sizeInput.value = sizeInput.max;
+    sizeInput.dispatchEvent(new Event("input", { bubbles: true }));
+    await view.updateComplete;
+    expect(overlay.style.fontSize).toBe("clamp(36px,14cqw,180px)");
 
     (view.querySelector("[data-fullscreen-button]") as HTMLButtonElement).click();
     await vi.waitFor(() => expect(fullscreen).toHaveBeenCalledOnce());

@@ -4,7 +4,7 @@ import { customElement, query, state } from "lit/decorators.js";
 import { clientLog } from "../lib/client/clientLog.ts";
 import { runClientPromise } from "../lib/client/runtime.ts";
 import { knowledgePointCatalogStore, knowledgePointStore } from "../lib/client/stores/knowledgePointStore.ts";
-import type { NormalizedCue, TimingTransform } from "../lib/shared/adaptive-media.ts";
+import type { NormalizedCue, NormalizedToken, TimingTransform } from "../lib/shared/adaptive-media.ts";
 import { alignSubtitles } from "../lib/client/media/adaptive/alignment.ts";
 import { decodeSpeechEnvelope } from "../lib/client/media/adaptive/audio-analysis.ts";
 import { localAudioRepairAdapter } from "../lib/client/media/adaptive/audio-repair.ts";
@@ -70,7 +70,7 @@ export class WatchView extends LitElement {
   @state() private status = "Choose a local video and subtitle track.";
   @state() private furigana = true;
   @state() private spacing = 0.1;
-  @state() private subtitleSize = 5.5;
+  @state() private subtitleSize = 7.5;
   @state() private syllabus: EpisodeSyllabus = { items: [], rejectedCandidateIds: [] };
   @state() private analysisConsent = false;
   @state() private aiRecommendations: readonly ActionableMediaRecommendation[] = [];
@@ -731,8 +731,17 @@ export class WatchView extends LitElement {
     ));
   }
 
-  private renderToken(cue: NormalizedCue) {
-    return cue.tokens.map((token) => token.lineBreak ? html`<br>` : html`<span class=${token.punctuation ? "" : "inline-block"} style=${`margin-right:${token.punctuation ? 0 : this.spacing}em`}>${this.furigana && token.reading ? html`<ruby>${token.surface}<rt>${token.reading}</rt></ruby>` : token.surface}</span>`);
+  private renderToken(token: NormalizedToken) {
+    return html`<span data-subtitle-token style=${`margin-right:${token.punctuation ? 0 : this.spacing}em`}>${this.furigana && token.reading ? html`<span data-subtitle-reading>${token.reading}</span>` : ""}<span data-subtitle-surface>${token.surface}</span></span>`;
+  }
+
+  private renderCue(cue: NormalizedCue) {
+    const lines: NormalizedToken[][] = [[]];
+    for (const token of cue.tokens) {
+      if (token.lineBreak) lines.push([]);
+      else lines.at(-1)!.push(token);
+    }
+    return lines.map((line) => html`<div data-subtitle-line>${line.map((token) => this.renderToken(token))}</div>`);
   }
 
   override render() {
@@ -754,8 +763,8 @@ export class WatchView extends LitElement {
                 @ratechange=${this.onVideoRateChange} @volumechange=${this.onVideoVolumeChange}
                 @timeupdate=${this.updateCues} @ended=${this.onVideoEnded}></video>` : html`<div class="grid h-full place-items-center text-zinc-500">Choose or drop an MKV, MP4, or WebM file</div>`}
               ${this.repairedAudioUrl ? html`<audio data-repaired-audio hidden .src=${this.repairedAudioUrl} preload="auto" @timeupdate=${this.updateCues}></audio>` : ""}
-              <div data-subtitle-overlay class="pointer-events-none absolute inset-x-[4%] bottom-[9%] z-10 text-center font-semibold leading-[1.25] text-white [text-shadow:0_2px_5px_#000,0_0_2px_#000]" style=${`font-size:clamp(30px,${this.subtitleSize}cqw,112px)`}>
-                ${this.activeCues.map((cue) => html`<div data-subtitle-cue class=${this.cueHasMarker(cue.id) ? "border-l-4 border-emerald-400 pl-2" : ""}>${this.renderToken(cue)}</div>`)}
+              <div data-subtitle-overlay class="pointer-events-none absolute inset-x-[4%] bottom-[9%] z-10 text-center font-semibold text-white [text-shadow:0_2px_5px_#000,0_0_2px_#000]" style=${`font-size:clamp(36px,${this.subtitleSize}cqw,180px)`}>
+                ${this.activeCues.map((cue) => html`<div data-subtitle-cue class=${this.cueHasMarker(cue.id) ? "border-l-4 border-emerald-400 pl-2" : ""}>${this.renderCue(cue)}</div>`)}
               </div>
             </div>
             <div class="flex flex-wrap items-center gap-3 rounded-lg border border-zinc-700 bg-zinc-800 p-3">
@@ -772,7 +781,7 @@ export class WatchView extends LitElement {
             <label class="flex justify-between">Furigana <input type="checkbox" .checked=${this.furigana} @change=${(event: Event) => { this.furigana = (event.target as HTMLInputElement).checked; }}></label>
             <label class="flex justify-between">Encounter markers <input type="checkbox" .checked=${this.markersEnabled} @change=${(event: Event) => { this.markersEnabled = (event.target as HTMLInputElement).checked; }}></label>
             <label class="block text-sm">Word spacing<input class="w-full" type="range" min="0" max="0.5" step="0.025" .value=${String(this.spacing)} @input=${(event: Event) => { this.spacing = Number((event.target as HTMLInputElement).value); }}></label>
-            <label class="block text-sm">Subtitle size<input class="w-full" type="range" min="3" max="8" step="0.25" .value=${String(this.subtitleSize)} @input=${(event: Event) => { this.subtitleSize = Number((event.target as HTMLInputElement).value); }}></label>
+            <label class="block text-sm">Subtitle size<input class="w-full" type="range" min="4" max="14" step="0.5" .value=${String(this.subtitleSize)} @input=${(event: Event) => { this.subtitleSize = Number((event.target as HTMLInputElement).value); }}></label>
             <label class="block text-sm">Manual offset (${this.transform.offsetSeconds.toFixed(1)}s)<input class="w-full" type="range" min="-10" max="10" step="0.1" .value=${String(this.transform.offsetSeconds)} @input=${(event: Event) => { this.transform = { id: "manual", version: "timing_transform_v1", scale: 1, offsetSeconds: Number((event.target as HTMLInputElement).value) }; this.updateCues(); }}></label>
             ${isMatroska ? html`
               <div class="space-y-2 border-t border-amber-900 pt-3">

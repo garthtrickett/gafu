@@ -57,12 +57,22 @@ test.describe("adaptive local-media privacy and resilience", () => {
     });
     const subtitleOverlay = page.locator("[data-subtitle-overlay]");
     await expect(page.locator("[data-subtitle-cue]")).toBeVisible();
+    const subtitleSize = page.getByText("Subtitle size").locator('input[type="range"]');
+    await subtitleSize.evaluate((input: HTMLInputElement) => {
+      input.value = input.max;
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await expect(subtitleOverlay).toHaveAttribute("style", /14cqw/);
     const normalSubtitle = await subtitleOverlay.evaluate((overlay) => ({
       fontSize: Number.parseFloat(getComputedStyle(overlay).fontSize),
-      whitespaceNodes: Array.from(overlay.querySelector("[data-subtitle-cue]")!.childNodes)
+      surfaceFontSize: Number.parseFloat(getComputedStyle(overlay.querySelector("[data-subtitle-surface]")!).fontSize),
+      surfaceHeight: overlay.querySelector("[data-subtitle-surface]")!.getBoundingClientRect().height,
+      whitespaceNodes: Array.from(overlay.querySelector("[data-subtitle-line]")!.childNodes)
         .filter((node) => node.nodeType === Node.TEXT_NODE && /\s/u.test(node.textContent ?? "")).length,
     }));
-    expect(normalSubtitle.fontSize).toBeGreaterThanOrEqual(40);
+    expect(normalSubtitle.fontSize).toBeGreaterThanOrEqual(80);
+    expect(normalSubtitle.surfaceFontSize).toBe(normalSubtitle.fontSize);
+    expect(normalSubtitle.surfaceHeight).toBeGreaterThanOrEqual(normalSubtitle.surfaceFontSize * 0.9);
     expect(normalSubtitle.whitespaceNodes).toBe(0);
 
     await page.getByRole("button", { name: "Fullscreen" }).click();

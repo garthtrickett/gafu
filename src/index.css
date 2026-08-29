@@ -17,12 +17,40 @@
   background: #000;
 }
 
-[data-subtitle-overlay] ruby {
-  ruby-position: over;
+[data-subtitle-cue] {
+  display: grid;
+  gap: 0.12em;
 }
 
-[data-subtitle-overlay] rt {
-  font-size: 0.52em;
+[data-subtitle-cue] + [data-subtitle-cue] {
+  margin-top: 0.12em;
+}
+
+[data-subtitle-line] {
+  padding-top: 0.42em;
+  line-height: 1;
+}
+
+[data-subtitle-token] {
+  position: relative;
+  display: inline-block;
+  vertical-align: baseline;
+  line-height: 1;
+}
+
+[data-subtitle-surface] {
+  font-size: 1em;
+  font-weight: 700;
+  line-height: 1;
+}
+
+[data-subtitle-reading] {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  translate: -50% 0;
+  font-size: 0.38em;
   font-weight: 600;
   line-height: 1;
+  white-space: nowrap;
 }
