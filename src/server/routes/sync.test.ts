@@ -177,6 +177,38 @@ describe("Synchronization API Endpoint Suite", () => {
     const body = (await response.json()) as { success: boolean };
     expect(body.success).toBe(true);
   });
+
+  it("syncs canonical not-useful feedback across learner devices", async () => {
+    const canonicalKey = "grammar:〜わけではない";
+    const pushedHlc = `${Date.now()}:0001:test-client`;
+    const pushResponse = await app.handle(
+      new Request("http://localhost/api/sync/push", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          id: crypto.randomUUID(),
+          type: "set_media_candidate_preference",
+          payload: { kind: "grammar", canonicalKey, disposition: "not_useful" },
+          hlc: pushedHlc,
+        }),
+      }),
+    );
+    expect(pushResponse.status).toBe(200);
+
+    const epoch = await db.selectFrom("sync_epoch").select("id").executeTakeFirstOrThrow();
+    const pullResponse = await app.handle(new Request(
+      `http://localhost/api/sync/pull?since=0000000000000:0000:initial&epochId=${epoch.id}`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    ));
+    expect(pullResponse.status).toBe(200);
+    const body = await pullResponse.json() as {
+      mediaCandidatePreferences: Array<{ canonicalKey: string; disposition: string; hlc: string }>;
+    };
+    expect(body.mediaCandidatePreferences).toEqual([
+      expect.objectContaining({ canonicalKey, disposition: "not_useful" }),
+    ]);
+    expect(body.mediaCandidatePreferences[0]!.hlc > pushedHlc).toBe(true);
+  });
 });
 
 describe("Sync Push Route - Validation Boundaries", () => {

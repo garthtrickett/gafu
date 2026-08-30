@@ -62,6 +62,12 @@ interface DeltaResponse {
     readonly register: string | null;
     readonly hlc: string;
   }>;
+  readonly mediaCandidatePreferences?: Array<{
+    readonly kind: "grammar" | "vocabulary";
+    readonly canonicalKey: string;
+    readonly disposition: "not_useful";
+    readonly hlc: string;
+  }>;
   readonly userPreference?: {
     readonly dailyReviewLimit: number;
     readonly dailyNewRuleLimit: number;
@@ -133,6 +139,7 @@ export const executeDeltaPull = (): Effect.Effect<void, unknown, never> =>
     const { srsStore } = yield* Effect.promise(() => import("../stores/srsStore"));
     const { knowledgePointStore, knowledgePointCatalogStore } = yield* Effect.promise(() => import("../stores/knowledgePointStore"));
     const { userPreferencesStore } = yield* Effect.promise(() => import("../stores/userPreferencesStore"));
+    const { mediaCandidatePreferenceStore } = yield* Effect.promise(() => import("../stores/mediaCandidatePreferenceStore.ts"));
 
     const deckCount = deckStore?.state?.peek()?.length ?? 0;
     const gpCount = knowledgePointStore?.state?.peek()?.length ?? 0;
@@ -204,14 +211,15 @@ export const executeDeltaPull = (): Effect.Effect<void, unknown, never> =>
     const srsUpdatesLen = delta?.srsUpdates?.length ?? 0;
     const gpLen = delta?.grammarPoints?.length ?? 0;
     const knowledgePointLen = delta?.knowledgePoints?.length ?? 0;
+    const mediaPreferenceLen = delta?.mediaCandidatePreferences?.length ?? 0;
 
     yield* clientLog(
       "info",
-      `[DeltaPull] Received pull payload - Decks: ${decksLen}, SRS updates: ${srsUpdatesLen}, Knowledge Points: ${knowledgePointLen}, serverHlc: ${delta?.serverHlc}`
+      `[DeltaPull] Received pull payload - Decks: ${decksLen}, SRS updates: ${srsUpdatesLen}, Knowledge Points: ${knowledgePointLen}, Media Preferences: ${mediaPreferenceLen}, serverHlc: ${delta?.serverHlc}`
     );
 
-    if (decksLen > 0 || srsUpdatesLen > 0 || knowledgePointLen > 0 || delta.userPreference) {
-      yield* clientLog("info", `[DeltaPull] Applying updates: ${decksLen} decks, ${srsUpdatesLen} SRS metrics, ${knowledgePointLen} catalog items.`);
+    if (decksLen > 0 || srsUpdatesLen > 0 || knowledgePointLen > 0 || mediaPreferenceLen > 0 || delta.userPreference) {
+      yield* clientLog("info", `[DeltaPull] Applying updates: ${decksLen} decks, ${srsUpdatesLen} SRS metrics, ${knowledgePointLen} catalog items, ${mediaPreferenceLen} media preferences.`);
       
       if (decksLen > 0 && deckStore) {
         const existingDecks = deckStore.state.peek();
@@ -305,6 +313,21 @@ export const executeDeltaPull = (): Effect.Effect<void, unknown, never> =>
             learnerTimeZone: delta.userPreference.learnerTimeZone,
             hlc: delta.userPreference.hlc
           });
+        }
+      }
+
+      if (mediaPreferenceLen > 0) {
+        const existingPreferences = mediaCandidatePreferenceStore.state.peek();
+        const mappedPreferences = (delta.mediaCandidatePreferences ?? []).map((preference) => ({
+          id: preference.canonicalKey,
+          kind: preference.kind,
+          canonicalKey: preference.canonicalKey,
+          disposition: preference.disposition,
+          hlc: preference.hlc,
+        }));
+        const filteredPreferences = filterCausal(mappedPreferences, existingPreferences);
+        if (filteredPreferences.length > 0) {
+          yield* mediaCandidatePreferenceStore.putAll(filteredPreferences);
         }
       }
     }

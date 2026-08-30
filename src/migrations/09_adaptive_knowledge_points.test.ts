@@ -15,6 +15,7 @@ import * as migration from "./09_adaptive_knowledge_points.ts";
 import * as m10 from "./10_adaptive_media_candidates.ts";
 import * as m11 from "./11_adaptive_media_learning_loop.ts";
 import * as m12 from "./12_adaptive_exercise_bank.ts";
+import * as m13 from "./13_learner_media_preferences.ts";
 
 describe("adaptive knowledge-point migration", () => {
   it("backfills a populated pre-change database without changing review metrics", async () => {
@@ -64,6 +65,7 @@ describe("adaptive knowledge-point migration", () => {
       await m10.up(isolatedDb);
       await m11.up(isolatedDb);
       await m12.up(isolatedDb);
+      await m13.up(isolatedDb);
 
       const migrated = await isolatedDb.selectFrom("srs_card").selectAll().where("id", "=", cardId as never).executeTakeFirstOrThrow();
       expect(migrated.knowledge_point_id).toBe(pointId);
@@ -94,11 +96,11 @@ describe("adaptive knowledge-point migration", () => {
         SELECT table_name FROM information_schema.tables
         WHERE table_schema = 'public' AND table_name IN (
           'media_candidate', 'media_encounter', 'media_checkout',
-          'generated_exercise', 'retrieval_evidence'
+          'generated_exercise', 'retrieval_evidence', 'learner_media_preference'
         )
       `.execute(isolatedDb);
       expect(new Set(adaptiveTables.rows.map((row) => row.table_name))).toEqual(new Set([
-        "media_candidate", "media_encounter", "media_checkout", "generated_exercise", "retrieval_evidence",
+        "media_candidate", "media_encounter", "media_checkout", "generated_exercise", "retrieval_evidence", "learner_media_preference",
       ]));
     } finally {
       await isolatedDb.destroy();

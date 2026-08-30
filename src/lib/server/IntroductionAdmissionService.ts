@@ -7,6 +7,7 @@ import {
   previewIntroductionCapacity,
   projectedSevenDayCost,
 } from "../shared/adaptive-scheduling.ts";
+import { initHlc, packHlc, receiveHlc } from "../shared/hlc.ts";
 
 export class IntroductionAdmissionError extends Data.TaggedError("IntroductionAdmissionError")<{
   readonly cause: unknown;
@@ -130,6 +131,11 @@ export const setLearnerPointStatus = (
   now: Date = new Date(),
 ) => Effect.tryPromise({
   try: () => db.transaction().execute(async (trx) => {
+    const nextHlc = (previous = "0000000000000:0000:initial") => packHlc(receiveHlc(
+      initHlc("server-learner-status", now.getTime()),
+      previous,
+      now.getTime(),
+    ));
     const point = await trx.selectFrom("knowledge_point")
       .select(["id", "kind"])
       .where("id", "=", knowledgePointId as KnowledgePointId)
@@ -157,6 +163,7 @@ export const setLearnerPointStatus = (
         introduced_at: null,
         created_at: now,
         updated_at: now,
+        hlc: nextHlc(),
       }).execute();
       return { updated: true, reason: "marked_known" as const };
     }
@@ -164,9 +171,11 @@ export const setLearnerPointStatus = (
       .set(action === "mark_known" ? {
         learning_state: "known",
         updated_at: now,
+        hlc: nextHlc(existing.hlc),
       } : {
         participation_status: action === "archive" ? "archived" : "active",
         updated_at: now,
+        hlc: nextHlc(existing.hlc),
       })
       .where("id", "=", existing.id)
       .execute();

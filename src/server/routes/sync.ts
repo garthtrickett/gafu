@@ -61,7 +61,8 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
             decks: [],
             srsUpdates: [],
             grammarPoints: [],
-            knowledgePoints: []
+            knowledgePoints: [],
+            mediaCandidatePreferences: [],
           };
         }
 
@@ -133,6 +134,17 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
             .execute(),
           catch: (cause) => new AuthDatabaseError({ cause })
         });
+
+        yield* Effect.logInfo(`[Sync:Pull] Fetching learner media preferences updated after HLC: ${since}`);
+        const mediaCandidatePreferences = yield* Effect.tryPromise({
+          try: () => db.selectFrom("learner_media_preference")
+            .select(["kind", "canonical_key", "disposition", "hlc"])
+            .where("user_id", "=", user.id as UserId)
+            .where("hlc", op, since)
+            .execute(),
+          catch: (cause) => new AuthDatabaseError({ cause })
+        });
+        yield* Effect.logInfo(`[Sync:Pull] Retrieved ${mediaCandidatePreferences.length} learner media preferences`);
 
         const decksResult = decks.map(d => ({
           id: d.id,
@@ -207,6 +219,12 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
           srsUpdates: srsUpdatesResult,
           grammarPoints: grammarPointsResult,
           knowledgePoints,
+          mediaCandidatePreferences: mediaCandidatePreferences.map((preference) => ({
+            kind: preference.kind,
+            canonicalKey: preference.canonical_key,
+            disposition: preference.disposition,
+            hlc: preference.hlc,
+          })),
           userPreference: showPreference ? {
             dailyReviewLimit: userPreference.daily_review_limit,
             dailyNewRuleLimit: userPreference.daily_new_rule_limit,
@@ -382,6 +400,36 @@ export const syncRoutes = new Elysia({ prefix: "/api/sync" })
             catch: (cause) => new AuthDatabaseError({ cause })
           });
           yield* Effect.logInfo(`[Sync:Push] Preferences updated successfully for user_id=${user.id}`);
+        } else if (decodedTx.type === "set_media_candidate_preference") {
+          const payload = decodedTx.payload;
+          if (!payload.canonicalKey.startsWith(`${payload.kind}:`)) {
+            yield* Effect.logWarning(`[Sync:Push] Rejected mismatched media preference kind=${payload.kind}`);
+            return yield* Effect.fail(new AuthError({
+              _tag: "BadRequest",
+              message: "Media preference canonicalKey must match its kind.",
+            }));
+          }
+          yield* Effect.logInfo(`[Sync:Push] Persisting media preference kind=${payload.kind} disposition=${payload.disposition}`);
+          yield* Effect.tryPromise({
+            try: () => db.insertInto("learner_media_preference")
+              .values({
+                user_id: user.id as UserId,
+                kind: payload.kind as never,
+                canonical_key: payload.canonicalKey as never,
+                disposition: payload.disposition,
+                hlc: convergedPacked,
+              })
+              .onConflict((conflict) => conflict
+                .columns(["user_id", "kind", "canonical_key"])
+                .doUpdateSet({
+                  disposition: payload.disposition,
+                  hlc: convergedPacked,
+                  updated_at: new Date(),
+                }))
+              .execute(),
+            catch: (cause) => new AuthDatabaseError({ cause })
+          });
+          yield* Effect.logInfo(`[Sync:Push] Media preference persisted kind=${payload.kind}`);
         } else if (decodedTx.type === "toggle_skin") {
           yield* Effect.logInfo(`[Sync:Push] Processing skin toggle. payload=${JSON.stringify(decodedTx.payload)}`);
         } else if (decodedTx.type === "unlock_deck") {

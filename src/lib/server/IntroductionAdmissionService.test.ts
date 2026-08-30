@@ -77,13 +77,16 @@ describe("server-authoritative introduction admission", () => {
       .executeTakeFirstOrThrow();
     expect(known).toMatchObject({ learning_state: "known", repetitions: 0, stability: 0 });
     expect(known.last_reviewed_at).toBeNull();
+    expect(known.hlc).not.toBe("0000000000000:0000:initial");
 
+    const knownHlc = known.hlc;
     expect(await Effect.runPromise(setLearnerPointStatus(userId, pointId, "archive")))
       .toEqual({ updated: true, reason: "archive" });
     expect(await Effect.runPromise(setLearnerPointStatus(userId, pointId, "reactivate")))
       .toEqual({ updated: true, reason: "reactivate" });
-    const reactivated = await db.selectFrom("srs_card").select("participation_status")
+    const reactivated = await db.selectFrom("srs_card").select(["participation_status", "hlc"])
       .where("id", "=", known.id).executeTakeFirstOrThrow();
     expect(reactivated.participation_status).toBe("active");
+    expect(reactivated.hlc > knownHlc).toBe(true);
   });
 });

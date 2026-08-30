@@ -9,6 +9,7 @@ import { startOutboxService } from "./lib/client/sync/OutboxQueue.ts";
 import { startDeltaPullEngine } from "./lib/client/sync/DeltaPullEngine.ts";
 import { startMediaPrewarmEngine } from "./lib/client/media/MediaPrewarmService.ts";
 import { initPWA } from "./lib/client/stores/pwaStore.ts";
+import { mediaCandidatePreferenceStore } from "./lib/client/stores/mediaCandidatePreferenceStore.ts";
 
 // Register custom elements
 import "./components/layouts/app-shell.ts";
@@ -41,6 +42,10 @@ const bootstrapApp = Effect.gen(function* () {
   yield* clientLog("info", "[Main] Hydrating Grammar Point global catalog storage from IndexedDB...");
   yield* grammarPointCatalogStore.load();
   yield* clientLog("debug", `[Main] Grammar points catalog hydrated: count=${grammarPointCatalogStore.state.value.length}`);
+
+  yield* clientLog("info", "[Main] Hydrating media candidate preferences from IndexedDB...");
+  yield* mediaCandidatePreferenceStore.load();
+  yield* clientLog("debug", `[Main] Media candidate preferences hydrated: count=${mediaCandidatePreferenceStore.state.value.length}`);
 
     yield* clientLog("info", "[Main] Hydrating User Preferences storage from IndexedDB...");
   const { userPreferencesStore } = yield* Effect.promise(() => import("./lib/client/stores/userPreferencesStore.ts"));

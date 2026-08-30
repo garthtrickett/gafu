@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { Effect } from "effect";
 import { tokenState } from "../lib/client/stores/authStore.ts";
+import { mediaCandidatePreferenceStore } from "../lib/client/stores/mediaCandidatePreferenceStore.ts";
+import { knowledgePointStore } from "../lib/client/stores/knowledgePointStore.ts";
 import { parseSrt } from "../lib/client/media/adaptive/subtitles.ts";
 import { fallbackTokens } from "../lib/client/media/adaptive/tokenizer.ts";
 import "./WatchView.ts";
@@ -102,6 +105,7 @@ describe("WatchView local media boundary", () => {
     const item = (candidateId: string, label: string) => ({
       candidateId,
       knowledgePointId: null,
+      canonicalKey: `vocabulary:${label}`,
       kind: "vocabulary" as const,
       label,
       meaning: label,
@@ -124,7 +128,7 @@ describe("WatchView local media boundary", () => {
     };
     await view.updateComplete;
 
-    const dismiss = view.querySelector('button[aria-label="Dismiss one and show another target"]') as HTMLButtonElement;
+    const dismiss = view.querySelector('button[aria-label="Skip one and show another target"]') as HTMLButtonElement;
     expect(dismiss.textContent).toContain("show next");
     dismiss.click();
     await view.updateComplete;
@@ -132,6 +136,86 @@ describe("WatchView local media boundary", () => {
     expect(Array.from(view.querySelectorAll("strong")).map((element) => element.textContent))
       .toEqual(["two", "three", "four"]);
     expect(view.syllabus.rejectedCandidateIds).toContain("candidate-one");
+  });
+
+  it("stores don't-suggest feedback and removes the target from the episode", async () => {
+    await Effect.runPromise(mediaCandidatePreferenceStore.clear());
+    const view = document.createElement("watch-view") as unknown as HTMLElement & {
+      syllabus: {
+        items: readonly unknown[];
+        alternates: readonly unknown[];
+        rejectedCandidateIds: readonly string[];
+      };
+      readonly updateComplete: Promise<boolean>;
+    };
+    document.body.append(view);
+    view.syllabus = {
+      items: [{
+        candidateId: "candidate-cat",
+        knowledgePointId: null,
+        canonicalKey: "vocabulary:猫:ねこ:名詞",
+        kind: "vocabulary",
+        label: "猫",
+        meaning: "cat",
+        occurrenceCount: 4,
+        confidence: 0.9,
+      }],
+      alternates: [],
+      rejectedCandidateIds: [],
+    };
+    await view.updateComplete;
+
+    const suppress = Array.from(view.querySelectorAll("button"))
+      .find((button) => button.textContent === "Don't suggest again")!;
+    suppress.click();
+    await vi.waitFor(() => expect(mediaCandidatePreferenceStore.state.peek()).toEqual([
+      expect.objectContaining({ canonicalKey: "vocabulary:猫:ねこ:名詞", disposition: "not_useful" }),
+    ]));
+    await view.updateComplete;
+    expect(Array.from(view.querySelectorAll("strong")).map((element) => element.textContent)).not.toContain("猫");
+  });
+
+  it("marks a catalogued syllabus target known in the learner bank", async () => {
+    await Effect.runPromise(knowledgePointStore.clear());
+    tokenState.value = "test-token";
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({
+      updated: true,
+      reason: "marked_known",
+    }), { status: 200, headers: { "Content-Type": "application/json" } }));
+    const view = document.createElement("watch-view") as unknown as HTMLElement & {
+      syllabus: {
+        items: readonly unknown[];
+        alternates: readonly unknown[];
+        rejectedCandidateIds: readonly string[];
+      };
+      readonly updateComplete: Promise<boolean>;
+    };
+    document.body.append(view);
+    view.syllabus = {
+      items: [{
+        candidateId: "candidate-grammar",
+        knowledgePointId: "knowledge-grammar",
+        canonicalKey: "grammar:〜わけではない",
+        kind: "grammar",
+        label: "〜わけではない",
+        meaning: "it is not the case that",
+        occurrenceCount: 2,
+        confidence: 0.9,
+      }],
+      alternates: [],
+      rejectedCandidateIds: [],
+    };
+    await view.updateComplete;
+
+    const markKnown = Array.from(view.querySelectorAll("button"))
+      .find((button) => button.textContent === "Already know")!;
+    markKnown.click();
+    await vi.waitFor(() => expect(knowledgePointStore.state.peek()).toEqual([
+      expect.objectContaining({ id: "knowledge-grammar", learningState: "known" }),
+    ]));
+    expect(fetchSpy).toHaveBeenCalledWith("/api/adaptive-media/progress/status", expect.objectContaining({
+      method: "POST",
+    }));
   });
 
   it("records a marker encounter without pausing, seeking, or sending source text", async () => {

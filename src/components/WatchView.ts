@@ -17,10 +17,15 @@ import {
   dismissEpisodeSyllabusItem,
   knownCanonicalKeysForLearner,
   type EpisodeSyllabus,
+  type EpisodeSyllabusItem,
 } from "../lib/client/media/adaptive/syllabus.ts";
 import { findActiveCues, fingerprintSubtitleBytes, parseSubtitleTrack } from "../lib/client/media/adaptive/subtitles.ts";
 import { tokenizeSubtitleCuesCooperatively } from "../lib/client/media/adaptive/tokenizer.ts";
 import { tokenState } from "../lib/client/stores/authStore.ts";
+import {
+  mediaCandidatePreferenceStore,
+  suppressedMediaCanonicalKeys,
+} from "../lib/client/stores/mediaCandidatePreferenceStore.ts";
 import { isLoopbackHostname } from "../lib/shared/local-media-helper.ts";
 import type { LearningExerciseContent, PrimerContent } from "../lib/server/ai/schema.ts";
 import {
@@ -99,6 +104,7 @@ export class WatchView extends LitElement {
   @state() private markersEnabled = true;
   private canonicalKeys: ReadonlySet<string> = new Set();
   private knownCanonicalKeys: ReadonlySet<string> = new Set();
+  private suppressedCanonicalKeys: ReadonlySet<string> = new Set();
   private analysisRunId = "";
   private subtitleTrackFingerprint = "";
   private audioRepairVersion = 0;
@@ -279,6 +285,7 @@ export class WatchView extends LitElement {
       });
       yield* knowledgePointCatalogStore.load();
       yield* knowledgePointStore.load();
+      yield* mediaCandidatePreferenceStore.load();
       const catalog = knowledgePointCatalogStore.state.peek().map((point) => point.kind === "vocabulary" ? ({
         id: point.id,
         kind: "vocabulary" as const,
@@ -299,13 +306,15 @@ export class WatchView extends LitElement {
       }));
       const grammarMatchers = buildGrammarEvidenceMatchers(catalog);
       const knownCanonicalKeys = knownCanonicalKeysForLearner(catalog, learner);
+      const suppressedCanonicalKeys = suppressedMediaCanonicalKeys();
       yield* clientLog("info", "[WatchView] Loaded knowledge state for subtitles.", {
         catalogCount: catalog.length,
         learnerProgressCount: learner.length,
         grammarMatcherCount: grammarMatchers.length,
         knownCanonicalKeyCount: knownCanonicalKeys.size,
+        suppressedCanonicalKeyCount: suppressedCanonicalKeys.size,
       });
-      const syllabus = buildEpisodeSyllabus(enriched, catalog, learner, grammarMatchers);
+      const syllabus = buildEpisodeSyllabus(enriched, catalog, learner, grammarMatchers, suppressedCanonicalKeys);
       yield* clientLog("info", "[WatchView] Built subtitle syllabus.", {
         syllabusItemCount: syllabus.items.length,
         rejectedCandidateCount: syllabus.rejectedCandidateIds.length,
@@ -322,6 +331,7 @@ export class WatchView extends LitElement {
         this.subtitleTrackFingerprint = fingerprint;
         this.canonicalKeys = new Set(catalog.map((point) => point.canonicalKey));
         this.knownCanonicalKeys = knownCanonicalKeys;
+        this.suppressedCanonicalKeys = suppressedCanonicalKeys;
         this.status = enriched.length === 0
           ? "No valid timed cues were found; video playback is still available."
           : `${enriched.length} timed cues prepared locally.`;
@@ -523,6 +533,80 @@ export class WatchView extends LitElement {
     }));
   }
 
+  private suppressLocalSyllabusItem(item: EpisodeSyllabusItem) {
+    const program = Effect.gen(this, function* () {
+      yield* mediaCandidatePreferenceStore.suppress(item.kind, item.canonicalKey);
+      yield* Effect.sync(() => {
+        this.suppressedCanonicalKeys = new Set([...this.suppressedCanonicalKeys, item.canonicalKey]);
+        this.dismissLocalSyllabusItem(item.candidateId);
+        this.aiStatus = `${item.label} will not be suggested in future episodes.`;
+      });
+      yield* clientLog("info", "[WatchView] Persisted canonical media suggestion suppression.", {
+        kind: item.kind,
+        canonicalKey: item.canonicalKey,
+      });
+    }).pipe(Effect.catchAll((error) => Effect.gen(this, function* () {
+      yield* clientLog("error", "[WatchView] Failed to persist media suggestion suppression.", {
+        kind: item.kind,
+        reason: error.message,
+      });
+      yield* Effect.sync(() => { this.aiStatus = error.message; });
+    })));
+    void runClientPromise(program);
+  }
+
+  private markLocalSyllabusItemKnown(item: EpisodeSyllabusItem) {
+    const token = tokenState.value;
+    if (!token || !item.knowledgePointId) {
+      this.aiStatus = "Sign in and use a catalogued knowledge point before marking it known.";
+      return;
+    }
+    const knowledgePointId = item.knowledgePointId;
+    const program = Effect.gen(this, function* () {
+      const response = yield* Effect.tryPromise({
+        try: () => fetch("/api/adaptive-media/progress/status", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ knowledgePointId, action: "mark_known" }),
+        }),
+        catch: () => new Error("Gafu could not be reached to mark this point known."),
+      });
+      if (!response.ok) return yield* Effect.fail(new Error("Gafu rejected the mark-known update."));
+      const current = knowledgePointStore.state.peek().find((progress) => progress.id === knowledgePointId);
+      const { hlcStore } = yield* Effect.promise(() => import("../lib/client/stores/hlcStore.ts"));
+      const hlc = yield* hlcStore.tick();
+      yield* knowledgePointStore.put({
+        id: knowledgePointId,
+        participationStatus: current?.participationStatus ?? "active",
+        learningState: "known",
+        easeFactor: current?.easeFactor ?? 2.5,
+        repetitions: current?.repetitions ?? 0,
+        intervalDays: current?.intervalDays ?? 0,
+        nextReview: current?.nextReview ?? new Date().toISOString(),
+        difficulty: current?.difficulty ?? 5,
+        stability: current?.stability ?? 0,
+        lastReviewedAt: current?.lastReviewedAt ?? null,
+        hlc,
+      });
+      yield* Effect.sync(() => {
+        this.knownCanonicalKeys = new Set([...this.knownCanonicalKeys, item.canonicalKey]);
+        this.dismissLocalSyllabusItem(item.candidateId);
+        this.aiStatus = `${item.label} is now marked as already known.`;
+      });
+      yield* clientLog("info", "[WatchView] Marked local syllabus knowledge point known.", {
+        knowledgePointId,
+        kind: item.kind,
+      });
+    }).pipe(Effect.catchAll((error) => Effect.gen(this, function* () {
+      yield* clientLog("error", "[WatchView] Failed to mark local syllabus knowledge point known.", {
+        knowledgePointId: item.knowledgePointId,
+        reason: error.message,
+      });
+      yield* Effect.sync(() => { this.aiStatus = error.message; });
+    })));
+    void runClientPromise(program);
+  }
+
   private analyzeRecommendations() {
     const token = tokenState.value;
     const excerpts = selectMediaAnalysisExcerpts(this.cues);
@@ -535,7 +619,8 @@ export class WatchView extends LitElement {
     this.analysisRunId = analysisRunId;
     const program = Effect.gen(this, function* () {
       const result = yield* requestMediaRecommendations(token, analysisRunId, this.analysisConsent, excerpts);
-      const validated = validateMediaRecommendations(result, this.cues, this.canonicalKeys, this.knownCanonicalKeys)
+      const excludedCanonicalKeys = new Set([...this.knownCanonicalKeys, ...this.suppressedCanonicalKeys]);
+      const validated = validateMediaRecommendations(result, this.cues, this.canonicalKeys, excludedCanonicalKeys)
         .map((recommendation) => ({ ...recommendation, candidateId: crypto.randomUUID() }));
       yield* clientLog("info", "[WatchView] Validated optional AI media recommendations.", {
         proposedCount: result.proposals.length,
@@ -579,7 +664,16 @@ export class WatchView extends LitElement {
         this.analysisRunId,
         this.subtitleTrackFingerprint,
       );
+      if (action === "not_useful") {
+        yield* mediaCandidatePreferenceStore.suppress(recommendation.kind, recommendation.canonicalKey);
+      }
       yield* Effect.sync(() => {
+        if (action === "not_useful") {
+          this.suppressedCanonicalKeys = new Set([...this.suppressedCanonicalKeys, recommendation.canonicalKey]);
+        }
+        if (action === "already_known") {
+          this.knownCanonicalKeys = new Set([...this.knownCanonicalKeys, recommendation.canonicalKey]);
+        }
         this.candidateStatuses = { ...this.candidateStatuses, [recommendation.candidateId]: result.reason };
         if (action === "replace" || action === "rejected" || action === "not_useful" || action === "already_known") {
           this.aiRecommendations = this.aiRecommendations.filter((item) => item.candidateId !== recommendation.candidateId);
@@ -822,7 +916,7 @@ export class WatchView extends LitElement {
                 <p class="text-xs ${this.repairedAudioActive ? "text-emerald-300" : "text-zinc-400"}" role="status">${this.audioRepairStatus || (localAudioRepairAvailable ? "Requires FFmpeg on your PATH." : "Run Gafu locally to use the same-machine repair helper.")}</p>
               </div>
             ` : ""}
-            <div class="border-t border-zinc-700 pt-3"><h2 class="font-semibold">Episode syllabus</h2><p class="mb-2 text-xs text-zinc-500">Up to three targets; dialogue is not shown here.${!this.aiRecommendations.length && this.syllabus.alternates.length ? ` ${this.syllabus.alternates.length} more ranked option${this.syllabus.alternates.length === 1 ? "" : "s"} available.` : ""}</p>${this.aiRecommendations.length ? this.aiRecommendations.slice(0, 3).map((item) => { const later = this.isLaterRecommendation(item); return html`<div class="mb-2 space-y-2 rounded bg-zinc-900 p-2"><strong>${item.canonicalKey}</strong><p class="text-xs text-zinc-400">${item.reading ? `${item.reading} · ` : ""}${item.meaning} · about ${Math.round(item.firstTimeSeconds / 60)} min · ${item.occurrenceCount} encounters · ${Math.round(item.confidence * 100)}% confidence</p>${later ? html`<label class="flex gap-2 text-xs text-amber-300"><input type="checkbox" .checked=${Boolean(this.laterAccepted[item.candidateId])} @change=${(event: Event) => { this.laterAccepted = { ...this.laterAccepted, [item.candidateId]: (event.target as HTMLInputElement).checked }; }}> This target appears outside the early window; teach it anyway.</label>` : ""}<div class="flex flex-wrap gap-1 text-xs"><button class="rounded bg-emerald-700 px-2 py-1 disabled:opacity-40" ?disabled=${later && !this.laterAccepted[item.candidateId]} @click=${() => this.actOnRecommendation(item, "accept")}>Accept</button><button class="rounded border border-zinc-600 px-2 py-1" @click=${() => this.actOnRecommendation(item, "replace")}>Replace</button><button class="rounded border border-zinc-600 px-2 py-1" @click=${() => this.actOnRecommendation(item, "reduce")}>Reduce</button><button class="rounded border border-zinc-600 px-2 py-1" @click=${() => this.actOnRecommendation(item, "already_known")}>Already known</button><button class="rounded border border-zinc-600 px-2 py-1" @click=${() => this.actOnRecommendation(item, "not_useful")}>Not useful</button></div>${this.candidateStatuses[item.candidateId] ? html`<p class="text-xs text-emerald-300">${this.candidateStatuses[item.candidateId]}</p>` : ""}</div>`; }) : this.syllabus.items.length ? this.syllabus.items.map((item) => html`<div class="mb-2 space-y-2 rounded bg-zinc-900 p-2"><strong>${item.label}</strong><p class="text-xs text-zinc-400">${item.kind} · ${item.occurrenceCount} encounters</p><button class="rounded border border-zinc-600 px-2 py-1 text-xs" aria-label=${this.syllabus.alternates.length ? `Dismiss ${item.label} and show another target` : `Dismiss ${item.label}`} @click=${() => this.dismissLocalSyllabusItem(item.candidateId)}>Dismiss${this.syllabus.alternates.length ? " & show next" : ""}</button></div>`) : html`<p class="text-sm text-zinc-500">${this.cues.length ? "No more local candidates for this episode." : "Load subtitles to analyze candidates."}</p>`}</div>
+            <div class="border-t border-zinc-700 pt-3"><h2 class="font-semibold">Episode syllabus</h2><p class="mb-2 text-xs text-zinc-500">Up to three targets; dialogue is not shown here.${!this.aiRecommendations.length && this.syllabus.alternates.length ? ` ${this.syllabus.alternates.length} more ranked option${this.syllabus.alternates.length === 1 ? "" : "s"} available.` : ""}</p>${this.aiRecommendations.length ? this.aiRecommendations.slice(0, 3).map((item) => { const later = this.isLaterRecommendation(item); return html`<div class="mb-2 space-y-2 rounded bg-zinc-900 p-2"><strong>${item.canonicalKey}</strong><p class="text-xs text-zinc-400">${item.reading ? `${item.reading} · ` : ""}${item.meaning} · about ${Math.round(item.firstTimeSeconds / 60)} min · ${item.occurrenceCount} encounters · ${Math.round(item.confidence * 100)}% confidence</p>${later ? html`<label class="flex gap-2 text-xs text-amber-300"><input type="checkbox" .checked=${Boolean(this.laterAccepted[item.candidateId])} @change=${(event: Event) => { this.laterAccepted = { ...this.laterAccepted, [item.candidateId]: (event.target as HTMLInputElement).checked }; }}> This target appears outside the early window; teach it anyway.</label>` : ""}<div class="flex flex-wrap gap-1 text-xs"><button class="rounded bg-emerald-700 px-2 py-1 disabled:opacity-40" ?disabled=${later && !this.laterAccepted[item.candidateId]} @click=${() => this.actOnRecommendation(item, "accept")}>Accept</button><button class="rounded border border-zinc-600 px-2 py-1" @click=${() => this.actOnRecommendation(item, "replace")}>Replace</button><button class="rounded border border-zinc-600 px-2 py-1" @click=${() => this.actOnRecommendation(item, "reduce")}>Reduce</button><button class="rounded border border-zinc-600 px-2 py-1" @click=${() => this.actOnRecommendation(item, "already_known")}>Already known</button><button class="rounded border border-zinc-600 px-2 py-1" @click=${() => this.actOnRecommendation(item, "not_useful")}>Don't suggest again</button></div>${this.candidateStatuses[item.candidateId] ? html`<p class="text-xs text-emerald-300">${this.candidateStatuses[item.candidateId]}</p>` : ""}</div>`; }) : this.syllabus.items.length ? this.syllabus.items.map((item) => html`<div class="mb-2 space-y-2 rounded bg-zinc-900 p-2"><strong>${item.label}</strong><p class="text-xs text-zinc-400">${item.kind} · ${item.occurrenceCount} encounters</p><div class="flex flex-wrap gap-1 text-xs"><button class="rounded border border-zinc-600 px-2 py-1" aria-label=${this.syllabus.alternates.length ? `Skip ${item.label} and show another target` : `Skip ${item.label} for this episode`} @click=${() => this.dismissLocalSyllabusItem(item.candidateId)}>Skip${this.syllabus.alternates.length ? " & show next" : " this episode"}</button>${item.knowledgePointId ? html`<button class="rounded border border-zinc-600 px-2 py-1" @click=${() => this.markLocalSyllabusItemKnown(item)}>Already know</button>` : ""}<button class="rounded border border-rose-900 px-2 py-1 text-rose-300" @click=${() => this.suppressLocalSyllabusItem(item)}>Don't suggest again</button></div></div>`) : html`<p class="text-sm text-zinc-500">${this.cues.length ? "No more local candidates for this episode." : "Load subtitles to analyze candidates."}</p>`}</div>
             <div class="space-y-2 border-t border-zinc-700 pt-3">
               <label class="flex gap-2 text-xs"><input type="checkbox" .checked=${this.analysisConsent} @change=${(event: Event) => { this.analysisConsent = (event.target as HTMLInputElement).checked; }}> Send at most 12 shortlisted subtitle excerpts for optional AI recommendations. Video and audio are never sent to remote services. Gafu does not store raw excerpts in its database; the configured AI provider's retention policy still applies.</label>
               <button class="rounded border border-zinc-600 px-3 py-2 text-sm disabled:opacity-40" ?disabled=${!this.analysisConsent || this.cues.length === 0} @click=${this.analyzeRecommendations}>Analyze consented excerpts</button>
