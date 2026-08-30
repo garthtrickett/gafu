@@ -65,6 +65,7 @@ interface AcceptedTarget {
 export class WatchView extends LitElement {
   @query("video") private video?: HTMLVideoElement;
   @query("[data-video-stage]") private videoStage?: HTMLElement;
+  @query("[data-subtitle-overlay]") private subtitleOverlay?: HTMLElement;
   @query("audio[data-repaired-audio]") private repairedAudio?: HTMLAudioElement;
   @state() private videoUrl = "";
   @state() private videoName = "";
@@ -81,7 +82,7 @@ export class WatchView extends LitElement {
   @state() private transform: TimingTransform = SOURCE_TIMING;
   @state() private status = "Choose a local video and subtitle track.";
   @state() private furigana = true;
-  @state() private spacing = 0.1;
+  private spacing = 0.1;
   @state() private subtitleSize = 7.5;
   @state() private syllabus: EpisodeSyllabus = { items: [], alternates: [], rejectedCandidateIds: [] };
   @state() private analysisConsent = false;
@@ -419,6 +420,13 @@ export class WatchView extends LitElement {
       this.repairedAudio.volume = volume;
       this.repairedAudio.muted = false;
     }
+  }
+
+  private setWordSpacing(event: Event) {
+    const requestedSpacing = Number((event.target as HTMLInputElement).value);
+    if (!Number.isFinite(requestedSpacing)) return;
+    this.spacing = Math.max(0, Math.min(0.5, requestedSpacing));
+    this.subtitleOverlay?.style.setProperty("--word-spacing", `${this.spacing}em`);
   }
 
   private refreshPendingCheckouts() {
@@ -854,7 +862,7 @@ export class WatchView extends LitElement {
   }
 
   private renderToken(token: NormalizedToken) {
-    return html`<span data-subtitle-token style=${`margin-right:${token.punctuation ? 0 : this.spacing}em`}>${this.furigana && token.reading && HAS_KANJI.test(token.surface) ? html`<span data-subtitle-reading>${token.reading}</span>` : ""}<span data-subtitle-surface>${token.surface}</span></span>`;
+    return html`<span data-subtitle-token style=${token.punctuation ? "margin-right:0" : "margin-right:var(--word-spacing)"}>${this.furigana && token.reading && HAS_KANJI.test(token.surface) ? html`<span data-subtitle-reading>${token.reading}</span>` : ""}<span data-subtitle-surface>${token.surface}</span></span>`;
   }
 
   private renderCue(cue: NormalizedCue) {
@@ -885,7 +893,7 @@ export class WatchView extends LitElement {
                 @ratechange=${this.onVideoRateChange} @volumechange=${this.onVideoVolumeChange}
                 @timeupdate=${this.updateCues} @ended=${this.onVideoEnded}></video>` : html`<div class="grid h-full place-items-center text-zinc-500">Choose or drop an MKV, MP4, or WebM file</div>`}
               ${this.repairedAudioUrl ? html`<audio data-repaired-audio hidden .src=${this.repairedAudioUrl} preload="auto" @timeupdate=${this.updateCues}></audio>` : ""}
-              <div data-subtitle-overlay class="pointer-events-none absolute inset-x-[4%] bottom-[9%] z-10 text-center font-semibold text-white [text-shadow:0_2px_5px_#000,0_0_2px_#000]" style=${`font-size:clamp(36px,${this.subtitleSize}cqw,180px)`}>
+              <div data-subtitle-overlay class="pointer-events-none absolute inset-x-[4%] bottom-[9%] z-10 text-center font-semibold text-white [text-shadow:0_2px_5px_#000,0_0_2px_#000]" style=${`font-size:clamp(36px,${this.subtitleSize}cqw,180px);--word-spacing:${this.spacing}em`}>
                 ${this.activeCues.map((cue) => html`<div data-subtitle-cue class=${this.cueHasMarker(cue.id) ? "border-l-4 border-emerald-400 pl-2" : ""}>${this.renderCue(cue)}</div>`)}
               </div>
             </div>
@@ -902,7 +910,7 @@ export class WatchView extends LitElement {
             <div><h2 class="font-semibold">Local files</h2><p class="truncate text-sm text-zinc-400">${this.videoName || "No video"}</p><p class="truncate text-sm text-zinc-400">${this.subtitleName || "No subtitles"}</p></div>
             <label class="flex justify-between">Furigana <input type="checkbox" .checked=${this.furigana} @change=${(event: Event) => { this.furigana = (event.target as HTMLInputElement).checked; }}></label>
             <label class="flex justify-between">Encounter markers <input type="checkbox" .checked=${this.markersEnabled} @change=${(event: Event) => { this.markersEnabled = (event.target as HTMLInputElement).checked; }}></label>
-            <label class="block text-sm">Word spacing<input class="w-full" type="range" min="0" max="0.5" step="0.025" .value=${String(this.spacing)} @input=${(event: Event) => { this.spacing = Number((event.target as HTMLInputElement).value); }}></label>
+            <label class="block text-sm">Word spacing<input class="w-full" type="range" min="0" max="0.5" step="0.025" .value=${String(this.spacing)} @input=${this.setWordSpacing}></label>
             <label class="block text-sm">Subtitle size<input class="w-full" type="range" min="4" max="14" step="0.5" .value=${String(this.subtitleSize)} @input=${(event: Event) => { this.subtitleSize = Number((event.target as HTMLInputElement).value); }}></label>
             <label class="block text-sm">Manual offset (${this.transform.offsetSeconds.toFixed(1)}s)<input class="w-full" type="range" min="-10" max="10" step="0.1" .value=${String(this.transform.offsetSeconds)} @input=${(event: Event) => { this.transform = { id: "manual", version: "timing_transform_v1", scale: 1, offsetSeconds: Number((event.target as HTMLInputElement).value) }; this.updateCues(); }}></label>
             ${isMatroska ? html`

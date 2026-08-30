@@ -75,6 +75,7 @@ describe("WatchView local media boundary", () => {
 
     const overlay = view.querySelector("[data-subtitle-overlay]") as HTMLElement;
     expect(overlay.style.fontSize).toBe("clamp(36px,7.5cqw,180px)");
+    expect(overlay.style.getPropertyValue("--word-spacing")).toBe("0em");
     expect(Array.from(view.querySelectorAll("[data-subtitle-surface]")).map((surface) => surface.textContent).join(""))
       .toBe("年末には");
     expect(view.querySelector("[data-subtitle-reading]")?.textContent).toBe("ねん");
@@ -84,7 +85,7 @@ describe("WatchView local media boundary", () => {
       .every((element) => !element.querySelector("[data-subtitle-reading]"))).toBe(true);
     expect(view.querySelector("ruby")).toBeNull();
     expect(Array.from(view.querySelectorAll("[data-subtitle-token]")).every((span) =>
-      (span as HTMLElement).style.marginRight === "0em")).toBe(true);
+      (span as HTMLElement).style.marginRight === "var(--word-spacing)")).toBe(true);
     expect(Array.from(view.querySelector("[data-subtitle-line]")!.childNodes).filter((node) =>
       node.nodeType === Node.TEXT_NODE && /\s/u.test(node.textContent ?? ""))).toHaveLength(0);
 
@@ -99,6 +100,38 @@ describe("WatchView local media boundary", () => {
     (view.querySelector("[data-fullscreen-button]") as HTMLButtonElement).click();
     await vi.waitFor(() => expect(fullscreen).toHaveBeenCalledOnce());
     expect(fullscreen.mock.contexts[0]).toBe(view.querySelector("[data-video-stage]"));
+  });
+
+  it("changes word spacing without rerendering or touching playback clocks", async () => {
+    const view = document.createElement("watch-view") as unknown as HTMLElement & {
+      videoUrl: string;
+      repairedAudioUrl: string;
+      readonly updateComplete: Promise<boolean>;
+      requestUpdate: (name?: PropertyKey, oldValue?: unknown) => void;
+    };
+    document.body.append(view);
+    view.videoUrl = "blob:test-video";
+    view.repairedAudioUrl = "blob:test-audio";
+    await view.updateComplete;
+
+    const video = view.querySelector("video")!;
+    const audio = view.querySelector("audio[data-repaired-audio]") as HTMLAudioElement;
+    const overlay = view.querySelector("[data-subtitle-overlay]") as HTMLElement;
+    video.currentTime = 18.25;
+    audio.currentTime = 18.25;
+    const requestUpdate = vi.spyOn(view, "requestUpdate");
+    const spacingInput = Array.from(view.querySelectorAll('input[type="range"]'))
+      .find((input) => input.parentElement?.textContent?.includes("Word spacing")) as HTMLInputElement;
+
+    spacingInput.value = "0.5";
+    spacingInput.dispatchEvent(new Event("input", { bubbles: true }));
+
+    expect(requestUpdate).not.toHaveBeenCalled();
+    expect(view.querySelector("video")).toBe(video);
+    expect(view.querySelector("audio[data-repaired-audio]")).toBe(audio);
+    expect(video.currentTime).toBe(18.25);
+    expect(audio.currentTime).toBe(18.25);
+    expect(overlay.style.getPropertyValue("--word-spacing")).toBe("0.5em");
   });
 
   it("dismisses a local syllabus target and shows the next ranked option", async () => {
