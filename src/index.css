@@ -25,16 +25,16 @@
 
 [data-subtitle-cue] {
   display: grid;
-  gap: 0.36em;
+  gap: 0.12em;
 }
 
 [data-subtitle-cue] + [data-subtitle-cue] {
-  margin-top: 0.36em;
+  margin-top: 0.12em;
 }
 
 [data-subtitle-line] {
-  padding-top: 0.52em;
-  line-height: 1;
+  padding-top: 0;
+  line-height: 2.05;
 }
 
 [data-subtitle-token] {

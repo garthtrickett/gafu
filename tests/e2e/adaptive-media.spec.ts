@@ -90,6 +90,15 @@ test.describe("adaptive local-media privacy and resilience", () => {
       Number.parseFloat(getComputedStyle(overlay).fontSize));
     expect(middleFontSize).toBeGreaterThan(minimumFontSize);
 
+    await page.locator("watch-view").evaluate((element) => {
+      const view = element as HTMLElement & {
+        cues: readonly object[];
+        activeCues: readonly object[];
+        requestUpdate: () => void;
+      };
+      view.activeCues = view.cues.slice(1, 2);
+      view.requestUpdate();
+    });
     await subtitleSize.evaluate((input: HTMLInputElement) => {
       input.value = input.max;
       input.dispatchEvent(new Event("input", { bubbles: true }));
@@ -100,21 +109,33 @@ test.describe("adaptive local-media privacy and resilience", () => {
       surfaceFontSize: Number.parseFloat(getComputedStyle(overlay.querySelector("[data-subtitle-surface]")!).fontSize),
       surfaceHeight: overlay.querySelector("[data-subtitle-surface]")!.getBoundingClientRect().height,
       multilineFuriganaClearance: (() => {
-        const lines = Array.from(overlay.querySelectorAll("[data-subtitle-line]"));
-        const upperSurfaces = Array.from(lines[0]?.querySelectorAll("[data-subtitle-surface]") ?? []);
-        const lowerReadings = Array.from(lines[1]?.querySelectorAll("[data-subtitle-reading]") ?? []);
-        if (upperSurfaces.length === 0 || lowerReadings.length === 0) return Number.NaN;
+        const surfaces = Array.from(overlay.querySelectorAll("[data-subtitle-surface]"));
+        const rowTops = [...new Set(surfaces.map((surface) =>
+          Math.round(surface.getBoundingClientRect().top)))].sort((left, right) => left - right);
+        if (rowTops.length < 2) return { clearance: Number.NaN, visualRowCount: rowTops.length };
+        const upperSurfaces = surfaces.filter((surface) =>
+          Math.abs(surface.getBoundingClientRect().top - rowTops[0]!) <= 1);
+        const lowerReadings = surfaces.filter((surface) =>
+          Math.abs(surface.getBoundingClientRect().top - rowTops[1]!) <= 1)
+          .map((surface) => surface.parentElement?.querySelector("[data-subtitle-reading]"))
+          .filter((reading): reading is Element => reading !== null);
+        if (upperSurfaces.length === 0 || lowerReadings.length === 0) {
+          return { clearance: Number.NaN, visualRowCount: rowTops.length };
+        }
         const upperSurfaceBottom = Math.max(...upperSurfaces.map((surface) => surface.getBoundingClientRect().bottom));
         const lowerReadingTop = Math.min(...lowerReadings.map((reading) => reading.getBoundingClientRect().top));
-        return lowerReadingTop - upperSurfaceBottom;
+        return { clearance: lowerReadingTop - upperSurfaceBottom, visualRowCount: rowTops.length };
       })(),
+      sourceLineCount: overlay.querySelectorAll("[data-subtitle-line]").length,
       whitespaceNodes: Array.from(overlay.querySelector("[data-subtitle-line]")!.childNodes)
         .filter((node) => node.nodeType === Node.TEXT_NODE && /\s/u.test(node.textContent ?? "")).length,
     }));
     expect(normalSubtitle.fontSize).toBeGreaterThanOrEqual(80);
     expect(normalSubtitle.surfaceFontSize).toBe(normalSubtitle.fontSize);
     expect(normalSubtitle.surfaceHeight).toBeGreaterThanOrEqual(normalSubtitle.surfaceFontSize * 0.9);
-    expect(normalSubtitle.multilineFuriganaClearance).toBeGreaterThanOrEqual(normalSubtitle.fontSize * 0.25);
+    expect(normalSubtitle.sourceLineCount).toBe(1);
+    expect(normalSubtitle.multilineFuriganaClearance.visualRowCount).toBeGreaterThanOrEqual(2);
+    expect(normalSubtitle.multilineFuriganaClearance.clearance).toBeGreaterThanOrEqual(normalSubtitle.fontSize * 0.35);
     expect(normalSubtitle.whitespaceNodes).toBe(0);
 
     await page.getByRole("button", { name: "Fullscreen" }).click();
