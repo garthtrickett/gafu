@@ -98,6 +98,42 @@ describe("WatchView local media boundary", () => {
     expect(fullscreen.mock.contexts[0]).toBe(view.querySelector("[data-video-stage]"));
   });
 
+  it("dismisses a local syllabus target and shows the next ranked option", async () => {
+    const item = (candidateId: string, label: string) => ({
+      candidateId,
+      knowledgePointId: null,
+      kind: "vocabulary" as const,
+      label,
+      meaning: label,
+      occurrenceCount: 1,
+      confidence: 0.9,
+    });
+    const view = document.createElement("watch-view") as unknown as HTMLElement & {
+      syllabus: {
+        items: readonly ReturnType<typeof item>[];
+        alternates: readonly ReturnType<typeof item>[];
+        rejectedCandidateIds: readonly string[];
+      };
+      readonly updateComplete: Promise<boolean>;
+    };
+    document.body.append(view);
+    view.syllabus = {
+      items: [item("candidate-one", "one"), item("candidate-two", "two"), item("candidate-three", "three")],
+      alternates: [item("candidate-four", "four")],
+      rejectedCandidateIds: [],
+    };
+    await view.updateComplete;
+
+    const dismiss = view.querySelector('button[aria-label="Dismiss one and show another target"]') as HTMLButtonElement;
+    expect(dismiss.textContent).toContain("show next");
+    dismiss.click();
+    await view.updateComplete;
+
+    expect(Array.from(view.querySelectorAll("strong")).map((element) => element.textContent))
+      .toEqual(["two", "three", "four"]);
+    expect(view.syllabus.rejectedCandidateIds).toContain("candidate-one");
+  });
+
   it("records a marker encounter without pausing, seeking, or sending source text", async () => {
     vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
     Object.defineProperties(URL, {

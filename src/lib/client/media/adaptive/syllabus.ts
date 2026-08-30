@@ -239,8 +239,26 @@ export interface EpisodeSyllabusItem {
 
 export interface EpisodeSyllabus {
   readonly items: readonly EpisodeSyllabusItem[];
+  readonly alternates: readonly EpisodeSyllabusItem[];
   readonly rejectedCandidateIds: readonly string[];
 }
+
+export const dismissEpisodeSyllabusItem = (
+  syllabus: EpisodeSyllabus,
+  candidateId: string,
+  maximum = 3,
+): EpisodeSyllabus => {
+  const remaining = [...syllabus.items, ...syllabus.alternates]
+    .filter((item) => item.candidateId !== candidateId);
+  const visibleLimit = Math.max(0, Math.min(3, maximum));
+  return {
+    items: remaining.slice(0, visibleLimit),
+    alternates: remaining.slice(visibleLimit),
+    rejectedCandidateIds: syllabus.rejectedCandidateIds.includes(candidateId)
+      ? syllabus.rejectedCandidateIds
+      : [...syllabus.rejectedCandidateIds, candidateId],
+  };
+};
 
 export const buildEpisodeSyllabus = (
   cues: readonly NormalizedCue[],
@@ -290,18 +308,21 @@ export const buildEpisodeSyllabus = (
     if (knownDefinition !== 0) return knownDefinition;
     return left.candidate.canonicalKey.localeCompare(right.candidate.canonicalKey);
   });
+  const rankedItems = eligible.map(({ candidate, canonical }) => ({
+    candidateId: candidate.id,
+    knowledgePointId: canonical?.id ?? null,
+    kind: candidate.kind,
+    label: candidate.kind === "vocabulary"
+      ? candidate.canonicalKey.split(":")[1] ?? candidate.meaning
+      : grammarNameFromKey(candidate.canonicalKey),
+    meaning: canonical?.meaning ?? candidate.meaning,
+    occurrenceCount: candidate.evidence.length,
+    confidence: candidate.confidence,
+  }));
+  const visibleLimit = Math.max(0, Math.min(3, maximum));
   return {
-    items: eligible.slice(0, Math.max(0, Math.min(3, maximum))).map(({ candidate, canonical }) => ({
-      candidateId: candidate.id,
-      knowledgePointId: canonical?.id ?? null,
-      kind: candidate.kind,
-      label: candidate.kind === "vocabulary"
-        ? candidate.canonicalKey.split(":")[1] ?? candidate.meaning
-        : grammarNameFromKey(candidate.canonicalKey),
-      meaning: canonical?.meaning ?? candidate.meaning,
-      occurrenceCount: candidate.evidence.length,
-      confidence: candidate.confidence,
-    })),
+    items: rankedItems.slice(0, visibleLimit),
+    alternates: rankedItems.slice(visibleLimit),
     rejectedCandidateIds,
   };
 };
