@@ -7,6 +7,7 @@ import { userPreferencesStore } from "../stores/userPreferencesStore";
 import { hlcStore, hlcSignal } from "../stores/hlcStore";
 import { createStore, get, clear } from "idb-keyval";
 import { unpackHlc } from "../../shared/hlc";
+import { mediaCandidatePreferenceStore } from "../stores/mediaCandidatePreferenceStore.ts";
 
 const syncMetadataStore = createStore("bedrock-lang-sync-v1", "metadata");
 
@@ -19,6 +20,7 @@ describe("DeltaPullEngine - Client Causal Merging", () => {
     await Effect.runPromise(grammarPointStore.clear());
     await Effect.runPromise(grammarPointCatalogStore.clear());
     await Effect.runPromise(userPreferencesStore.clear());
+    await Effect.runPromise(mediaCandidatePreferenceStore.clear());
     await Effect.runPromise(hlcStore.clear());
     await Effect.runPromise(hlcStore.load());
   });
@@ -57,6 +59,42 @@ describe("DeltaPullEngine - Client Causal Merging", () => {
     // Verify that last_pull_hlc was persisted correctly
     const savedHlc = await get<string>("last_pull_hlc", syncMetadataStore);
     expect(savedHlc).toBe(serverHlc);
+  });
+
+  it("hydrates synced canonical media preferences for future episode filtering", async () => {
+    const serverHlc = `${Date.now()}:0002:server`;
+    const fetchMock = vi.fn().mockImplementation((url: string) => {
+      if (url.includes("/api/log")) return Promise.resolve({ ok: true });
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({
+          serverTimestamp: Date.now(),
+          serverHlc,
+          decks: [],
+          srsUpdates: [],
+          grammarPoints: [],
+          knowledgePoints: [],
+          mediaCandidatePreferences: [{
+            kind: "vocabulary",
+            canonicalKey: "vocabulary:猫:ねこ:名詞",
+            disposition: "not_useful",
+            hlc: serverHlc,
+          }],
+        }),
+      });
+    });
+    global.fetch = fetchMock as never;
+
+    await Effect.runPromise(executeDeltaPull());
+
+    expect(mediaCandidatePreferenceStore.state.peek()).toEqual([{
+      id: "vocabulary:猫:ねこ:名詞",
+      kind: "vocabulary",
+      canonicalKey: "vocabulary:猫:ねこ:名詞",
+      disposition: "not_useful",
+      hlc: serverHlc,
+    }]);
   });
 
   it("should discard older out-of-order changes from the server that are clobbered by newer local records", async () => {

@@ -230,6 +230,7 @@ const grammarCandidates = (
 export interface EpisodeSyllabusItem {
   readonly candidateId: string;
   readonly knowledgePointId: string | null;
+  readonly canonicalKey: string;
   readonly kind: "grammar" | "vocabulary";
   readonly label: string;
   readonly meaning: string;
@@ -265,6 +266,7 @@ export const buildEpisodeSyllabus = (
   catalog: readonly CanonicalKnowledgePoint[],
   learner: readonly LearnerKnowledgeSnapshot[],
   grammarMatchers: readonly GrammarEvidenceMatcher[] = [],
+  suppressedCanonicalKeys: ReadonlySet<string> = new Set(),
   maximum = 3,
 ): EpisodeSyllabus => {
   const catalogByKey = new Map(catalog.map((point) => [point.canonicalKey, point]));
@@ -286,6 +288,10 @@ export const buildEpisodeSyllabus = (
   const candidates = [...detectedVocabulary, ...detectedGrammar];
   const rejectedCandidateIds: string[] = [];
   const eligible = candidates.flatMap((candidate) => {
+    if (suppressedCanonicalKeys.has(candidate.canonicalKey)) {
+      rejectedCandidateIds.push(candidate.id);
+      return [];
+    }
     const canonical = catalogByKey.get(candidate.canonicalKey);
     const progress = canonical ? learnerById.get(canonical.id) : null;
     if (progress?.learningState === "known" || progress?.learningState === "stable") {
@@ -311,6 +317,7 @@ export const buildEpisodeSyllabus = (
   const rankedItems = eligible.map(({ candidate, canonical }) => ({
     candidateId: candidate.id,
     knowledgePointId: canonical?.id ?? null,
+    canonicalKey: candidate.canonicalKey,
     kind: candidate.kind,
     label: candidate.kind === "vocabulary"
       ? candidate.canonicalKey.split(":")[1] ?? candidate.meaning

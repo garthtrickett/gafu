@@ -11,7 +11,7 @@ const OUTBOX_KEYS_LIST = "outbox_pending_keys";
 
 export interface OutboxTransaction {
   readonly id: string;
-  readonly type: "record_review" | "toggle_skin" | "unlock_deck" | "update_preferences";
+  readonly type: "record_review" | "toggle_skin" | "unlock_deck" | "update_preferences" | "set_media_candidate_preference";
   readonly payload: unknown;
   readonly hlc: string;
 }
@@ -60,6 +60,7 @@ export const enqueueTransaction = (
 
     yield* clientLog("debug", `[Outbox] Enqueued transaction ${txId} (${type}) stamped with HLC ${currentHlc}`);
     yield* Queue.offer(transactionQueue, txId);
+    return currentHlc;
   });
 
 const flushTransaction = (txId: string) =>

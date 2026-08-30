@@ -66,6 +66,23 @@ describe("episode syllabus preprocessing", () => {
     expect(updated.rejectedCandidateIds).toContain(dismissedCandidateId);
   });
 
+  it("excludes canonical targets stored in the learner's not-useful bank", () => {
+    const cat = token("猫", "猫", 0, "名詞");
+    const dog = token("犬", "犬", 0, "名詞");
+    const suppressedKey = canonicalVocabularyKey(cat);
+
+    const syllabus = buildEpisodeSyllabus(
+      [cue("cue-cat", "猫", [cat]), cue("cue-dog", "犬", [dog])],
+      [],
+      [],
+      [],
+      new Set([suppressedKey]),
+    );
+
+    expect(syllabus.items.map((item) => item.canonicalKey)).toEqual([canonicalVocabularyKey(dog)]);
+    expect(syllabus.rejectedCandidateIds).toContain(`candidate:${suppressedKey}`);
+  });
+
   it("matches token-aligned grammar from the bank and does not duplicate it as vocabulary", () => {
     const observed = token("よ", "よ", 0, "助詞");
     const catalog = [{

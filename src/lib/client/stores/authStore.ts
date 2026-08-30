@@ -74,12 +74,14 @@ export const initAuth = () => {
         const { srsStore } = yield* Effect.promise(() => import("./srsStore.ts"));
         const { grammarPointStore, grammarPointCatalogStore } = yield* Effect.promise(() => import("./grammarPointStore.ts"));
         const { userPreferencesStore } = yield* Effect.promise(() => import("./userPreferencesStore.ts"));
+        const { mediaCandidatePreferenceStore } = yield* Effect.promise(() => import("./mediaCandidatePreferenceStore.ts"));
 
         yield* deckStore.load();
         yield* srsStore.load();
         yield* grammarPointStore.load();
         yield* grammarPointCatalogStore.load();
         yield* userPreferencesStore.load();
+        yield* mediaCandidatePreferenceStore.load();
 
         const { executeDeltaPull } = yield* Effect.promise(() => import("../sync/DeltaPullEngine.ts"));
         yield* executeDeltaPull().pipe(
@@ -142,12 +144,14 @@ export const login = (email: string, password: string) => {
     const { srsStore } = yield* Effect.promise(() => import("./srsStore.ts"));
     const { grammarPointStore, grammarPointCatalogStore } = yield* Effect.promise(() => import("./grammarPointStore.ts"));
     const { userPreferencesStore } = yield* Effect.promise(() => import("./userPreferencesStore.ts"));
+    const { mediaCandidatePreferenceStore } = yield* Effect.promise(() => import("./mediaCandidatePreferenceStore.ts"));
 
     yield* deckStore.load();
     yield* srsStore.load();
     yield* grammarPointStore.load();
     yield* grammarPointCatalogStore.load();
     yield* userPreferencesStore.load();
+    yield* mediaCandidatePreferenceStore.load();
 
     const { executeDeltaPull } = yield* Effect.promise(() => import("../sync/DeltaPullEngine.ts"));
     yield* executeDeltaPull().pipe(

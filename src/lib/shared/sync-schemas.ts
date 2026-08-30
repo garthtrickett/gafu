@@ -139,6 +139,12 @@ export type UpdatePreferencesPayload = Schema.Schema.Type<typeof UpdatePreferenc
 export const ToggleSkinPayloadSchema = Schema.Unknown;
 export const UnlockDeckPayloadSchema = Schema.Unknown;
 
+export const SetMediaCandidatePreferencePayloadSchema = Schema.Struct({
+  kind: Schema.Union(Schema.Literal("grammar"), Schema.Literal("vocabulary")),
+  canonicalKey: Schema.String,
+  disposition: Schema.Literal("not_useful"),
+});
+
 export const RecordReviewTransactionSchema = Schema.Struct({
   id: Schema.String,
   type: Schema.Literal("record_review"),
@@ -167,11 +173,19 @@ export const UnlockDeckTransactionSchema = Schema.Struct({
   hlc: Schema.String,
 });
 
+export const SetMediaCandidatePreferenceTransactionSchema = Schema.Struct({
+  id: Schema.String,
+  type: Schema.Literal("set_media_candidate_preference"),
+  payload: SetMediaCandidatePreferencePayloadSchema,
+  hlc: Schema.String,
+});
+
 export const OutboxTransactionSchema = Schema.Union(
   RecordReviewTransactionSchema,
   UpdatePreferencesTransactionSchema,
   ToggleSkinTransactionSchema,
-  UnlockDeckTransactionSchema
+  UnlockDeckTransactionSchema,
+  SetMediaCandidatePreferenceTransactionSchema
 );
 
 export type OutboxTransaction = Schema.Schema.Type<typeof OutboxTransactionSchema>;

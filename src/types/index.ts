@@ -13,6 +13,7 @@ export type { default as VocabularyPointTable, VocabularyPoint, NewVocabularyPoi
 export type { default as IntroductionAdmissionTable, IntroductionAdmission, NewIntroductionAdmission, IntroductionAdmissionUpdate, IntroductionAdmissionId } from "./generated/public/IntroductionAdmission";
 export type { default as MediaAnalysisRunTable, MediaAnalysisRun, NewMediaAnalysisRun, MediaAnalysisRunUpdate, MediaAnalysisRunId } from "./generated/public/MediaAnalysisRun";
 export type { default as MediaCandidateTable, MediaCandidate, NewMediaCandidate, MediaCandidateUpdate, MediaCandidateId } from "./generated/public/MediaCandidate";
+export type { default as LearnerMediaPreferenceTable, LearnerMediaPreference, NewLearnerMediaPreference, LearnerMediaPreferenceUpdate } from "./generated/public/LearnerMediaPreference";
 export type { default as LearnerProgressEventTable, LearnerProgressEvent, NewLearnerProgressEvent, LearnerProgressEventUpdate, LearnerProgressEventId } from "./generated/public/LearnerProgressEvent";
 export type { default as MediaEncounterTable, MediaEncounter, NewMediaEncounter, MediaEncounterUpdate, MediaEncounterId } from "./generated/public/MediaEncounter";
 export type { default as MediaCheckoutTable, MediaCheckout, NewMediaCheckout, MediaCheckoutUpdate, MediaCheckoutId } from "./generated/public/MediaCheckout";
