@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { NormalizedCue } from "../../../shared/adaptive-media.ts";
 import { TARGET_OFFSET_UNIT, NORMALIZED_CUE_VERSION } from "../../../shared/adaptive-media.ts";
-import { buildEpisodeSyllabus, canonicalVocabularyKey } from "./syllabus.ts";
+import {
+  buildEpisodeSyllabus,
+  buildGrammarEvidenceMatchers,
+  canonicalVocabularyKey,
+  knownCanonicalKeysForLearner,
+} from "./syllabus.ts";
 
 const token = (surface: string, lemma: string, start: number, pos = "動詞") => ({
   surface,
@@ -42,6 +47,110 @@ describe("episode syllabus preprocessing", () => {
     const syllabus = buildEpisodeSyllabus(cues, catalog, [{ knowledgePointId: "kp-0", learningState: "known", participationStatus: "active" }]);
     expect(syllabus.items).toHaveLength(3);
     expect(syllabus.items.map((item) => item.knowledgePointId)).not.toContain("kp-0");
+  });
+
+  it("matches token-aligned grammar from the bank and does not duplicate it as vocabulary", () => {
+    const observed = token("よ", "よ", 0, "助詞");
+    const catalog = [{
+      id: "grammar-yo",
+      kind: "grammar" as const,
+      canonicalKey: "grammar:よ",
+      meaning: "sentence-ending emphasis",
+      difficulty: 1,
+    }];
+    const syllabus = buildEpisodeSyllabus(
+      [cue("cue-yo", "よ", [observed])],
+      catalog,
+      [],
+      buildGrammarEvidenceMatchers(catalog),
+    );
+
+    expect(syllabus.items).toEqual([expect.objectContaining({
+      knowledgePointId: "grammar-yo",
+      kind: "grammar",
+      label: "よ",
+      occurrenceCount: 1,
+    })]);
+  });
+
+  it("prefers the exact bank point over annotated aliases and ignores matches inside tokens", () => {
+    const catalog = [{
+      id: "grammar-no",
+      kind: "grammar" as const,
+      canonicalKey: "grammar:の",
+      meaning: "particle",
+      difficulty: 1,
+    }, {
+      id: "grammar-nominalizer",
+      kind: "grammar" as const,
+      canonicalKey: "grammar:の (nominalizer)",
+      meaning: "nominalizer",
+      difficulty: 2,
+    }];
+    const matchers = buildGrammarEvidenceMatchers(catalog);
+    const insideWord = token("もの", "もの", 0, "名詞");
+
+    expect(buildEpisodeSyllabus([cue("cue-word", "もの", [insideWord])], catalog, [], matchers).items)
+      .toEqual([expect.objectContaining({ kind: "vocabulary", label: "もの" })]);
+    expect(matchers.filter((matcher) => matcher.canonicalKey === "grammar:の")).toHaveLength(1);
+    expect(matchers.some((matcher) => matcher.canonicalKey === "grammar:の (nominalizer)")).toBe(false);
+  });
+
+  it("filters grammar points already known or stable in the learner profile", () => {
+    const observed = token("よ", "よ", 0, "助詞");
+    const catalog = [{
+      id: "grammar-yo",
+      kind: "grammar" as const,
+      canonicalKey: "grammar:よ",
+      meaning: "sentence-ending emphasis",
+      difficulty: 1,
+    }];
+    const learner = [{ knowledgePointId: "grammar-yo", learningState: "known" as const, participationStatus: "active" as const }];
+    const knownKeys = knownCanonicalKeysForLearner(catalog, learner);
+    const syllabus = buildEpisodeSyllabus(
+      [cue("cue-yo", "よ", [observed])],
+      catalog,
+      learner,
+      buildGrammarEvidenceMatchers(catalog),
+    );
+
+    expect(knownKeys).toEqual(new Set(["grammar:よ"]));
+    expect(syllabus.items).toEqual([]);
+    expect(syllabus.rejectedCandidateIds).toContain("candidate:grammar:よ");
+  });
+
+  it("prefers a longer canonical grammar match over a nested particle", () => {
+    const tokens = [
+      token("か", "か", 0, "助詞"),
+      token("も", "も", 1, "助詞"),
+      token("しれ", "しれる", 2),
+      token("ない", "ない", 4, "助動詞"),
+    ];
+    const catalog = [{
+      id: "grammar-ka",
+      kind: "grammar" as const,
+      canonicalKey: "grammar:か",
+      meaning: "question particle",
+      difficulty: 1,
+    }, {
+      id: "grammar-maybe",
+      kind: "grammar" as const,
+      canonicalKey: "grammar:かもしれない",
+      meaning: "might",
+      difficulty: 3,
+    }];
+    const syllabus = buildEpisodeSyllabus(
+      [cue("cue-maybe", "かもしれない", tokens)],
+      catalog,
+      [],
+      buildGrammarEvidenceMatchers(catalog),
+    );
+
+    expect(syllabus.items).toEqual([expect.objectContaining({
+      knowledgePointId: "grammar-maybe",
+      kind: "grammar",
+      occurrenceCount: 1,
+    })]);
   });
 
   it("rejects evidence whose UTF-16 span does not reproduce the observed surface", () => {

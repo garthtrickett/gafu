@@ -62,6 +62,25 @@ describe("media recommendation consent and local evidence validation", () => {
     expect(valid[0]).toMatchObject({ occurrenceCount: 1, firstTimeSeconds: 3 });
   });
 
+  it("does not present AI grammar recommendations the learner already knows", () => {
+    const validCue = cues[1]!;
+    const proposals = validateMediaRecommendations({ proposals: [{
+      kind: "grammar",
+      canonicalKey: "grammar:歩く",
+      reading: "",
+      meaning: "known grammar",
+      observedForms: ["歩く"],
+      occurrenceCount: 1,
+      firstTimeSeconds: 3,
+      prerequisiteCanonicalKeys: [],
+      confidence: 0.9,
+      reviewCostClass: "grammar",
+      evidence: [{ cueId: validCue.id, start: 0, end: 2, observedSurface: "歩く" }],
+    }] }, cues, new Set(["grammar:歩く"]), new Set(["grammar:歩く"]));
+
+    expect(proposals).toEqual([]);
+  });
+
   it("submits candidate provenance without source surface text", async () => {
     const recommendation = {
       candidateId: crypto.randomUUID(),
