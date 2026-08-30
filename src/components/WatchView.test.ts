@@ -91,7 +91,19 @@ describe("WatchView local media boundary", () => {
 
     const sizeInput = Array.from(view.querySelectorAll('input[type="range"]'))
       .find((input) => input.parentElement?.textContent?.includes("Subtitle size")) as HTMLInputElement;
-    expect(sizeInput.max).toBe("14");
+    expect(sizeInput.min).toBe("0");
+    expect(sizeInput.max).toBe("100");
+    expect(sizeInput.value).toBe("67.5");
+    sizeInput.value = "50";
+    sizeInput.dispatchEvent(new Event("input", { bubbles: true }));
+    await view.updateComplete;
+    expect(overlay.style.fontSize).toBe("clamp(36px,4cqw,180px)");
+
+    sizeInput.value = sizeInput.min;
+    sizeInput.dispatchEvent(new Event("input", { bubbles: true }));
+    await view.updateComplete;
+    expect(overlay.style.fontSize).toBe("clamp(18px,2cqw,180px)");
+
     sizeInput.value = sizeInput.max;
     sizeInput.dispatchEvent(new Event("input", { bubbles: true }));
     await view.updateComplete;

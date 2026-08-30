@@ -76,6 +76,21 @@ test.describe("adaptive local-media privacy and resilience", () => {
     expect(fontState.redundantReadings).toBe(0);
     const subtitleSize = page.getByText("Subtitle size").locator('input[type="range"]');
     await subtitleSize.evaluate((input: HTMLInputElement) => {
+      input.value = input.min;
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    const minimumFontSize = await subtitleOverlay.evaluate((overlay) =>
+      Number.parseFloat(getComputedStyle(overlay).fontSize));
+    await subtitleSize.evaluate((input: HTMLInputElement) => {
+      input.value = String((Number(input.min) + Number(input.max)) / 2);
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await expect(subtitleOverlay).toHaveAttribute("style", /clamp\(36px,4cqw,180px\)/);
+    const middleFontSize = await subtitleOverlay.evaluate((overlay) =>
+      Number.parseFloat(getComputedStyle(overlay).fontSize));
+    expect(middleFontSize).toBeGreaterThan(minimumFontSize);
+
+    await subtitleSize.evaluate((input: HTMLInputElement) => {
       input.value = input.max;
       input.dispatchEvent(new Event("input", { bubbles: true }));
     });
