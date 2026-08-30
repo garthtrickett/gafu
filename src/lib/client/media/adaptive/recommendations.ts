@@ -111,7 +111,9 @@ export const validateMediaRecommendations = (
   result: MediaRecommendationResult,
   cues: readonly NormalizedCue[],
   canonicalKeys: ReadonlySet<string>,
+  knownCanonicalKeys: ReadonlySet<string> = new Set(),
 ): readonly ValidatedMediaRecommendation[] => result.proposals.flatMap((proposal) => {
+  if (knownCanonicalKeys.has(proposal.canonicalKey)) return [];
   if (proposal.confidence < 0.6 || proposal.evidence.length === 0) return [];
   const validEvidence = proposal.evidence.flatMap((evidence) => {
     const cue = cues.find((candidate) => candidate.id === evidence.cueId);

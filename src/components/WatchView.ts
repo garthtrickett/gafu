@@ -11,7 +11,12 @@ import { localAudioRepairAdapter } from "../lib/client/media/adaptive/audio-repa
 import { LocalMediaSession } from "../lib/client/media/adaptive/local-media.ts";
 import { CueLifecycleTracker, PlaybackClock } from "../lib/client/media/adaptive/playback.ts";
 import { buildSourceExclusionSignatures, getOrCreateSourceSignatureKey, persistSourceExclusionSignatures } from "../lib/client/media/adaptive/source-signature-store.ts";
-import { buildEpisodeSyllabus, type EpisodeSyllabus } from "../lib/client/media/adaptive/syllabus.ts";
+import {
+  buildEpisodeSyllabus,
+  buildGrammarEvidenceMatchers,
+  knownCanonicalKeysForLearner,
+  type EpisodeSyllabus,
+} from "../lib/client/media/adaptive/syllabus.ts";
 import { findActiveCues, fingerprintSubtitleBytes, parseSubtitleTrack } from "../lib/client/media/adaptive/subtitles.ts";
 import { tokenizeSubtitleCuesCooperatively } from "../lib/client/media/adaptive/tokenizer.ts";
 import { tokenState } from "../lib/client/stores/authStore.ts";
@@ -92,6 +97,7 @@ export class WatchView extends LitElement {
   @state() private learningStatus = "";
   @state() private markersEnabled = true;
   private canonicalKeys: ReadonlySet<string> = new Set();
+  private knownCanonicalKeys: ReadonlySet<string> = new Set();
   private analysisRunId = "";
   private subtitleTrackFingerprint = "";
   private audioRepairVersion = 0;
@@ -290,11 +296,15 @@ export class WatchView extends LitElement {
         learningState: progress.learningState ?? ((progress.stability ?? 0) >= 21 ? "stable" as const : "learning" as const),
         participationStatus: progress.participationStatus ?? "active" as const,
       }));
+      const grammarMatchers = buildGrammarEvidenceMatchers(catalog);
+      const knownCanonicalKeys = knownCanonicalKeysForLearner(catalog, learner);
       yield* clientLog("info", "[WatchView] Loaded knowledge state for subtitles.", {
         catalogCount: catalog.length,
         learnerProgressCount: learner.length,
+        grammarMatcherCount: grammarMatchers.length,
+        knownCanonicalKeyCount: knownCanonicalKeys.size,
       });
-      const syllabus = buildEpisodeSyllabus(enriched, catalog, learner);
+      const syllabus = buildEpisodeSyllabus(enriched, catalog, learner, grammarMatchers);
       yield* clientLog("info", "[WatchView] Built subtitle syllabus.", {
         syllabusItemCount: syllabus.items.length,
         rejectedCandidateCount: syllabus.rejectedCandidateIds.length,
@@ -310,6 +320,7 @@ export class WatchView extends LitElement {
         this.aiStatus = "Optional AI analysis is off.";
         this.subtitleTrackFingerprint = fingerprint;
         this.canonicalKeys = new Set(catalog.map((point) => point.canonicalKey));
+        this.knownCanonicalKeys = knownCanonicalKeys;
         this.status = enriched.length === 0
           ? "No valid timed cues were found; video playback is still available."
           : `${enriched.length} timed cues prepared locally.`;
@@ -513,8 +524,13 @@ export class WatchView extends LitElement {
     this.analysisRunId = analysisRunId;
     const program = Effect.gen(this, function* () {
       const result = yield* requestMediaRecommendations(token, analysisRunId, this.analysisConsent, excerpts);
-      const validated = validateMediaRecommendations(result, this.cues, this.canonicalKeys)
+      const validated = validateMediaRecommendations(result, this.cues, this.canonicalKeys, this.knownCanonicalKeys)
         .map((recommendation) => ({ ...recommendation, candidateId: crypto.randomUUID() }));
+      yield* clientLog("info", "[WatchView] Validated optional AI media recommendations.", {
+        proposedCount: result.proposals.length,
+        acceptedCount: validated.length,
+        knownCanonicalKeyCount: this.knownCanonicalKeys.size,
+      });
       yield* Effect.sync(() => {
         this.aiRecommendations = validated;
         this.aiStatus = validated.length === 0
