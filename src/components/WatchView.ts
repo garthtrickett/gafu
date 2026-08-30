@@ -14,6 +14,7 @@ import { buildSourceExclusionSignatures, getOrCreateSourceSignatureKey, persistS
 import {
   buildEpisodeSyllabus,
   buildGrammarEvidenceMatchers,
+  dismissEpisodeSyllabusItem,
   knownCanonicalKeysForLearner,
   type EpisodeSyllabus,
 } from "../lib/client/media/adaptive/syllabus.ts";
@@ -77,7 +78,7 @@ export class WatchView extends LitElement {
   @state() private furigana = true;
   @state() private spacing = 0.1;
   @state() private subtitleSize = 7.5;
-  @state() private syllabus: EpisodeSyllabus = { items: [], rejectedCandidateIds: [] };
+  @state() private syllabus: EpisodeSyllabus = { items: [], alternates: [], rejectedCandidateIds: [] };
   @state() private analysisConsent = false;
   @state() private aiRecommendations: readonly ActionableMediaRecommendation[] = [];
   @state() private aiStatus = "Optional AI analysis is off.";
@@ -512,6 +513,16 @@ export class WatchView extends LitElement {
     void runClientPromise(program);
   }
 
+  private dismissLocalSyllabusItem(candidateId: string) {
+    const replacement = this.syllabus.alternates[0] ?? null;
+    this.syllabus = dismissEpisodeSyllabusItem(this.syllabus, candidateId);
+    void runClientPromise(clientLog("info", "[WatchView] Dismissed local syllabus target.", {
+      dismissedCandidateId: candidateId,
+      replacementCandidateId: replacement?.candidateId ?? null,
+      remainingAlternateCount: this.syllabus.alternates.length,
+    }));
+  }
+
   private analyzeRecommendations() {
     const token = tokenState.value;
     const excerpts = selectMediaAnalysisExcerpts(this.cues);
@@ -811,7 +822,7 @@ export class WatchView extends LitElement {
                 <p class="text-xs ${this.repairedAudioActive ? "text-emerald-300" : "text-zinc-400"}" role="status">${this.audioRepairStatus || (localAudioRepairAvailable ? "Requires FFmpeg on your PATH." : "Run Gafu locally to use the same-machine repair helper.")}</p>
               </div>
             ` : ""}
-            <div class="border-t border-zinc-700 pt-3"><h2 class="font-semibold">Episode syllabus</h2><p class="mb-2 text-xs text-zinc-500">Up to three targets; dialogue is not shown here.</p>${this.aiRecommendations.length ? this.aiRecommendations.slice(0, 3).map((item) => { const later = this.isLaterRecommendation(item); return html`<div class="mb-2 space-y-2 rounded bg-zinc-900 p-2"><strong>${item.canonicalKey}</strong><p class="text-xs text-zinc-400">${item.reading ? `${item.reading} · ` : ""}${item.meaning} · about ${Math.round(item.firstTimeSeconds / 60)} min · ${item.occurrenceCount} encounters · ${Math.round(item.confidence * 100)}% confidence</p>${later ? html`<label class="flex gap-2 text-xs text-amber-300"><input type="checkbox" .checked=${Boolean(this.laterAccepted[item.candidateId])} @change=${(event: Event) => { this.laterAccepted = { ...this.laterAccepted, [item.candidateId]: (event.target as HTMLInputElement).checked }; }}> This target appears outside the early window; teach it anyway.</label>` : ""}<div class="flex flex-wrap gap-1 text-xs"><button class="rounded bg-emerald-700 px-2 py-1 disabled:opacity-40" ?disabled=${later && !this.laterAccepted[item.candidateId]} @click=${() => this.actOnRecommendation(item, "accept")}>Accept</button><button class="rounded border border-zinc-600 px-2 py-1" @click=${() => this.actOnRecommendation(item, "replace")}>Replace</button><button class="rounded border border-zinc-600 px-2 py-1" @click=${() => this.actOnRecommendation(item, "reduce")}>Reduce</button><button class="rounded border border-zinc-600 px-2 py-1" @click=${() => this.actOnRecommendation(item, "already_known")}>Already known</button><button class="rounded border border-zinc-600 px-2 py-1" @click=${() => this.actOnRecommendation(item, "not_useful")}>Not useful</button></div>${this.candidateStatuses[item.candidateId] ? html`<p class="text-xs text-emerald-300">${this.candidateStatuses[item.candidateId]}</p>` : ""}</div>`; }) : this.syllabus.items.length ? this.syllabus.items.map((item) => html`<div class="mb-2 rounded bg-zinc-900 p-2"><strong>${item.label}</strong><p class="text-xs text-zinc-400">${item.kind} · ${item.occurrenceCount} encounters</p></div>`) : html`<p class="text-sm text-zinc-500">Load subtitles to analyze candidates.</p>`}</div>
+            <div class="border-t border-zinc-700 pt-3"><h2 class="font-semibold">Episode syllabus</h2><p class="mb-2 text-xs text-zinc-500">Up to three targets; dialogue is not shown here.${!this.aiRecommendations.length && this.syllabus.alternates.length ? ` ${this.syllabus.alternates.length} more ranked option${this.syllabus.alternates.length === 1 ? "" : "s"} available.` : ""}</p>${this.aiRecommendations.length ? this.aiRecommendations.slice(0, 3).map((item) => { const later = this.isLaterRecommendation(item); return html`<div class="mb-2 space-y-2 rounded bg-zinc-900 p-2"><strong>${item.canonicalKey}</strong><p class="text-xs text-zinc-400">${item.reading ? `${item.reading} · ` : ""}${item.meaning} · about ${Math.round(item.firstTimeSeconds / 60)} min · ${item.occurrenceCount} encounters · ${Math.round(item.confidence * 100)}% confidence</p>${later ? html`<label class="flex gap-2 text-xs text-amber-300"><input type="checkbox" .checked=${Boolean(this.laterAccepted[item.candidateId])} @change=${(event: Event) => { this.laterAccepted = { ...this.laterAccepted, [item.candidateId]: (event.target as HTMLInputElement).checked }; }}> This target appears outside the early window; teach it anyway.</label>` : ""}<div class="flex flex-wrap gap-1 text-xs"><button class="rounded bg-emerald-700 px-2 py-1 disabled:opacity-40" ?disabled=${later && !this.laterAccepted[item.candidateId]} @click=${() => this.actOnRecommendation(item, "accept")}>Accept</button><button class="rounded border border-zinc-600 px-2 py-1" @click=${() => this.actOnRecommendation(item, "replace")}>Replace</button><button class="rounded border border-zinc-600 px-2 py-1" @click=${() => this.actOnRecommendation(item, "reduce")}>Reduce</button><button class="rounded border border-zinc-600 px-2 py-1" @click=${() => this.actOnRecommendation(item, "already_known")}>Already known</button><button class="rounded border border-zinc-600 px-2 py-1" @click=${() => this.actOnRecommendation(item, "not_useful")}>Not useful</button></div>${this.candidateStatuses[item.candidateId] ? html`<p class="text-xs text-emerald-300">${this.candidateStatuses[item.candidateId]}</p>` : ""}</div>`; }) : this.syllabus.items.length ? this.syllabus.items.map((item) => html`<div class="mb-2 space-y-2 rounded bg-zinc-900 p-2"><strong>${item.label}</strong><p class="text-xs text-zinc-400">${item.kind} · ${item.occurrenceCount} encounters</p><button class="rounded border border-zinc-600 px-2 py-1 text-xs" aria-label=${this.syllabus.alternates.length ? `Dismiss ${item.label} and show another target` : `Dismiss ${item.label}`} @click=${() => this.dismissLocalSyllabusItem(item.candidateId)}>Dismiss${this.syllabus.alternates.length ? " & show next" : ""}</button></div>`) : html`<p class="text-sm text-zinc-500">${this.cues.length ? "No more local candidates for this episode." : "Load subtitles to analyze candidates."}</p>`}</div>
             <div class="space-y-2 border-t border-zinc-700 pt-3">
               <label class="flex gap-2 text-xs"><input type="checkbox" .checked=${this.analysisConsent} @change=${(event: Event) => { this.analysisConsent = (event.target as HTMLInputElement).checked; }}> Send at most 12 shortlisted subtitle excerpts for optional AI recommendations. Video and audio are never sent to remote services. Gafu does not store raw excerpts in its database; the configured AI provider's retention policy still applies.</label>
               <button class="rounded border border-zinc-600 px-3 py-2 text-sm disabled:opacity-40" ?disabled=${!this.analysisConsent || this.cues.length === 0} @click=${this.analyzeRecommendations}>Analyze consented excerpts</button>

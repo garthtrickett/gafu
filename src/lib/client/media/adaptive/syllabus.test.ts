@@ -5,6 +5,7 @@ import {
   buildEpisodeSyllabus,
   buildGrammarEvidenceMatchers,
   canonicalVocabularyKey,
+  dismissEpisodeSyllabusItem,
   knownCanonicalKeysForLearner,
 } from "./syllabus.ts";
 
@@ -46,7 +47,23 @@ describe("episode syllabus preprocessing", () => {
     }));
     const syllabus = buildEpisodeSyllabus(cues, catalog, [{ knowledgePointId: "kp-0", learningState: "known", participationStatus: "active" }]);
     expect(syllabus.items).toHaveLength(3);
+    expect(syllabus.alternates).toHaveLength(0);
     expect(syllabus.items.map((item) => item.knowledgePointId)).not.toContain("kp-0");
+  });
+
+  it("promotes the next ranked target when a visible item is dismissed", () => {
+    const cues = ["猫", "犬", "鳥", "魚"].map((surface, index) => cue(`cue-${index}`, surface, [token(surface, surface, 0, "名詞")]));
+    const syllabus = buildEpisodeSyllabus(cues, [], []);
+    const dismissedCandidateId = syllabus.items[0]!.candidateId;
+    const alternateCandidateId = syllabus.alternates[0]!.candidateId;
+
+    const updated = dismissEpisodeSyllabusItem(syllabus, dismissedCandidateId);
+
+    expect(updated.items).toHaveLength(3);
+    expect(updated.items.map((item) => item.candidateId)).toContain(alternateCandidateId);
+    expect(updated.items.map((item) => item.candidateId)).not.toContain(dismissedCandidateId);
+    expect(updated.alternates).toEqual([]);
+    expect(updated.rejectedCandidateIds).toContain(dismissedCandidateId);
   });
 
   it("matches token-aligned grammar from the bank and does not duplicate it as vocabulary", () => {
