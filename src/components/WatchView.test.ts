@@ -209,6 +209,26 @@ describe("WatchView local media boundary", () => {
     expect(view.textContent).not.toContain("vocabulary:もったいない");
   });
 
+  it("offers a primer retry after an accepted target fails before display", async () => {
+    const view = document.createElement("watch-view") as unknown as HTMLElement & {
+      acceptedTargets: readonly unknown[];
+      readonly updateComplete: Promise<boolean>;
+    };
+    document.body.append(view);
+    view.acceptedTargets = [{
+      candidateId: crypto.randomUUID(),
+      knowledgePointId: crypto.randomUUID(),
+      canonicalKey: "vocabulary:もったいない",
+      cueIds: ["cue-1"],
+      subtitleTrackFingerprint: "track-1",
+      primed: false,
+    }];
+    await view.updateComplete;
+
+    expect(Array.from(view.querySelectorAll("button")).some((button) => button.textContent === "Retry primer"))
+      .toBe(true);
+  });
+
   it("stores don't-suggest feedback and removes the target from the episode", async () => {
     await Effect.runPromise(mediaCandidatePreferenceStore.clear());
     const view = document.createElement("watch-view") as unknown as HTMLElement & {

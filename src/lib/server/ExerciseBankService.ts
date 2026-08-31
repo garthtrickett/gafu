@@ -137,6 +137,7 @@ const rowToExercise = (row: {
       targetCanonicalKey: typeof metadata.targetCanonicalKey === "string" ? metadata.targetCanonicalKey : "",
       context: row.context,
       japaneseSentence: row.japanese_sentence,
+      targetSurface: row.japanese_sentence.slice(row.target_start, row.target_end),
       targetStart: row.target_start,
       targetEnd: row.target_end,
       answer: row.answer,
@@ -192,7 +193,8 @@ export const storeValidatedExercise = (
       || content.targetStart < 0
       || content.targetEnd <= content.targetStart
       || content.targetEnd > content.japaneseSentence.length
-      || content.japaneseSentence.slice(content.targetStart, content.targetEnd).trim().length === 0
+      || content.targetSurface.trim().length === 0
+      || content.japaneseSentence.slice(content.targetStart, content.targetEnd) !== content.targetSurface
     ) throw new ExerciseBankError({ code: "invalid_target" });
     if (content.furigana.length === 0 || content.furigana.map((segment) => segment.text).join("") !== content.japaneseSentence) {
       throw new ExerciseBankError({ code: "invalid_furigana" });

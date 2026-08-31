@@ -51,13 +51,19 @@ describe("server-authoritative introduction admission", () => {
     `.execute(db);
     const first = await Effect.runPromise(reserveIntroduction(userId, pointId, "same-request"));
     const replay = await Effect.runPromise(reserveIntroduction(userId, pointId, "same-request"));
+    const resumedAfterReload = await Effect.runPromise(reserveIntroduction(userId, pointId, "new-client-request"));
     expect(first.accepted).toBe(true);
     expect(replay).toEqual(first);
+    expect(resumedAfterReload).toMatchObject({ accepted: true, knowledgePointId: pointId, reason: "accepted" });
     const schedules = await db.selectFrom("srs_card").select("id")
       .where("user_id", "=", userId as never)
       .where("knowledge_point_id", "=", pointId as never)
       .execute();
     expect(schedules).toHaveLength(1);
+    expect(await db.selectFrom("introduction_admission").select("id")
+      .where("user_id", "=", userId as never)
+      .where("knowledge_point_id", "=", pointId as never)
+      .execute()).toHaveLength(1);
   });
 
   it("marks vocabulary known without manufacturing review success and supports archive/reactivate", async () => {

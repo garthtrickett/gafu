@@ -19,9 +19,20 @@ describe("learning content source exclusion boundary", () => {
     await clear(exerciseCache);
   });
 
+  it("rejects a target surface that does not exactly match its reported span", async () => {
+    const result = await Effect.runPromise(Effect.either(validateGeneratedSentence(
+      "これはもったいない。", 3, 9, "別の語", [], "unused-track",
+    )));
+
+    expect(result).toMatchObject({
+      _tag: "Left",
+      left: { message: "Generated target span is invalid." },
+    });
+  });
+
   it("fails closed without the original device-local signatures", async () => {
     const result = await Effect.runPromise(Effect.either(validateGeneratedSentence(
-      "別の例を試す。", 3, 5, [], "missing-track", () => Effect.succeed([Float32Array.of(1, 0, 0)]),
+      "別の例を試す。", 4, 6, "試す", [], "missing-track", () => Effect.succeed([Float32Array.of(1, 0, 0)]),
     )));
     expect(result).toMatchObject({ _tag: "Left" });
   });
@@ -33,7 +44,7 @@ describe("learning content source exclusion boundary", () => {
     const signatures = await Effect.runPromise(buildSourceExclusionSignatures([cue], key));
     await Effect.runPromise(persistSourceExclusionSignatures("track-source", signatures));
     const result = await Effect.runPromise(Effect.either(validateGeneratedSentence(
-      text, 0, 2, [cue], "track-source", () => Effect.succeed([Float32Array.of(1, 0, 0)]),
+      text, 0, 2, text.slice(0, 2), [cue], "track-source", () => Effect.succeed([Float32Array.of(1, 0, 0)]),
       (sentence) => Effect.succeed(fallbackTokens(sentence)),
     )));
     expect(result).toMatchObject({ _tag: "Left" });
@@ -65,7 +76,7 @@ describe("learning content source exclusion boundary", () => {
     ));
     const result = await Effect.runPromise(validateGeneratedSentence(
       generated, generated.indexOf("試す"), generated.indexOf("試す") + 2,
-      [cue], "track-distinct", embedder, (sentence) => Effect.succeed(fallbackTokens(sentence)),
+      "試す", [cue], "track-distinct", embedder, (sentence) => Effect.succeed(fallbackTokens(sentence)),
     ));
     expect(result).toMatchObject({
       displayable: true,
@@ -94,6 +105,7 @@ describe("learning content source exclusion boundary", () => {
         targetCanonicalKey: "vocabulary:試す:test:動詞",
         context: "Trying a tool at home.",
         japaneseSentence: "道具を試す。",
+        targetSurface: "試す",
         targetStart: 3,
         targetEnd: 5,
         answer: "道具を試す。",

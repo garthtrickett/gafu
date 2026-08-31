@@ -49,6 +49,7 @@ const exercise = (
     targetCanonicalKey: canonicalKey,
     context: `A context for ${sentence.length}`,
     japaneseSentence: sentence,
+    targetSurface: target,
     targetStart,
     targetEnd: targetStart + target.length,
     answer: sentence,
@@ -138,6 +139,7 @@ describe("adaptive exercise bank", () => {
     const cases: readonly [LearningExerciseContent, string][] = [
       [{ ...valid, targetCanonicalKey: "vocabulary:wrong:sense" }, "invalid_target"],
       [{ ...valid, targetStart: valid.japaneseSentence.length + 1, targetEnd: valid.japaneseSentence.length + 3 }, "invalid_target"],
+      [{ ...valid, targetSurface: "道具" }, "invalid_target"],
       [{ ...valid, furigana: [{ text: "一致しない文。" }] }, "invalid_furigana"],
       [{ ...valid, confidence: 0.2 }, "quality_rejected"],
       [{

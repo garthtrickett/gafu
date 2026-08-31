@@ -49,6 +49,19 @@ export const reserveIntroduction = (
       .where("knowledge_point_id", "=", knowledgePointId as KnowledgePointId)
       .executeTakeFirst();
     if (existingSchedule) {
+      const priorAdmission = await trx.selectFrom("introduction_admission")
+        .select("learner_day")
+        .where("user_id", "=", userId as UserId)
+        .where("knowledge_point_id", "=", knowledgePointId as KnowledgePointId)
+        .executeTakeFirst();
+      if (priorAdmission) {
+        return {
+          accepted: true,
+          knowledgePointId,
+          learnerDay: String(priorAdmission.learner_day),
+          reason: "accepted",
+        };
+      }
       return { accepted: false, knowledgePointId, learnerDay, reason: "already_scheduled" };
     }
 
