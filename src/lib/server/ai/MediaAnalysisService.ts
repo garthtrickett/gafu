@@ -3,6 +3,7 @@ import {
   MediaRecommendationResultSchema,
   type MediaRecommendationResult,
 } from "./schema.ts";
+import { normalizeKnowledgePointCanonicalKey } from "../../shared/adaptive-media.ts";
 
 export const MAX_MEDIA_ANALYSIS_EXCERPTS = 12;
 export const MAX_MEDIA_ANALYSIS_EXCERPT_LENGTH = 280;
@@ -85,9 +86,19 @@ export const analyzeMediaExcerpts = (
   });
   const parsed = MediaRecommendationResultSchema.safeParse(response.object);
   if (!parsed.success) return yield* Effect.fail(new MediaAnalysisError({ code: "invalid_result" }));
+  const proposals = parsed.data.proposals.flatMap((proposal) => {
+    const canonicalKey = normalizeKnowledgePointCanonicalKey(proposal.kind, proposal.canonicalKey);
+    return canonicalKey ? [{ ...proposal, canonicalKey }] : [];
+  });
+  const normalizedCount = parsed.data.proposals.filter((proposal) => {
+    const canonicalKey = normalizeKnowledgePointCanonicalKey(proposal.kind, proposal.canonicalKey);
+    return canonicalKey !== null && canonicalKey !== proposal.canonicalKey;
+  }).length;
   yield* Effect.logInfo("[MediaAnalysis] analysis_completed").pipe(Effect.annotateLogs({
     analysisRunId: request.analysisRunId,
-    proposalCount: parsed.data.proposals.length,
+    proposalCount: proposals.length,
+    normalizedCanonicalKeyCount: normalizedCount,
+    rejectedCanonicalKeyCount: parsed.data.proposals.length - proposals.length,
   }));
-  return parsed.data;
+  return { proposals };
 });

@@ -52,6 +52,21 @@ describe("media candidate lifecycle ownership", () => {
     expect(schedules).toHaveLength(1);
   });
 
+  it("accepts and stores a normalized key when an older client submits a bare AI key", async () => {
+    const userId = await createUser();
+    const input = { ...vocabularyCandidate(), canonicalKey: "もったいない", reading: "もったいない" };
+
+    const accepted = await Effect.runPromise(acceptMediaCandidate(userId, input, "accept-bare-key"));
+
+    expect(accepted.accepted).toBe(true);
+    const candidate = await db.selectFrom("media_candidate").select(["canonical_key", "resolved_knowledge_point_id"])
+      .where("id", "=", input.id as never).executeTakeFirstOrThrow();
+    expect(candidate.canonical_key).toBe("vocabulary:もったいない");
+    const point = await db.selectFrom("knowledge_point").select("canonical_key")
+      .where("id", "=", candidate.resolved_knowledge_point_id!).executeTakeFirstOrThrow();
+    expect(point.canonical_key).toBe("vocabulary:もったいない");
+  });
+
   it("keeps rejection as candidate disposition without creating a point or schedule", async () => {
     const userId = await createUser();
     const input = vocabularyCandidate();

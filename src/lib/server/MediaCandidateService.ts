@@ -7,7 +7,12 @@ import type {
   MediaCandidateId,
   UserId,
 } from "../../types/index.ts";
-import { NORMALIZED_CUE_VERSION, type CandidateDisposition, type KnowledgePointKind } from "../shared/adaptive-media.ts";
+import {
+  NORMALIZED_CUE_VERSION,
+  normalizeKnowledgePointCanonicalKey,
+  type CandidateDisposition,
+  type KnowledgePointKind,
+} from "../shared/adaptive-media.ts";
 import { reserveIntroduction, setLearnerPointStatus, type IntroductionReservation } from "./IntroductionAdmissionService.ts";
 
 export interface PrivateMediaEvidenceReference {
@@ -35,11 +40,11 @@ export class MediaCandidateError extends Data.TaggedError("MediaCandidateError")
   readonly code: "invalid_candidate" | "candidate_not_found" | "candidate_not_resolved" | "storage_failed";
 }> {}
 
-const validateCandidate = (input: RecordMediaCandidateInput): boolean =>
+const validateCandidate = (input: RecordMediaCandidateInput, canonicalKey: string | null): boolean =>
   input.id.length > 0 &&
   input.analysisRunId.length > 0 &&
   input.subtitleTrackFingerprint.length > 0 &&
-  input.canonicalKey.startsWith(`${input.kind}:`) &&
+  canonicalKey !== null &&
   input.meaning.trim().length > 0 &&
   input.confidence >= 0 && input.confidence <= 1 &&
   input.occurrenceCount > 0 && input.firstEncounterSeconds >= 0 &&
@@ -57,7 +62,10 @@ export const recordMediaCandidate = (
   userId: string,
   input: RecordMediaCandidateInput,
 ): Effect.Effect<string, MediaCandidateError> => {
-  if (!validateCandidate(input)) return Effect.fail(new MediaCandidateError({ code: "invalid_candidate" }));
+  const canonicalKey = normalizeKnowledgePointCanonicalKey(input.kind, input.canonicalKey);
+  if (!validateCandidate(input, canonicalKey)) {
+    return Effect.fail(new MediaCandidateError({ code: "invalid_candidate" }));
+  }
   return Effect.tryPromise({
     try: () => db.transaction().execute(async (trx) => {
       const now = new Date();
@@ -73,7 +81,7 @@ export const recordMediaCandidate = (
         user_id: userId as UserId,
         analysis_run_id: input.analysisRunId as MediaAnalysisRunId,
         kind: input.kind,
-        canonical_key: input.canonicalKey,
+        canonical_key: canonicalKey!,
         reading: input.reading,
         meaning: input.meaning,
         confidence: input.confidence,

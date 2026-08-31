@@ -183,6 +183,32 @@ describe("WatchView local media boundary", () => {
     expect(view.syllabus.rejectedCandidateIds).toContain("candidate-one");
   });
 
+  it("keeps normalized AI keys out of the learner-facing target label", async () => {
+    const view = document.createElement("watch-view") as unknown as HTMLElement & {
+      aiRecommendations: readonly unknown[];
+      readonly updateComplete: Promise<boolean>;
+    };
+    document.body.append(view);
+    view.aiRecommendations = [{
+      candidateId: crypto.randomUUID(),
+      kind: "vocabulary",
+      canonicalKey: "vocabulary:もったいない",
+      reading: "もったいない",
+      meaning: "wasteful",
+      observedForms: ["もったいない"],
+      occurrenceCount: 1,
+      firstTimeSeconds: 120,
+      prerequisiteCanonicalKeys: [],
+      confidence: 0.99,
+      reviewCostClass: "light_vocabulary",
+      evidence: [{ cueId: "cue-1", start: 0, end: 6, observedSurface: "もったいない" }],
+    }];
+    await view.updateComplete;
+
+    expect(view.querySelector("strong")?.textContent).toBe("もったいない");
+    expect(view.textContent).not.toContain("vocabulary:もったいない");
+  });
+
   it("stores don't-suggest feedback and removes the target from the episode", async () => {
     await Effect.runPromise(mediaCandidatePreferenceStore.clear());
     const view = document.createElement("watch-view") as unknown as HTMLElement & {

@@ -3,6 +3,21 @@ import { Schema } from "effect";
 export const KnowledgePointKindSchema = Schema.Literal("grammar", "vocabulary");
 export type KnowledgePointKind = Schema.Schema.Type<typeof KnowledgePointKindSchema>;
 
+export const normalizeKnowledgePointCanonicalKey = (
+  kind: KnowledgePointKind,
+  canonicalKey: string,
+): string | null => {
+  const normalized = canonicalKey.normalize("NFKC").trim();
+  if (!normalized) return null;
+  const expectedPrefix = `${kind}:`;
+  if (normalized.startsWith(expectedPrefix)) {
+    return normalized.length > expectedPrefix.length ? normalized : null;
+  }
+  const conflictingPrefix = kind === "grammar" ? "vocabulary:" : "grammar:";
+  if (normalized.startsWith(conflictingPrefix)) return null;
+  return `${expectedPrefix}${normalized}`;
+};
+
 export const KnowledgePointScopeSchema = Schema.Literal("curated", "personal");
 export type KnowledgePointScope = Schema.Schema.Type<typeof KnowledgePointScopeSchema>;
 

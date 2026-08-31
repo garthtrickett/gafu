@@ -81,6 +81,54 @@ describe("media recommendation consent and local evidence validation", () => {
     expect(proposals).toEqual([]);
   });
 
+  it("normalizes a bare vocabulary key before presenting and submitting it", () => {
+    const validCue = cues[0]!;
+    const proposals = validateMediaRecommendations({ proposals: [{
+      kind: "vocabulary",
+      canonicalKey: "猫",
+      reading: "ねこ",
+      meaning: "cat",
+      observedForms: ["猫"],
+      occurrenceCount: 1,
+      firstTimeSeconds: 999,
+      prerequisiteCanonicalKeys: [],
+      confidence: 0.99,
+      reviewCostClass: "light_vocabulary",
+      evidence: [{ cueId: validCue.id, start: 0, end: 1, observedSurface: "猫" }],
+    }] }, cues, new Set());
+
+    expect(proposals[0]?.canonicalKey).toBe("vocabulary:猫");
+  });
+
+  it("shows the server's candidate rejection reason", async () => {
+    const recommendation = {
+      candidateId: crypto.randomUUID(),
+      kind: "vocabulary" as const,
+      canonicalKey: "vocabulary:歩く",
+      reading: "あるく",
+      meaning: "to walk",
+      observedForms: ["歩く"],
+      occurrenceCount: 1,
+      firstTimeSeconds: 3,
+      prerequisiteCanonicalKeys: [],
+      confidence: 0.9,
+      reviewCostClass: "light_vocabulary" as const,
+      evidence: [{ cueId: cues[1]!.id, start: 0, end: 2, observedSurface: "歩く" }],
+    };
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({
+      error: "Candidate canonical key is invalid; analyze the subtitles again.",
+    }), { status: 422 }));
+
+    const result = await Effect.runPromise(Effect.either(
+      submitMediaCandidateAction("token", "accept", recommendation, crypto.randomUUID(), "f".repeat(64)),
+    ));
+
+    expect(result).toMatchObject({
+      _tag: "Left",
+      left: { message: "Candidate canonical key is invalid; analyze the subtitles again." },
+    });
+  });
+
   it("submits candidate provenance without source surface text", async () => {
     const recommendation = {
       candidateId: crypto.randomUUID(),
