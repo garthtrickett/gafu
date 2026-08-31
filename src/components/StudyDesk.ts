@@ -167,8 +167,20 @@ export class StudyDesk extends LitElement {
           : parsedPayload,
       );
       if (!validatedPayload.success) {
+        const validationIssues = validatedPayload.error.issues.map((issue) => ({
+          path: issue.path.join("."),
+          code: issue.code,
+          message: issue.message,
+        }));
+        yield* clientLog(
+          "error",
+          "[StudyDesk] Locally compiled session request failed schema validation.",
+          { validationIssues },
+        );
         return yield* Effect.fail(
-          new Error("The locally compiled session request failed validation."),
+          new Error(
+            `The locally compiled session request failed validation at ${validationIssues.map((issue) => issue.path || "root").join(", ")}.`,
+          ),
         );
       }
 

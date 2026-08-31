@@ -2,8 +2,13 @@ import { Effect } from "effect";
 import { describe, it, expect, beforeEach } from "vitest";
 import { runClientPromise } from "../runtime.ts";
 import { activeSessionStore } from "./activeSessionStore.ts";
-import { grammarPointStore, grammarPointCatalogStore } from "./grammarPointStore.ts";
+import {
+  grammarPointStore,
+  grammarPointCatalogStore,
+  knowledgePointCatalogStore,
+} from "./grammarPointStore.ts";
 import { userPreferencesStore } from "./userPreferencesStore.ts";
+import { DailySessionGenerationRequestSchema } from "../../server/ai/schema.ts";
 import {
   generateExportPayload,
   importSessionPayload,
@@ -244,6 +249,82 @@ describe("sessionSyncStore export payload gating integration tests", () => {
     const secondIds = secondPayload.queue.map((item: { grammar_point_id: string }) => item.grammar_point_id);
     expect(secondIds).toHaveLength(15);
     expect(secondIds.some((id: string) => firstIdSet.has(id))).toBe(false);
+  });
+
+  it("excludes shared vocabulary progress from grammar-card generation", async () => {
+    const grammarItems = Array.from({ length: 20 }, (_, index) => ({
+      id: `grammar-${index}`,
+      kind: "grammar" as const,
+      formal_name: `grammar form ${index}`,
+      base_meaning: `meaning ${index}`,
+      difficulty_level: "N5",
+      hlc: "0000000000000:0000:initial",
+    }));
+    await runClientPromise(knowledgePointCatalogStore.putAll([
+      ...grammarItems,
+      {
+        id: "vocabulary-0",
+        kind: "vocabulary" as const,
+        canonical_key: "vocabulary:猫",
+        scope: "personal" as const,
+        catalogue_status: "active" as const,
+        lemma: "猫",
+        reading: "ねこ",
+        part_of_speech: "noun",
+        sense_key: "cat",
+        meaning: "cat",
+        hlc: "0000000000000:0000:initial",
+      },
+    ]));
+
+    const now = Date.now();
+    const future = new Date(now + 30 * 86_400_000).toISOString();
+    await runClientPromise(grammarPointStore.putAll([
+      ...grammarItems.map((item, index) => ({
+        id: item.id,
+        easeFactor: 2.5,
+        repetitions: 3,
+        intervalDays: 30,
+        difficulty: 3,
+        stability: 30,
+        lastReviewedAt: new Date(now - (20 - index) * 86_400_000).toISOString(),
+        nextReview: future,
+        learningState: "stable" as const,
+        hlc: "0000000000000:0000:initial",
+      })),
+      {
+        id: "vocabulary-0",
+        easeFactor: 2.5,
+        repetitions: 3,
+        intervalDays: 30,
+        difficulty: 3,
+        stability: 30,
+        lastReviewedAt: new Date(now - 100 * 86_400_000).toISOString(),
+        nextReview: future,
+        learningState: "stable" as const,
+        hlc: "0000000000000:0000:initial",
+      },
+    ]));
+    const preferences = await import("./userPreferencesStore.ts");
+    await runClientPromise(preferences.userPreferencesStore.updateLimits(50, 5, false));
+
+    const payload = JSON.parse(await runClientPromise(generateExportPayload({
+      copyToClipboard: false,
+      persistIntroductions: false,
+    })));
+
+    expect(payload.queue).toHaveLength(15);
+    expect(payload.queue.every((item: { formal_name?: string }) =>
+      typeof item.formal_name === "string" && item.formal_name.length > 0
+    )).toBe(true);
+    expect(payload.queue.some((item: { grammar_point_id: string }) =>
+      item.grammar_point_id === "vocabulary-0"
+    )).toBe(false);
+    expect(DailySessionGenerationRequestSchema.safeParse({
+      mode: "standard",
+      queue: payload.queue,
+      vocabulary_pool: payload.vocabulary_pool,
+    }).success).toBe(true);
   });
 
   it("should unlock and append up to 3 new rules for eligible users who meet the 80% mastery gate", async () => {
