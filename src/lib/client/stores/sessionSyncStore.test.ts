@@ -3,6 +3,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { runClientPromise } from "../runtime.ts";
 import { activeSessionStore } from "./activeSessionStore.ts";
 import { grammarPointStore, grammarPointCatalogStore } from "./grammarPointStore.ts";
+import { userPreferencesStore } from "./userPreferencesStore.ts";
 import {
   generateExportPayload,
   importSessionPayload,
@@ -29,6 +30,7 @@ describe("sessionSyncStore export payload gating integration tests", () => {
     activeSessionStore.clear();
     await runClientPromise(grammarPointStore.clear());
     await runClientPromise(grammarPointCatalogStore.clear());
+    await runClientPromise(userPreferencesStore.clear());
   });
 
   it("defers new-point activation until an API-generated session is validated", async () => {
@@ -189,6 +191,59 @@ describe("sessionSyncStore export payload gating integration tests", () => {
     const secondIds = secondPayload.queue.map((item: { grammar_point_id: string }) => item.grammar_point_id);
     expect(secondIds).toEqual(Array.from({ length: 15 }, (_, index) => `gp-${index + 15}`));
     expect(secondIds.some((id: string) => firstIds.includes(id))).toBe(false);
+  });
+
+  it("fills a fifteen-card interactive session with rotating reinforcement when only five new points are allowed", async () => {
+    const catalogItems = Array.from({ length: 35 }, (_, index) => ({
+      id: `gp-${index}`,
+      formal_name: `grammar-${index}`,
+      base_meaning: `meaning-${index}`,
+      difficulty_level: "N5",
+      hlc: "0000000000000:0000:initial",
+    }));
+    await runClientPromise(grammarPointCatalogStore.putAll(catalogItems));
+    const now = Date.now();
+    const future = new Date(now + 7 * 86_400_000).toISOString();
+    await runClientPromise(grammarPointStore.putAll(catalogItems.slice(0, 30).map((item, index) => ({
+      id: item.id,
+      easeFactor: 2.5,
+      repetitions: 3,
+      intervalDays: 21,
+      difficulty: 4,
+      stability: 21,
+      lastReviewedAt: new Date(now - (30 - index) * 86_400_000).toISOString(),
+      nextReview: future,
+      learningState: "stable" as const,
+      hlc: "0000000000000:0000:initial",
+    }))));
+    const preferences = await import("./userPreferencesStore.ts");
+    await runClientPromise(preferences.userPreferencesStore.updateLimits(15, 5, false));
+
+    const firstPayload = JSON.parse(await runClientPromise(generateExportPayload()));
+    const firstIds = firstPayload.queue.map((item: { grammar_point_id: string }) => item.grammar_point_id);
+    expect(firstIds).toHaveLength(15);
+    expect(firstIds.slice(0, 10)).toEqual(Array.from({ length: 10 }, (_, index) => `gp-${index}`));
+    expect(firstIds.slice(10)).toEqual(Array.from({ length: 5 }, (_, index) => `gp-${index + 30}`));
+
+    const reviewedAt = new Date().toISOString();
+    const firstIdSet = new Set(firstIds);
+    await runClientPromise(grammarPointStore.putAll(
+      grammarPointStore.state.peek()
+        .filter((item) => firstIdSet.has(item.id))
+        .map((item) => ({
+          ...item,
+          repetitions: Math.max(1, item.repetitions + 1),
+          stability: Math.max(21, item.stability ?? 0),
+          intervalDays: 21,
+          lastReviewedAt: reviewedAt,
+          nextReview: future,
+        })),
+    ));
+
+    const secondPayload = JSON.parse(await runClientPromise(generateExportPayload()));
+    const secondIds = secondPayload.queue.map((item: { grammar_point_id: string }) => item.grammar_point_id);
+    expect(secondIds).toHaveLength(15);
+    expect(secondIds.some((id: string) => firstIdSet.has(id))).toBe(false);
   });
 
   it("should unlock and append up to 3 new rules for eligible users who meet the 80% mastery gate", async () => {

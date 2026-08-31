@@ -152,6 +152,56 @@ describe("DeltaPullEngine - Client Causal Merging", () => {
     expect(progress!.hlc).toBe(localNewerHlc);
   });
 
+  it("preserves stronger legacy progress without an HLC from a weaker full-sync record", async () => {
+    await Effect.runPromise(
+      grammarPointStore.put({
+        id: "bfeebc99-9c0b-4ef8-bb6d-6bb9bd389bbf",
+        easeFactor: 2.8,
+        repetitions: 8,
+        intervalDays: 30,
+        nextReview: new Date(Date.now() + 30 * 86_400_000).toISOString(),
+        difficulty: 3,
+        stability: 30,
+        lastReviewedAt: new Date().toISOString(),
+      }),
+    );
+    const serverHlc = `${Date.now()}:0001:server`;
+    global.fetch = vi.fn().mockImplementation((url: string) => {
+      if (url.includes("/api/log")) return Promise.resolve({ ok: true });
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({
+          serverTimestamp: Date.now(),
+          serverHlc,
+          decks: [],
+          grammarPoints: [],
+          knowledgePoints: [],
+          srsUpdates: [{
+            id: "afeebc99-9c0b-4ef8-bb6d-6bb9bd389aae",
+            knowledgePointId: "bfeebc99-9c0b-4ef8-bb6d-6bb9bd389bbf",
+            easeFactor: 2.5,
+            repetitions: 0,
+            intervalDays: 0,
+            nextReview: new Date().toISOString(),
+            difficulty: 5,
+            stability: 0,
+            lastReviewedAt: null,
+            participationStatus: "active",
+            learningState: "introduced",
+            introducedAt: null,
+            hlc: serverHlc,
+          }],
+        }),
+      });
+    }) as never;
+
+    await Effect.runPromise(executeDeltaPull());
+
+    expect(grammarPointStore.state.peek().find((item) => item.id === "bfeebc99-9c0b-4ef8-bb6d-6bb9bd389bbf"))
+      .toEqual(expect.objectContaining({ repetitions: 8, stability: 30, intervalDays: 30 }));
+  });
+
   it("should wipe local pull boundaries and re-trigger a full sync when the server returns a resetSync directive", async () => {
     // Seed initial last_pull_hlc and sync_epoch_id
     const oldHlc = `${Date.now() - 100000}:0001:server`;

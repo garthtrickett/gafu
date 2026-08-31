@@ -20,7 +20,7 @@ const SAMPLE_CURATOR_ID = "b0eebc99-9c0b-4ef8-bb6d-6bb9bd380b22" as UserId;
 
 export const seedDb = (options?: { clearData?: boolean }) =>
    Effect.gen(function* () {
-    const clearData = options?.clearData ?? true;
+    const clearData = options?.clearData ?? false;
     yield* Effect.logInfo(`[Seed] Commencing global database seeding (clearData=${clearData})...`);
 
     if (clearData) {
@@ -40,6 +40,8 @@ export const seedDb = (options?: { clearData?: boolean }) =>
           .execute(),
         catch: (cause) => new SeedingError({ cause })
       });
+    } else {
+      yield* Effect.logInfo('[Seed] Preservation mode active; existing learner SRS progress and curated catalogue rows will not be deleted.');
     }
 
     const argon2id = new Argon2id();
@@ -2823,8 +2825,20 @@ export const seedDb = (options?: { clearData?: boolean }) =>
       });
     }
 
-            yield* Effect.logInfo('[Seed] Appending introductory review metrics...');
-    const srsCardsToSeed = grammarPoints.slice(0, 10).map((gp, index) => {
+    const existingLearnerProgress = yield* Effect.tryPromise({
+      try: () => db.selectFrom('srs_card')
+        .select(({ fn }) => fn.countAll<number>().as('count'))
+        .where('user_id', '=', SAMPLE_LEARNER_ID)
+        .executeTakeFirstOrThrow(),
+      catch: (cause) => new SeedingError({ cause }),
+    });
+    const shouldSeedIntroductoryProgress = Number(existingLearnerProgress.count) === 0;
+    if (shouldSeedIntroductoryProgress) {
+      yield* Effect.logInfo('[Seed] No learner progress exists; appending introductory review metrics...');
+    } else {
+      yield* Effect.logInfo(`[Seed] Existing learner progress detected (${existingLearnerProgress.count} records); introductory SRS seeding is skipped.`);
+    }
+    const srsCardsToSeed = shouldSeedIntroductoryProgress ? grammarPoints.slice(0, 10).map((gp, index) => {
       const hexIndex = index.toString(16).padStart(4, '0');
       return {
         id: `d0eebc99-9c0b-4ef8-bb6d-6bb9bd38${hexIndex}` as SrsCardId,
@@ -2838,7 +2852,7 @@ export const seedDb = (options?: { clearData?: boolean }) =>
         created_at: new Date(),
         updated_at: new Date(),
       };
-    });
+    }) : [];
 
     for (const card of srsCardsToSeed) {
       yield* Effect.tryPromise({
@@ -2846,7 +2860,7 @@ export const seedDb = (options?: { clearData?: boolean }) =>
           db
             .insertInto('srs_card')
             .values(card)
-            .onConflict((oc) => oc.column('id').doNothing())
+            .onConflict((oc) => oc.columns(['user_id', 'knowledge_point_id']).doNothing())
             .execute(),
         catch: (cause) => new SeedingError({ cause }),
       });
@@ -2856,8 +2870,10 @@ export const seedDb = (options?: { clearData?: boolean }) =>
   });
 
 if (import.meta.main) {
+  const clearData = Bun.argv.includes('--clear-data');
   const seedProgram = Effect.gen(function* () {
-    yield* seedDb();
+    yield* Effect.logInfo(`[Seed] CLI invocation selected clearData=${clearData}.`);
+    yield* seedDb({ clearData });
   });
 
   void Effect.runPromiseExit(seedProgram).then((exit) => {

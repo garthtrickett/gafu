@@ -1,16 +1,24 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { Effect } from "effect";
 import { createStore, get, set, clear } from "idb-keyval";
-import { runClientMigrations, CURRENT_CLIENT_DB_VERSION } from "./ClientMigrationCoordinator";
+import { runClientMigrations, enqueuePendingProgressRecovery, CURRENT_CLIENT_DB_VERSION } from "./ClientMigrationCoordinator";
+import { userState } from "../stores/authStore.ts";
+import { knowledgePointStore } from "../stores/knowledgePointStore.ts";
+import { hlcStore as clientHlcStore } from "../stores/hlcStore.ts";
 
 const metadataStore = createStore("bedrock-lang-sync-v1", "metadata");
 const collectionsStore = createStore("bedrock-lang-storage-v1", "collections");
+const hlcMetadataStore = createStore("bedrock-lang-hlc-v1", "hlc_metadata");
+const outboxStore = createStore("bedrock-lang-outbox-v1", "outbox");
 
 describe("ClientMigrationCoordinator - Offline Schema Transitions", () => {
   beforeEach(async () => {
     vi.restoreAllMocks();
     await clear(metadataStore);
     await clear(collectionsStore);
+    await clear(hlcMetadataStore);
+    await clear(outboxStore);
+    userState.value = null;
   });
 
   it("should skip migrations and save the target schema version on a clean installation", async () => {
@@ -100,5 +108,68 @@ describe("ClientMigrationCoordinator - Offline Schema Transitions", () => {
       .toEqual(["partial", "point-a"]);
     expect((await get<any[]>("store:user-b:learner_progress", collectionsStore))?.map((item) => item.id))
       .toEqual(["point-b"]);
+  });
+
+  it("recovers stronger legacy study history and stages it for authenticated server repair", async () => {
+    const userId = "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11";
+    const pointId = "bfeebc99-9c0b-4ef8-bb6d-6bb9bd389bbf";
+    await set("client_db_version", 3, metadataStore);
+    await set(`store:${userId}:grammar_points`, [{
+      id: pointId,
+      easeFactor: 2.7,
+      repetitions: 8,
+      intervalDays: 30,
+      nextReview: "2026-09-30T00:00:00.000Z",
+      difficulty: 3,
+      stability: 30,
+      lastReviewedAt: "2026-08-31T00:00:00.000Z",
+    }], collectionsStore);
+    await set(`store:${userId}:learner_progress`, [{
+      id: pointId,
+      kind: "grammar",
+      participationStatus: "active",
+      learningState: "introduced",
+      easeFactor: 2.5,
+      repetitions: 0,
+      intervalDays: 0,
+      nextReview: "2026-08-31T00:00:00.000Z",
+      difficulty: 5,
+      stability: 0,
+      lastReviewedAt: null,
+      checkoutDue: false,
+      hlc: "9999999999999:0000:server-reset",
+    }], collectionsStore);
+
+    await Effect.runPromise(runClientMigrations());
+
+    const recovered = await get<any[]>(`store:${userId}:learner_progress`, collectionsStore);
+    expect(recovered).toEqual([
+      expect.objectContaining({
+        id: pointId,
+        repetitions: 8,
+        intervalDays: 30,
+        stability: 30,
+        learningState: "stable",
+        checkoutDue: false,
+      }),
+    ]);
+    expect(recovered?.[0]?.hlc > "9999999999999:0000:server-reset").toBe(true);
+    expect(await get<string[]>(`progress_recovery_pending:${userId}`, metadataStore)).toEqual([pointId]);
+    expect(await get<number>("client_db_version", metadataStore)).toBe(4);
+
+    userState.value = { id: userId, email: "learner@site.com", permissions: [] };
+    await Effect.runPromise(clientHlcStore.load());
+    await Effect.runPromise(knowledgePointStore.load());
+    await Effect.runPromise(enqueuePendingProgressRecovery(userId));
+
+    expect(await get<string[]>(`progress_recovery_pending:${userId}`, metadataStore)).toBeUndefined();
+    const pendingTransactions = await get<string[]>("outbox_pending_keys", outboxStore);
+    expect(pendingTransactions).toHaveLength(1);
+    const transaction = await get<{ hlc: string; payload: { knowledgePointId: string; repetitions: number } }>(
+      `tx:${pendingTransactions?.[0]}`,
+      outboxStore,
+    );
+    expect(transaction?.payload).toEqual(expect.objectContaining({ knowledgePointId: pointId, repetitions: 8 }));
+    expect(knowledgePointStore.state.peek()[0]?.hlc).toBe(transaction?.hlc);
   });
 });
