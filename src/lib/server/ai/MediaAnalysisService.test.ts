@@ -32,6 +32,28 @@ describe("MediaAnalysisService privacy boundary", () => {
     expect(generate.mock.calls[0]?.[1]).toEqual({ structuredOutput: { schema: expect.any(Object) } });
   });
 
+  it("normalizes a bare provider canonical key before returning it to the client", async () => {
+    const generate = vi.fn<MediaAnalysisAgent["generate"]>(async () => ({ object: {
+      proposals: [{
+        kind: "vocabulary",
+        canonicalKey: "もったいない",
+        reading: "もったいない",
+        meaning: "wasteful",
+        observedForms: ["もったいない"],
+        occurrenceCount: 1,
+        firstTimeSeconds: 12.5,
+        prerequisiteCanonicalKeys: [],
+        confidence: 0.99,
+        reviewCostClass: "light_vocabulary",
+        evidence: [{ cueId: "cue-private", start: 0, end: 6, observedSurface: "未公開の合成" }],
+      }],
+    } }));
+
+    const result = await Effect.runPromise(analyzeMediaExcerpts(request, { generate }));
+
+    expect(result.proposals[0]?.canonicalKey).toBe("vocabulary:もったいない");
+  });
+
   it("never places excerpt or result text in application logs or failures", async () => {
     const logged: string[] = [];
     const logger = Logger.make<unknown, void>((options) => { logged.push(JSON.stringify({

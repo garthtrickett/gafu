@@ -79,7 +79,7 @@ export const MediaRecommendationEvidenceSchema = z.object({
 
 export const MediaRecommendationProposalSchema = z.object({
   kind: z.enum(["grammar", "vocabulary"]),
-  canonicalKey: z.string().min(1),
+  canonicalKey: z.string().min(1).describe("A stable key beginning with the matching kind and a colon, for example vocabulary:歩く or grammar:〜ておく."),
   reading: z.string(),
   meaning: z.string().min(1),
   observedForms: z.array(z.string().min(1)).min(1).max(8),

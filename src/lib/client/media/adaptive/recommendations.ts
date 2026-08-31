@@ -1,6 +1,9 @@
 import { Effect } from "effect";
 import type { MediaRecommendationProposal, MediaRecommendationResult } from "../../../server/ai/schema.ts";
-import type { NormalizedCue } from "../../../shared/adaptive-media.ts";
+import {
+  normalizeKnowledgePointCanonicalKey,
+  type NormalizedCue,
+} from "../../../shared/adaptive-media.ts";
 
 export interface ConsentedMediaExcerpt {
   readonly cueId: string;
@@ -98,11 +101,15 @@ export const submitMediaCandidateAction = (
     }),
     catch: () => new Error("Candidate action could not reach Gafu."),
   });
-  if (!response.ok) return yield* Effect.fail(new Error("Candidate action was rejected."));
   const payload = yield* Effect.tryPromise({
-    try: () => response.json() as Promise<{ readonly success?: boolean; readonly data?: { readonly accepted: boolean; readonly reason: string; readonly knowledgePointId?: string } }>,
+    try: () => response.json() as Promise<{
+      readonly success?: boolean;
+      readonly data?: { readonly accepted: boolean; readonly reason: string; readonly knowledgePointId?: string };
+      readonly error?: string;
+    }>,
     catch: () => new Error("Candidate action returned an unreadable result."),
   });
+  if (!response.ok) return yield* Effect.fail(new Error(payload.error || "Candidate action was rejected."));
   if (!payload.success || !payload.data) return yield* Effect.fail(new Error("Candidate action returned an invalid result."));
   return payload.data;
 });
@@ -113,7 +120,8 @@ export const validateMediaRecommendations = (
   canonicalKeys: ReadonlySet<string>,
   knownCanonicalKeys: ReadonlySet<string> = new Set(),
 ): readonly ValidatedMediaRecommendation[] => result.proposals.flatMap((proposal) => {
-  if (knownCanonicalKeys.has(proposal.canonicalKey)) return [];
+  const canonicalKey = normalizeKnowledgePointCanonicalKey(proposal.kind, proposal.canonicalKey);
+  if (!canonicalKey || knownCanonicalKeys.has(canonicalKey)) return [];
   if (proposal.confidence < 0.6 || proposal.evidence.length === 0) return [];
   const validEvidence = proposal.evidence.flatMap((evidence) => {
     const cue = cues.find((candidate) => candidate.id === evidence.cueId);
@@ -121,14 +129,15 @@ export const validateMediaRecommendations = (
     if (proposal.kind === "vocabulary" && !cue.tokens.some((token) =>
       token.span.start === evidence.start &&
       token.span.end === evidence.end &&
-      proposal.canonicalKey.includes(token.lemma.normalize("NFKC"))
+      canonicalKey.includes(token.lemma.normalize("NFKC"))
     )) return [];
-    if (proposal.kind === "grammar" && !canonicalKeys.has(proposal.canonicalKey)) return [];
+    if (proposal.kind === "grammar" && !canonicalKeys.has(canonicalKey)) return [];
     return [{ evidence, cue }];
   });
   if (validEvidence.length !== proposal.evidence.length) return [];
   return [{
     ...proposal,
+    canonicalKey,
     occurrenceCount: validEvidence.length,
     firstTimeSeconds: Math.min(...validEvidence.map(({ cue }) => cue.sourceStartSeconds)),
   }];

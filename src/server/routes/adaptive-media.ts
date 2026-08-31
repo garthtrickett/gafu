@@ -1,13 +1,18 @@
 import { Elysia, t } from "elysia";
 import { Effect } from "effect";
 import { InvalidCredentialsError } from "../../features/auth/Errors.ts";
-import { reserveIntroduction, setLearnerPointStatus } from "../../lib/server/IntroductionAdmissionService.ts";
+import {
+  IntroductionAdmissionError,
+  reserveIntroduction,
+  setLearnerPointStatus,
+} from "../../lib/server/IntroductionAdmissionService.ts";
 import { validateToken } from "../../lib/server/JwtService.ts";
 import { effectPlugin } from "../middleware/effect-plugin.ts";
 import { analyzeMediaExcerpts } from "../../lib/server/ai/MediaAnalysisService.ts";
 import {
   acceptMediaCandidate,
   markMediaCandidateKnown,
+  MediaCandidateError,
   recordMediaCandidate,
   setMediaCandidateDisposition,
 } from "../../lib/server/MediaCandidateService.ts";
@@ -23,7 +28,10 @@ import {
   selectValidatedExercise,
   storeValidatedExercise,
 } from "../../lib/server/ExerciseBankService.ts";
-import { requireAdaptiveMediaAiAdmission } from "../../lib/server/AdaptiveMediaRelease.ts";
+import {
+  AdaptiveMediaAdmissionDisabled,
+  requireAdaptiveMediaAiAdmission,
+} from "../../lib/server/AdaptiveMediaRelease.ts";
 import { recordAdaptiveMediaMetric } from "../../lib/server/AdaptiveMediaMetrics.ts";
 
 export const adaptiveMediaRoutes = new Elysia({ prefix: "/api/adaptive-media" })
@@ -124,10 +132,37 @@ export const adaptiveMediaRoutes = new Elysia({ prefix: "/api/adaptive-media" })
       yield* recordAdaptiveMediaMetric({ name: "candidate_action", candidateId: body.candidate.id, action: body.action, accepted: false });
       return { accepted: false as const, reason: body.action };
     });
-    const result = await runEffect(Effect.either(program), { name: "adaptive_media_candidate_action" });
+    const result = await runEffect(Effect.either(program.pipe(
+      Effect.tapError((error) => Effect.logWarning("[AdaptiveMedia] candidate_action_failed").pipe(
+        Effect.annotateLogs({
+          action: body.action,
+          failureTag: error._tag,
+          failureCode: error instanceof MediaCandidateError ? error.code : "none",
+          cause: error instanceof IntroductionAdmissionError
+            ? error.cause instanceof Error ? error.cause.message : String(error.cause)
+            : "none",
+        }),
+      )),
+    )), { name: "adaptive_media_candidate_action" });
     if (result._tag === "Left") {
-      set.status = result.left instanceof InvalidCredentialsError ? 401 : 422;
-      return { error: result.left instanceof InvalidCredentialsError ? "Unauthorized" : "Candidate action rejected" };
+      if (result.left instanceof InvalidCredentialsError) {
+        set.status = 401;
+        return { error: "Unauthorized" };
+      }
+      if (result.left instanceof AdaptiveMediaAdmissionDisabled) {
+        set.status = 503;
+        return { error: "Adaptive-media admission is currently disabled." };
+      }
+      if (result.left instanceof MediaCandidateError) {
+        set.status = result.left.code === "invalid_candidate" ? 422 : 503;
+        return {
+          error: result.left.code === "invalid_candidate"
+            ? "Candidate data was invalid; analyze the subtitles again."
+            : "The candidate could not be saved; check the server log for the failure code.",
+        };
+      }
+      set.status = 503;
+      return { error: "The candidate could not be added to your learning bank; check the server log." };
     }
     return { success: true as const, data: result.right };
   }, {
