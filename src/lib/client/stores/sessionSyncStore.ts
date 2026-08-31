@@ -98,9 +98,20 @@ export const generateExportPayload = (
       // Standard Session
       const dueReviewsTargetCount = Math.max(0, dailyReviewLimit - nextIntroductions.length);
 
-      // 1. Sort all active progress rules by lowest retrievability (most in need of review) first
+      // Source-linked checkout work requires a locally validated adaptive
+      // exercise, so the generic AI generator must leave it to Adaptive Review.
+      const standardSessionProgress = localProgress.filter((progress) => !progress.checkoutDue);
+      const deferredCheckoutCount = localProgress.length - standardSessionProgress.length;
+      if (deferredCheckoutCount > 0) {
+        yield* clientLog(
+          "info",
+          `[SessionSync] Reserved ${deferredCheckoutCount} source-linked checkout points for Adaptive Review.`,
+        );
+      }
+
+      // 1. Select genuinely due active progress, then apply shared priority.
       const progressById = new Map(localProgress.map((progress) => [progress.id, progress]));
-      const activeDueProgress = orderReviewQueue(localProgress.map((progress) => ({
+      const activeDueProgress = orderReviewQueue(standardSessionProgress.map((progress) => ({
         knowledgePointId: progress.id,
         participationStatus: progress.participationStatus ?? "active",
         learningState: progress.learningState ?? ((progress.stability ?? 0) >= 21 ? "stable" : "learning"),
@@ -202,6 +213,13 @@ export const generateExportPayload = (
     // Cap massive backlogs of due rules to a maximum of 15 items in the exported queue
     const finalQueue = queue.slice(0, 15);
     const queueLength = finalQueue.length;
+    if (queueLength === 0) {
+      const message = isCram
+        ? "No unmastered grammar points are available for a cram session."
+        : "No ordinary grammar reviews are due. Use Adaptive Review for source-linked checkout work or return when the next review is due.";
+      yield* clientLog("info", `[SessionSync] ${message}`);
+      return yield* Effect.fail(new Error(message));
+    }
 
     const promptInstructions = isCram
       ? `You are an expert Japanese tutor. Act as an offline-first Sentence Generator for a focused CRAM/REINFORCEMENT study session.

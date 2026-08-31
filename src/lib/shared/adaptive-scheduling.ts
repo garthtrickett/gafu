@@ -80,7 +80,11 @@ export const queuePriority = (item: QueueItem, nowMs: number): number => {
 
 export const orderReviewQueue = (items: readonly QueueItem[], now: Date): QueueItem[] =>
   [...items]
-    .filter((item) => queuePriority(item, now.getTime()) < 99)
+    .filter((item) => {
+      if (queuePriority(item, now.getTime()) >= 99) return false;
+      if (item.checkoutDue) return true;
+      return new Date(item.nextReview).getTime() <= now.getTime();
+    })
     .sort((left, right) => {
       const priorityDifference = queuePriority(left, now.getTime()) - queuePriority(right, now.getTime());
       if (priorityDifference !== 0) return priorityDifference;
