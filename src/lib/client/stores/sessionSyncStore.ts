@@ -1,17 +1,25 @@
 import { Effect } from "effect";
 import {
   knowledgePointStore,
+  knowledgePointCatalogStore,
   canUnlockMoreRules,
   getDailyUnlockAllowance,
   calculateRetrievability,
+  type KnowledgePointCatalogItem,
   type KnowledgePointProgress
 } from "./knowledgePointStore.ts";
-import { grammarPointCatalogStore } from "./grammarPointStore.ts";
 import { activeSessionStore, type SessionCard, type FuriganaSegment } from "./activeSessionStore.ts";
 import { clientLog } from "../clientLog.ts";
 import { prewarmAudioUrls } from "../media/MediaPrewarmService.ts";
 import kaishiPool from "./kaishiPool.json";
 import { orderReviewQueue } from "../../shared/adaptive-scheduling.ts";
+
+const MAX_GENERATED_SESSION_CARDS = 15;
+
+const isGrammarCatalogItem = (
+  item: KnowledgePointCatalogItem,
+): item is Exclude<KnowledgePointCatalogItem, { readonly kind: "vocabulary" }> =>
+  item.kind !== "vocabulary";
 
 export interface ExportedGrammarProgress {
   readonly grammar_point_id: string;
@@ -46,10 +54,18 @@ export const generateExportPayload = (
     
     // Ensure both stores are loaded and updated
     yield* knowledgePointStore.load();
-    yield* grammarPointCatalogStore.load();
+    yield* knowledgePointCatalogStore.load();
     
     const localProgress = knowledgePointStore.state.peek();
-    const catalog = grammarPointCatalogStore.state.peek();
+    const sharedCatalog = knowledgePointCatalogStore.state.peek();
+    const catalog = sharedCatalog.filter(isGrammarCatalogItem);
+    const ignoredNonGrammarCount = sharedCatalog.length - catalog.length;
+    if (ignoredNonGrammarCount > 0) {
+      yield* clientLog(
+        "info",
+        `[SessionSync] Excluded ${ignoredNonGrammarCount} non-grammar knowledge points from grammar-card generation.`,
+      );
+    }
     
     const now = new Date();
 
@@ -70,7 +86,10 @@ export const generateExportPayload = (
         yield* clientLog("info", `[SessionSync] User is eligible for new rules. Remaining allowance today: ${allowance}`);
         const activeIds = new Set(localProgress.map((p) => p.id));
         const unstudied = catalog.filter((c) => !activeIds.has(c.id));
-        nextIntroductions = unstudied.slice(0, allowance);
+        nextIntroductions = unstudied.slice(
+          0,
+          Math.min(allowance, MAX_GENERATED_SESSION_CARDS),
+        );
       }
     }
 
@@ -79,7 +98,9 @@ export const generateExportPayload = (
             if (isCram) {
       // Cram Session: select unmastered active learning rules (stability < 21) sorted by lowest retrievability
       // We align the definition of "unmastered" with the FSRS-Lite criteria used in the UI gating warning
+      const grammarPointIds = new Set(catalog.map((item) => item.id));
       const unmasteredActive = localProgress
+        .filter((progress) => grammarPointIds.has(progress.id))
         .filter((p) => (p.stability ?? 0.0) < 21.0 && !((p.stability ?? 0.0) >= 7.0 || (p.difficulty ?? 5.0) <= 4.0))
         .sort((a, b) => calculateRetrievability(a) - calculateRetrievability(b));
 
@@ -96,12 +117,23 @@ export const generateExportPayload = (
       });
     } else {
       // Standard Session
-      const dueReviewsTargetCount = Math.max(0, dailyReviewLimit - nextIntroductions.length);
+      const generatedSessionTargetCount = Math.min(
+        dailyReviewLimit,
+        MAX_GENERATED_SESSION_CARDS,
+      );
+      const dueReviewsTargetCount = Math.max(
+        0,
+        generatedSessionTargetCount - nextIntroductions.length,
+      );
 
       // Source-linked checkout work requires a locally validated adaptive
       // exercise, so the generic AI generator must leave it to Adaptive Review.
-      const standardSessionProgress = localProgress.filter((progress) => !progress.checkoutDue);
-      const deferredCheckoutCount = localProgress.length - standardSessionProgress.length;
+      const grammarPointIds = new Set(catalog.map((item) => item.id));
+      const grammarProgress = localProgress.filter((progress) =>
+        grammarPointIds.has(progress.id)
+      );
+      const standardSessionProgress = grammarProgress.filter((progress) => !progress.checkoutDue);
+      const deferredCheckoutCount = grammarProgress.length - standardSessionProgress.length;
       if (deferredCheckoutCount > 0) {
         yield* clientLog(
           "info",
@@ -238,7 +270,7 @@ export const generateExportPayload = (
     }
 
     // Cap massive backlogs of due rules to a maximum of 15 items in the exported queue
-    const finalQueue = queue.slice(0, 15);
+    const finalQueue = queue.slice(0, MAX_GENERATED_SESSION_CARDS);
     const queueLength = finalQueue.length;
     if (queueLength === 0) {
       const message = isCram
