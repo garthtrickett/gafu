@@ -18,6 +18,7 @@
     "db:seed": "bun run src/db/seed.ts",
     "db:seed:reset": "bun run src/db/seed.ts --clear-data",
     "db:restore-progress": "bun run src/db/seed-progress-restore.ts",
+    "db:graduate-all": "bun run src/db/graduate-all-progress.ts",
     "kaishi:parse": "bun run scripts/parse-kaishi.ts",
     "tts:smoke": "bun run scripts/tts-smoke.ts",
     "tts:configure-cors": "bun run scripts/configure-tts-cors.ts",
