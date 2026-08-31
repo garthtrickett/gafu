@@ -117,6 +117,7 @@ export class WatchView extends LitElement {
   @state() private laterAccepted: Readonly<Record<string, boolean>> = {};
   @state() private acceptedTargets: readonly AcceptedTarget[] = [];
   @state() private pendingCheckouts: readonly PendingMediaCheckout[] = [];
+  @state() private primerLoading = false;
   @state() private primer: { readonly target: AcceptedTarget; readonly content: PrimerContent; readonly revealed: boolean } | null = null;
   @state() private checkout: {
     readonly item: PendingMediaCheckout;
@@ -741,6 +742,7 @@ export class WatchView extends LitElement {
   private startPrimer(target: AcceptedTarget) {
     const token = tokenState.value;
     if (!token) return;
+    this.primerLoading = true;
     this.learningStatus = `Preparing a source-distinct primer for ${target.canonicalKey}…`;
     const program = Effect.gen(this, function* () {
       yield* submitLearningEvent(token, {
@@ -754,14 +756,26 @@ export class WatchView extends LitElement {
         content.exampleSentence,
         content.exampleTargetStart,
         content.exampleTargetEnd,
+        content.exampleTargetSurface,
         this.cues,
         target.subtitleTrackFingerprint,
       );
       yield* Effect.sync(() => {
         this.primer = { target, content, revealed: false };
+        this.primerLoading = false;
         this.learningStatus = "Primer passed local source-exclusion validation.";
       });
-    }).pipe(Effect.catchAll((error) => Effect.sync(() => { this.learningStatus = error.message; })));
+    }).pipe(Effect.catchAll((error) => Effect.gen(this, function* () {
+      yield* clientLog("error", "[WatchView] Primer preparation failed.", {
+        candidateId: target.candidateId,
+        knowledgePointId: target.knowledgePointId,
+        message: error.message,
+      });
+      yield* Effect.sync(() => {
+        this.primerLoading = false;
+        this.learningStatus = `${error.message} Retry the primer when ready.`;
+      });
+    })));
     void runClientPromise(program);
   }
 
@@ -920,6 +934,7 @@ export class WatchView extends LitElement {
   override render() {
     const isMatroska = this.videoName.toLowerCase().endsWith(".mkv");
     const localAudioRepairAvailable = isLoopbackHostname(window.location.hostname);
+    const retryPrimerTarget = this.acceptedTargets.find((target) => !target.primed);
     return html`
       <section class="mx-auto max-w-6xl space-y-5" data-private-media-boundary
         @dragover=${(event: DragEvent) => event.preventDefault()}
@@ -988,6 +1003,11 @@ export class WatchView extends LitElement {
               <div class="rounded bg-zinc-800 p-3"><p class="font-medium">${this.primer.content.retrievalPrompt}</p>${this.primer.revealed ? html`<p class="mt-2 text-emerald-300">${this.primer.content.retrievalAnswer}</p><div class="mt-2 flex gap-2"><button class="rounded bg-emerald-700 px-3 py-1" @click=${this.completePrimer}>I retrieved it</button><button class="rounded border border-zinc-600 px-3 py-1" @click=${() => { if (this.primer) this.primer = { ...this.primer, revealed: false }; }}>Try again</button></div>` : html`<button class="mt-2 rounded border border-zinc-600 px-3 py-1" @click=${() => { if (this.primer) this.primer = { ...this.primer, revealed: true }; }}>Reveal answer</button>`}</div>
               <p class="text-sm text-amber-300">Listening mission: ${this.primer.content.listeningMission}</p>
             </article>
+          ` : ""}
+          ${!this.primer && retryPrimerTarget ? html`
+            <button class="rounded border border-emerald-700 px-3 py-2 text-sm disabled:opacity-40"
+              ?disabled=${this.primerLoading}
+              @click=${() => this.startPrimer(retryPrimerTarget)}>${this.primerLoading ? "Preparing primer…" : "Retry primer"}</button>
           ` : ""}
           ${this.checkout ? html`
             <article class="space-y-3 rounded-lg border border-sky-800 bg-sky-950/20 p-4">

@@ -2,9 +2,19 @@ import { Effect, HashMap, Logger } from "effect";
 import { sql } from "kysely";
 import { describe, expect, it, vi } from "vitest";
 import { db } from "../../../db/client.ts";
-import { generatePrimerContent, type LearningContentAgent } from "./LearningContentService.ts";
+import {
+  generatePrimerContent,
+  locateGeneratedTargetSpan,
+  type LearningContentAgent,
+} from "./LearningContentService.ts";
 
 describe("LearningContentService", () => {
+  it("reconstructs provider offsets only from an exact copied target surface", () => {
+    expect(locateGeneratedTargetSpan("これはもったいないよ。", "もったいない", 99, 105))
+      .toEqual({ start: 3, end: 9 });
+    expect(locateGeneratedTargetSpan("これは別の文です。", "もったいない", 3, 9)).toBeNull();
+  });
+
   it("generates a structured primer from target/prerequisites without logging content", async () => {
     const userId = crypto.randomUUID();
     const pointId = crypto.randomUUID();
@@ -15,7 +25,8 @@ describe("LearningContentService", () => {
     const generate = vi.fn<LearningContentAgent["generate"]>(async () => ({ object: {
       form: "試す", reading: "ためす", senseOrFunction: "to try", formation: "object を 試す",
       exampleContext: "Testing a new method on the weekend.", exampleSentence: privateSentence,
-      exampleTargetStart: 9, exampleTargetEnd: 11, furigana: [{ text: "試", reading: "ため" }, { text: "す" }],
+      exampleTargetSurface: "試す", exampleTargetStart: 99, exampleTargetEnd: 101,
+      furigana: [{ text: "試", reading: "ため" }, { text: "す" }],
       retrievalPrompt: "Say ‘to try’.", retrievalAnswer: "試す", listeningMission: "Listen for inflected forms of 試す.",
     } }));
     const logs: string[] = [];
@@ -26,6 +37,7 @@ describe("LearningContentService", () => {
       Effect.provide(Logger.replace(Logger.defaultLogger, logger)),
     ));
     expect(primer.exampleSentence).toBe(privateSentence);
+    expect(primer).toMatchObject({ exampleTargetSurface: "試す", exampleTargetStart: 9, exampleTargetEnd: 11 });
     expect(generate.mock.calls[0]?.[0]).not.toContain(privateSentence);
     expect(logs.join("\n")).not.toContain(privateSentence);
   });

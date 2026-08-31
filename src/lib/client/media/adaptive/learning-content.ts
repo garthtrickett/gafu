@@ -89,12 +89,19 @@ export const validateGeneratedSentence = (
   sentence: string,
   targetStart: number,
   targetEnd: number,
+  targetSurface: string,
   cues: readonly NormalizedCue[],
   subtitleTrackFingerprint: string,
   embedder: (texts: readonly string[]) => Effect.Effect<readonly ArrayLike<number>[], Error> = embedSentencesLocally,
   tokenizer: (text: string) => Effect.Effect<readonly NormalizedToken[], Error> = tokenizeJapaneseWithFallback,
 ): Effect.Effect<ValidatedSourceDecision, Error> => Effect.gen(function* () {
-  if (targetStart < 0 || targetEnd <= targetStart || targetEnd > sentence.length || sentence.slice(targetStart, targetEnd).trim().length === 0) {
+  if (
+    targetStart < 0
+    || targetEnd <= targetStart
+    || targetEnd > sentence.length
+    || targetSurface.trim().length === 0
+    || sentence.slice(targetStart, targetEnd) !== targetSurface
+  ) {
     return yield* Effect.fail(new Error("Generated target span is invalid."));
   }
   let source = yield* loadSourceExclusionSignatures(subtitleTrackFingerprint);
@@ -184,6 +191,7 @@ export const generateValidateAndStoreExercise = (
     content.japaneseSentence,
     content.targetStart,
     content.targetEnd,
+    content.targetSurface,
     cues,
     subtitleTrackFingerprint,
   );

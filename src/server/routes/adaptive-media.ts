@@ -323,6 +323,7 @@ export const adaptiveMediaRoutes = new Elysia({ prefix: "/api/adaptive-media" })
         targetCanonicalKey: t.String({ minLength: 1 }),
         context: t.String({ minLength: 1 }),
         japaneseSentence: t.String({ minLength: 1 }),
+        targetSurface: t.String({ minLength: 1 }),
         targetStart: t.Integer({ minimum: 0 }),
         targetEnd: t.Integer({ minimum: 1 }),
         answer: t.String({ minLength: 1 }),

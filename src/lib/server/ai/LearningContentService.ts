@@ -16,6 +16,60 @@ export class LearningContentError extends Data.TaggedError("LearningContentError
   readonly code: "point_not_found" | "service_unavailable" | "invalid_result";
 }> {}
 
+export interface GeneratedTargetSpan {
+  readonly start: number;
+  readonly end: number;
+}
+
+export const locateGeneratedTargetSpan = (
+  sentence: string,
+  targetSurface: string,
+  reportedStart: number,
+  reportedEnd: number,
+): GeneratedTargetSpan | null => {
+  if (!targetSurface || targetSurface.trim().length === 0) return null;
+  if (
+    reportedStart >= 0
+    && reportedEnd > reportedStart
+    && reportedEnd <= sentence.length
+    && sentence.slice(reportedStart, reportedEnd) === targetSurface
+  ) return { start: reportedStart, end: reportedEnd };
+  const start = sentence.indexOf(targetSurface);
+  return start >= 0 ? { start, end: start + targetSurface.length } : null;
+};
+
+const parsePrimerContent = (value: unknown) => {
+  const parsed = PrimerContentSchema.safeParse(value);
+  if (!parsed.success) return { success: false as const };
+  const span = locateGeneratedTargetSpan(
+    parsed.data.exampleSentence,
+    parsed.data.exampleTargetSurface,
+    parsed.data.exampleTargetStart,
+    parsed.data.exampleTargetEnd,
+  );
+  if (!span) return { success: false as const };
+  return {
+    success: true as const,
+    data: { ...parsed.data, exampleTargetStart: span.start, exampleTargetEnd: span.end },
+  };
+};
+
+const parseExerciseContent = (value: unknown) => {
+  const parsed = LearningExerciseContentSchema.safeParse(value);
+  if (!parsed.success) return { success: false as const };
+  const span = locateGeneratedTargetSpan(
+    parsed.data.japaneseSentence,
+    parsed.data.targetSurface,
+    parsed.data.targetStart,
+    parsed.data.targetEnd,
+  );
+  if (!span) return { success: false as const };
+  return {
+    success: true as const,
+    data: { ...parsed.data, targetStart: span.start, targetEnd: span.end },
+  };
+};
+
 const loadAgent = () => Effect.tryPromise({
   try: async () => {
     const { mastra } = await import("../../../../mastra.config.ts");
@@ -98,13 +152,20 @@ const generate = <A>(
     catch: () => new LearningContentError({ code: "service_unavailable" }),
   });
   const parsed = parse(response.object);
-  if (!parsed.success) return yield* Effect.fail(new LearningContentError({ code: "invalid_result" }));
+  if (!parsed.success) {
+    yield* Effect.logWarning("[LearningContent] generation_rejected").pipe(Effect.annotateLogs({
+      knowledgePointId,
+      mode,
+      reason: "invalid_or_unlocatable_target",
+    }));
+    return yield* Effect.fail(new LearningContentError({ code: "invalid_result" }));
+  }
   yield* Effect.logInfo("[LearningContent] generation_completed").pipe(Effect.annotateLogs({ knowledgePointId, mode }));
   return parsed.data;
 });
 
 export const generatePrimerContent = (userId: string, knowledgePointId: string, agent?: LearningContentAgent): Effect.Effect<PrimerContent, LearningContentError> =>
-  generate(userId, knowledgePointId, "primer", PrimerContentSchema, (value) => PrimerContentSchema.safeParse(value), agent);
+  generate<PrimerContent>(userId, knowledgePointId, "primer", PrimerContentSchema, parsePrimerContent, agent);
 
 export const generateExerciseContent = (userId: string, knowledgePointId: string, mode: "checkout" | "review", agent?: LearningContentAgent): Effect.Effect<LearningExerciseContent, LearningContentError> =>
-  generate(userId, knowledgePointId, mode, LearningExerciseContentSchema, (value) => LearningExerciseContentSchema.safeParse(value), agent);
+  generate<LearningExerciseContent>(userId, knowledgePointId, mode, LearningExerciseContentSchema, parseExerciseContent, agent);
