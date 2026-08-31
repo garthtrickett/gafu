@@ -104,7 +104,7 @@ describe("sessionSyncStore export payload gating integration tests", () => {
     expect(payload.queue[14]?.grammar_point_id).toBe("gp-14");
   });
 
-  it("puts checkout and recent media points ahead of mature backlog", async () => {
+  it("reserves checkout points for Adaptive Review while keeping due recent points ahead of mature backlog", async () => {
     await runClientPromise(grammarPointCatalogStore.putAll(["checkout", "recent", "mature"].map((id) => ({
       id, formal_name: id, base_meaning: id, difficulty_level: "N5", hlc: "0000000000000:0000:initial",
     }))));
@@ -117,8 +117,78 @@ describe("sessionSyncStore export payload gating integration tests", () => {
       { id: "checkout", easeFactor: 2.5, repetitions: 0, intervalDays: 0, stability: 0, difficulty: 5, lastReviewedAt: null, nextReview: recent, learningState: "primed", unlockedAt: recent, checkoutDue: true },
     ]));
     const payload = JSON.parse(await runClientPromise(generateExportPayload()));
-    expect(payload.queue.map((item: { grammar_point_id: string }) => item.grammar_point_id).slice(0, 3))
-      .toEqual(["checkout", "recent", "mature"]);
+    expect(payload.queue.map((item: { grammar_point_id: string }) => item.grammar_point_id))
+      .toEqual(["recent", "mature"]);
+  });
+
+  it("explains when only source-linked checkout work remains", async () => {
+    const now = new Date().toISOString();
+    await runClientPromise(grammarPointCatalogStore.put({
+      id: "checkout",
+      formal_name: "checkout",
+      base_meaning: "checkout",
+      difficulty_level: "N5",
+      hlc: "0000000000000:0000:initial",
+    }));
+    await runClientPromise(grammarPointStore.put({
+      id: "checkout",
+      easeFactor: 2.5,
+      repetitions: 0,
+      intervalDays: 0,
+      stability: 0,
+      difficulty: 5,
+      lastReviewedAt: null,
+      nextReview: now,
+      learningState: "primed",
+      unlockedAt: now,
+      checkoutDue: true,
+    }));
+
+    const result = await runClientPromise(Effect.either(generateExportPayload()));
+    expect(result._tag).toBe("Left");
+    if (result._tag === "Left") expect(result.left.message).toContain("Use Adaptive Review");
+  });
+
+  it("does not regenerate the same fifteen points after their reviews move into the future", async () => {
+    const catalogItems = Array.from({ length: 30 }, (_, index) => ({
+      id: `gp-${index}`,
+      formal_name: `grammar-${index}`,
+      base_meaning: `meaning-${index}`,
+      difficulty_level: "N5",
+      hlc: "0000000000000:0000:initial",
+    }));
+    await runClientPromise(grammarPointCatalogStore.putAll(catalogItems));
+
+    const past = new Date(Date.now() - 86_400_000).toISOString();
+    const dueProgress = catalogItems.map((item) => ({
+      id: item.id,
+      easeFactor: 2.5,
+      repetitions: 1,
+      intervalDays: 1,
+      difficulty: 5,
+      stability: 1,
+      lastReviewedAt: past,
+      nextReview: past,
+      hlc: "0000000000000:0000:initial",
+    }));
+    await runClientPromise(grammarPointStore.putAll(dueProgress));
+
+    const firstPayload = JSON.parse(await runClientPromise(generateExportPayload()));
+    const firstIds = firstPayload.queue.map((item: { grammar_point_id: string }) => item.grammar_point_id);
+    expect(firstIds).toEqual(Array.from({ length: 15 }, (_, index) => `gp-${index}`));
+
+    const future = new Date(Date.now() + 86_400_000).toISOString();
+    await runClientPromise(grammarPointStore.putAll(dueProgress.slice(0, 15).map((item) => ({
+      ...item,
+      repetitions: item.repetitions + 1,
+      lastReviewedAt: new Date().toISOString(),
+      nextReview: future,
+    }))));
+
+    const secondPayload = JSON.parse(await runClientPromise(generateExportPayload()));
+    const secondIds = secondPayload.queue.map((item: { grammar_point_id: string }) => item.grammar_point_id);
+    expect(secondIds).toEqual(Array.from({ length: 15 }, (_, index) => `gp-${index + 15}`));
+    expect(secondIds.some((id: string) => firstIds.includes(id))).toBe(false);
   });
 
   it("should unlock and append up to 3 new rules for eligible users who meet the 80% mastery gate", async () => {

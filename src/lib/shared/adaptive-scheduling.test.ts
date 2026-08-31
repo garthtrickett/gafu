@@ -31,7 +31,7 @@ describe("adaptive scheduling capacity", () => {
     }, { kind: "grammar", difficulty: 5 }).reason).toBe("mature_backlog");
   });
 
-  it("orders checkout, recent introductions, mature due, then lower-risk overdue", () => {
+  it("orders due work and excludes recent points whose review is still in the future", () => {
     const now = new Date("2026-08-28T12:00:00.000Z");
     const item = (id: string, values: Partial<QueueItem>): QueueItem => ({
       knowledgePointId: id,
@@ -46,7 +46,11 @@ describe("adaptive scheduling capacity", () => {
     const ordered = orderReviewQueue([
       item("low", { risk: 0.2 }),
       item("recent", { introducedAt: "2026-08-26T00:00:00.000Z" }),
-      item("checkout", { checkoutDue: true }),
+      item("future-recent", {
+        introducedAt: "2026-08-27T00:00:00.000Z",
+        nextReview: "2026-08-29T00:00:00.000Z",
+      }),
+      item("checkout", { checkoutDue: true, nextReview: "2026-08-29T00:00:00.000Z" }),
       item("mature", {}),
       item("archived", { participationStatus: "archived" }),
     ], now);

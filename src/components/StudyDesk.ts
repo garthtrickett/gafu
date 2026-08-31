@@ -17,6 +17,7 @@ import { fetchNextValidatedExercise } from "../lib/client/media/adaptive/learnin
 import { activeSessionStore, type SessionCard } from "../lib/client/stores/activeSessionStore.ts";
 import { requestDailySessionGeneration } from "../lib/client/ai/daily-session-generation.ts";
 import { DailySessionGenerationRequestSchema } from "../lib/server/ai/schema.ts";
+import { orderReviewQueue } from "../lib/shared/adaptive-scheduling.ts";
 
 @customElement("study-desk")
 export class StudyDesk extends LitElement {
@@ -268,13 +269,20 @@ export class StudyDesk extends LitElement {
     }
     this.adaptiveReviewLoading = true;
     this.importError = null;
-    const now = Date.now();
-    const due = grammarPointStore.state.peek()
-      .filter((progress) =>
-        progress.participationStatus !== "archived"
-        && progress.learningState !== "known"
-        && (progress.checkoutDue || new Date(progress.nextReview).getTime() <= now)
-      )
+    const now = new Date();
+    const progress = grammarPointStore.state.peek();
+    const progressById = new Map(progress.map((item) => [item.id, item]));
+    const due = orderReviewQueue(progress.map((item) => ({
+      knowledgePointId: item.id,
+      participationStatus: item.participationStatus ?? "active",
+      learningState: item.learningState ?? ((item.stability ?? 0) >= 21 ? "stable" : "learning"),
+      introducedAt: item.unlockedAt ?? null,
+      nextReview: item.nextReview,
+      checkoutDue: item.checkoutDue ?? false,
+      risk: 1 - calculateRetrievability(item),
+    })), now)
+      .map((item) => progressById.get(item.knowledgePointId)!)
+      .filter(Boolean)
       .slice(0, userPreferencesStore.dailyReviewLimit.peek());
     const program = Effect.gen(this, function* () {
       const cards: SessionCard[] = [];
@@ -369,9 +377,20 @@ export class StudyDesk extends LitElement {
   override render() {
     const catalog = grammarPointCatalogStore.state.value;
     
-    // Find and sort all active progress items by lowest retrievability (most in need of review) first
-    const allDueItems = [...grammarPointStore.state.value]
-      .sort((a, b) => calculateRetrievability(a) - calculateRetrievability(b));
+    // Show the same genuinely due, priority-ordered queue used by Adaptive Review.
+    const progressItems = grammarPointStore.state.value;
+    const progressById = new Map(progressItems.map((item) => [item.id, item]));
+    const allDueItems = orderReviewQueue(progressItems.map((item) => ({
+      knowledgePointId: item.id,
+      participationStatus: item.participationStatus ?? "active",
+      learningState: item.learningState ?? ((item.stability ?? 0) >= 21 ? "stable" : "learning"),
+      introducedAt: item.unlockedAt ?? null,
+      nextReview: item.nextReview,
+      checkoutDue: item.checkoutDue ?? false,
+      risk: 1 - calculateRetrievability(item),
+    })), new Date())
+      .map((item) => progressById.get(item.knowledgePointId)!)
+      .filter(Boolean);
 
     const reviewLimit = userPreferencesStore.dailyReviewLimit.value;
 
