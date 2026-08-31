@@ -4,7 +4,7 @@ import { seedDb } from "./seed";
 import { db } from "./client";
 
 describe("Database Seeder", () => {
-  it("should preserve existing SRS progress cards when seedDb is executed with clearData set to false", async () => {
+  it("preserves existing SRS progress cards by default", async () => {
     // 1. Initial seed
     await Effect.runPromise(seedDb({ clearData: true }));
 
@@ -19,8 +19,6 @@ describe("Database Seeder", () => {
       )
       .limit(1)
       .executeTakeFirstOrThrow();
-    const sampleDeck = await db.selectFrom("deck").select("id").limit(1).executeTakeFirstOrThrow();
-
     await db.insertInto("srs_card").values({
       id: "12345678-1234-1234-1234-1234567890ab" as any,
       user_id: user.id,
@@ -33,19 +31,26 @@ describe("Database Seeder", () => {
       created_at: new Date(),
       updated_at: new Date()
     }).execute();
+    const countBeforeSafeSeed = await db.selectFrom("srs_card")
+      .select(({ fn }) => fn.countAll<number>().as("count"))
+      .executeTakeFirstOrThrow();
 
-    // 2. Trigger seeder again with clearData: false (simulating server-side self-healing startup check)
-    await Effect.runPromise(seedDb({ clearData: false }));
+    // 2. Trigger the ordinary seed command used by `bun run migrate`.
+    await Effect.runPromise(seedDb());
 
     // Verify the mock card was NOT dropped by the seeder
     const card = await db.selectFrom("srs_card").selectAll().where("id", "=", "12345678-1234-1234-1234-1234567890ab" as any).executeTakeFirst();
+    const countAfterSafeSeed = await db.selectFrom("srs_card")
+      .select(({ fn }) => fn.countAll<number>().as("count"))
+      .executeTakeFirstOrThrow();
     expect(card).toBeDefined();
     expect(card!.repetitions).toBe(5);
+    expect(Number(countAfterSafeSeed.count)).toBe(Number(countBeforeSafeSeed.count));
   });
 
   it("should seed all grammar points into the catalog but only 10 active srs cards", async () => {
     // Run the exported seedDb effect directly on our worker-isolated test database
-    await Effect.runPromise(seedDb());
+    await Effect.runPromise(seedDb({ clearData: true }));
 
     // Verify the total seeded grammar points
     const gpCountResult = await db

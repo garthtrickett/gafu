@@ -122,9 +122,36 @@ export const generateExportPayload = (
       })), now).map((item) => progressById.get(item.knowledgePointId)!).filter(Boolean);
 
       const activeDueSliced = activeDueProgress.slice(0, dueReviewsTargetCount);
-      
+
+      // An explicitly requested interactive session should still reach the
+      // learner's configured size when the due queue is short. Fill remaining
+      // slots with the least-recently-reviewed studied points, never unseen,
+      // known, archived, or source-checkout points. Completing the session
+      // updates lastReviewedAt, naturally rotating the next generated set.
+      const dueIds = new Set(activeDueSliced.map((progress) => progress.id));
+      const earlyReviewSlotCount = Math.max(0, dueReviewsTargetCount - activeDueSliced.length);
+      const earlyReinforcement = standardSessionProgress
+        .filter((progress) =>
+          earlyReviewSlotCount > 0 &&
+          !dueIds.has(progress.id) &&
+          progress.repetitions > 0 &&
+          progress.participationStatus !== "archived" &&
+          progress.learningState !== "known"
+        )
+        .sort((left, right) => {
+          const leftReviewed = left.lastReviewedAt ? new Date(left.lastReviewedAt).getTime() : Number.NEGATIVE_INFINITY;
+          const rightReviewed = right.lastReviewedAt ? new Date(right.lastReviewedAt).getTime() : Number.NEGATIVE_INFINITY;
+          if (leftReviewed !== rightReviewed) return leftReviewed - rightReviewed;
+          return new Date(left.nextReview).getTime() - new Date(right.nextReview).getTime();
+        })
+        .slice(0, earlyReviewSlotCount);
+      if (earlyReinforcement.length > 0) {
+        yield* clientLog("info", `[SessionSync] Filled ${earlyReinforcement.length} interactive-session slots with least-recently-reviewed reinforcement points.`);
+      }
+      const selectedReviewProgress = [...activeDueSliced, ...earlyReinforcement];
+
       // Map progress indicators dynamically matching against the local catalog store
-      queue = activeDueSliced.map((p) => {
+      queue = selectedReviewProgress.map((p) => {
         const match = catalog.find((c) => c.id === p.id);
         return {
           grammar_point_id: p.id,

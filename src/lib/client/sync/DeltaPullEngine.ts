@@ -108,6 +108,35 @@ const filterCausal = <T extends { id: string; hlc?: string }>(
   });
 };
 
+interface StudyProgressVersion {
+  readonly id: string;
+  readonly hlc?: string;
+  readonly repetitions: number;
+  readonly intervalDays: number;
+  readonly stability?: number;
+}
+
+const compareStudyHistory = (left: StudyProgressVersion, right: StudyProgressVersion): number => {
+  const leftStrength = [left.stability ?? 0, left.repetitions, left.intervalDays];
+  const rightStrength = [right.stability ?? 0, right.repetitions, right.intervalDays];
+  for (let index = 0; index < leftStrength.length; index++) {
+    const difference = (leftStrength[index] ?? 0) - (rightStrength[index] ?? 0);
+    if (difference !== 0) return difference;
+  }
+  return 0;
+};
+
+export const filterProgressCausal = <T extends StudyProgressVersion>(
+  incoming: T[],
+  existingList: readonly StudyProgressVersion[],
+): T[] => incoming.filter((candidate) => {
+  const existing = existingList.find((item) => item.id === candidate.id);
+  if (!existing) return true;
+  if (existing.hlc && candidate.hlc) return candidate.hlc > existing.hlc;
+  if (!existing.hlc) return compareStudyHistory(candidate, existing) >= 0;
+  return false;
+});
+
 export const executeDeltaPull = (): Effect.Effect<void, unknown, never> =>
   Effect.gen(function* () {
     yield* clientLog("debug", "[DeltaPull] executeDeltaPull loop checkpoint triggered.");
@@ -296,7 +325,11 @@ export const executeDeltaPull = (): Effect.Effect<void, unknown, never> =>
           checkoutDue: u.checkoutDue ?? false,
           hlc: u.hlc
         }));
-        const filteredProgress = filterCausal(mappedProgress, existingProgress);
+        const filteredProgress = filterProgressCausal(mappedProgress, existingProgress);
+        const protectedProgressCount = mappedProgress.length - filteredProgress.length;
+        if (protectedProgressCount > 0) {
+          yield* clientLog("warn", `[DeltaPull] Preserved ${protectedProgressCount} local study records from weaker or causally older server updates.`);
+        }
         if (filteredProgress.length > 0) {
           yield* knowledgePointStore.putAll(filteredProgress);
         }

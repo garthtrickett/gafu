@@ -83,6 +83,9 @@ export const initAuth = () => {
         yield* userPreferencesStore.load();
         yield* mediaCandidatePreferenceStore.load();
 
+        const { enqueuePendingProgressRecovery } = yield* Effect.promise(() => import("../storage/ClientMigrationCoordinator.ts"));
+        yield* enqueuePendingProgressRecovery(dataResult.right.user.id);
+
         const { executeDeltaPull } = yield* Effect.promise(() => import("../sync/DeltaPullEngine.ts"));
         yield* executeDeltaPull().pipe(
           Effect.catchAll((err) => clientLog("error", "[AuthStore:initAuth] Immediate delta pull failed", err))
@@ -152,6 +155,9 @@ export const login = (email: string, password: string) => {
     yield* grammarPointCatalogStore.load();
     yield* userPreferencesStore.load();
     yield* mediaCandidatePreferenceStore.load();
+
+    const { enqueuePendingProgressRecovery } = yield* Effect.promise(() => import("../storage/ClientMigrationCoordinator.ts"));
+    yield* enqueuePendingProgressRecovery(data.user.id);
 
     const { executeDeltaPull } = yield* Effect.promise(() => import("../sync/DeltaPullEngine.ts"));
     yield* executeDeltaPull().pipe(

@@ -17,6 +17,7 @@ export interface OutboxTransaction {
 }
 
 const transactionQueue = Effect.runSync(Queue.unbounded<string>());
+let outboxStarted = false;
 
 const getPendingKeys = (): Promise<string[]> => {
   return get<string[]>(OUTBOX_KEYS_LIST, outboxDBStore).then((keys) => keys || []);
@@ -59,7 +60,11 @@ export const enqueueTransaction = (
     });
 
     yield* clientLog("debug", `[Outbox] Enqueued transaction ${txId} (${type}) stamped with HLC ${currentHlc}`);
-    yield* Queue.offer(transactionQueue, txId);
+    if (outboxStarted) {
+      yield* Queue.offer(transactionQueue, txId);
+    } else {
+      yield* clientLog("debug", `[Outbox] Transaction ${txId} is persisted and will be offered when the outbox service starts.`);
+    }
     return currentHlc;
   });
 
@@ -161,6 +166,8 @@ export const startOutboxService = () => {
       }
     }
 
+    outboxStarted = true;
+    yield* clientLog("info", `[Outbox] Startup hydration complete; queued=${keys.length}.`);
     yield* Effect.forkDaemon(processQueueStream);
   });
 
