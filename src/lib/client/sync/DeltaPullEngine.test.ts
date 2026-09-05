@@ -267,8 +267,11 @@ describe("DeltaPullEngine - Client Causal Merging", () => {
 
     await Effect.runPromise(executeDeltaPull());
 
-    // Allow daemon fork re-trigger loop to complete
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    // The re-triggered pull runs on a forked daemon fiber, so wait for its write
+    // to land rather than a fixed delay a loaded worker can outrun.
+    await vi.waitFor(async () => {
+      expect(await get<string>("last_pull_hlc", syncMetadataStore)).toBe(cleanSyncPayload.serverHlc);
+    });
 
     // Verify 'last_pull_hlc' was wiped and then updated to the final HLC from the clean second pull
     const savedHlc = await get<string>("last_pull_hlc", syncMetadataStore);

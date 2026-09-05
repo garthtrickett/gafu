@@ -389,6 +389,177 @@ describe("WatchView local media boundary", () => {
   });
 });
 
+describe("WatchView subtitle dictionary lookups", () => {
+  const jishoEntry = {
+    success: true,
+    data: {
+      term: "年末",
+      entries: [
+        {
+          slug: "年末",
+          isCommon: true,
+          jlpt: ["jlpt-n3"],
+          forms: [{ word: "年末", reading: "ねんまつ" }],
+          senses: [{ englishDefinitions: ["year end"], partsOfSpeech: ["Noun"], tags: [], seeAlso: [] }],
+        },
+      ],
+    },
+  };
+
+  const cueWithFurigana = () => {
+    const base = fallbackTokens("年")[0]!;
+    return {
+      ...parseSrt("1\n00:00:01,000 --> 00:00:02,000\n年末には", "subtitle-lookup")[0]!,
+      tokens: ["年", "末", "に", "は"].map((surface, index) => ({
+        ...base,
+        surface,
+        lemma: surface,
+        reading: ["ねん", "まつ", "に", "は"][index]!,
+        span: { ...base.span, start: index, end: index + 1 },
+      })),
+    };
+  };
+
+  type CueView = HTMLElement & {
+    activeCues: readonly ReturnType<typeof cueWithFurigana>[];
+    readonly updateComplete: Promise<boolean>;
+  };
+
+  const stubJishoFetch = () =>
+    vi.spyOn(globalThis, "fetch").mockImplementation((input: RequestInfo | URL) =>
+      Promise.resolve(
+        (typeof input === "string" && input.startsWith("/api/jisho")
+          ? { ok: true, status: 200, json: () => Promise.resolve(jishoEntry) }
+          : { ok: true, status: 200, json: () => Promise.resolve({ success: true }) }) as unknown as Response,
+      ),
+    );
+
+  const mountCue = async (): Promise<CueView> => {
+    const view = document.createElement("watch-view") as CueView;
+    document.body.append(view);
+    view.activeCues = [cueWithFurigana()];
+    await view.updateComplete;
+    return view;
+  };
+
+  // Lit renders a comment marker ahead of the bound text, so the range has to be
+  // anchored on the text node rather than the element's first child.
+  const surfaceText = (surface: Element): Text =>
+    Array.from(surface.childNodes).find((node): node is Text => node.nodeType === Node.TEXT_NODE)!;
+
+  // Drags across the first two subtitle surfaces the way a learner would, then
+  // lets the document-level listener pick the selection up.
+  const highlightSurfaces = (view: CueView, from: number, to: number) => {
+    const surfaces = view.querySelectorAll("[data-subtitle-surface]");
+    const end = surfaceText(surfaces[to]!);
+    const range = document.createRange();
+    range.setStart(surfaceText(surfaces[from]!), 0);
+    range.setEnd(end, end.data.length);
+    const selection = window.getSelection()!;
+    selection.removeAllRanges();
+    selection.addRange(range);
+    document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+  };
+
+  afterEach(() => {
+    tokenState.value = null;
+    window.getSelection()?.removeAllRanges();
+    document.body.replaceChildren();
+    vi.restoreAllMocks();
+  });
+
+  it("looks up a highlighted subtitle word without its furigana", async () => {
+    tokenState.value = "watch-token";
+    const fetchSpy = stubJishoFetch();
+    const view = await mountCue();
+
+    highlightSurfaces(view, 0, 1);
+    await vi.waitFor(async () => {
+      await view.updateComplete;
+      expect(view.querySelector("jisho-lookup-modal")?.textContent).toContain("year end");
+    });
+
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "/api/jisho/search?keyword=%E5%B9%B4%E6%9C%AB",
+      expect.objectContaining({ headers: { Authorization: "Bearer watch-token" } }),
+    );
+  });
+
+  it("ignores a collapsed selection so tapping a subtitle raises no lookup", async () => {
+    tokenState.value = "watch-token";
+    const fetchSpy = stubJishoFetch();
+    const view = await mountCue();
+
+    const text = surfaceText(view.querySelector("[data-subtitle-surface]")!);
+    const range = document.createRange();
+    range.setStart(text, 0);
+    range.setEnd(text, 0);
+    const selection = window.getSelection()!;
+    selection.removeAllRanges();
+    selection.addRange(range);
+    document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+    await view.updateComplete;
+
+    expect(view.querySelector("jisho-lookup-modal")).toBeNull();
+    expect(fetchSpy.mock.calls.filter(([url]) => typeof url === "string" && url.startsWith("/api/jisho"))).toHaveLength(0);
+  });
+
+  it("ignores a highlight made outside the subtitle overlay", async () => {
+    tokenState.value = "watch-token";
+    const fetchSpy = stubJishoFetch();
+    const view = await mountCue();
+
+    const heading = view.querySelector("h1")!;
+    const range = document.createRange();
+    range.selectNodeContents(heading);
+    const selection = window.getSelection()!;
+    selection.removeAllRanges();
+    selection.addRange(range);
+    document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+    await view.updateComplete;
+
+    expect(view.querySelector("jisho-lookup-modal")).toBeNull();
+    expect(fetchSpy.mock.calls.filter(([url]) => typeof url === "string" && url.startsWith("/api/jisho"))).toHaveLength(0);
+  });
+
+  it("clears the highlight when the dialog is closed", async () => {
+    tokenState.value = "watch-token";
+    stubJishoFetch();
+    const view = await mountCue();
+
+    highlightSurfaces(view, 0, 1);
+    await vi.waitFor(async () => {
+      await view.updateComplete;
+      expect(view.querySelector("jisho-lookup-modal")).not.toBeNull();
+    });
+
+    view.querySelector<HTMLButtonElement>("#jisho-lookup-close")!.click();
+    await view.updateComplete;
+
+    expect(view.querySelector("jisho-lookup-modal")).toBeNull();
+    expect(window.getSelection()?.rangeCount).toBe(0);
+  });
+
+  it("does not raise a second lookup while the dialog is open", async () => {
+    tokenState.value = "watch-token";
+    const fetchSpy = stubJishoFetch();
+    const view = await mountCue();
+
+    highlightSurfaces(view, 0, 1);
+    await vi.waitFor(async () => {
+      await view.updateComplete;
+      expect(view.querySelector("jisho-lookup-modal")).not.toBeNull();
+    });
+    const jishoCalls = () =>
+      fetchSpy.mock.calls.filter(([url]) => typeof url === "string" && url.startsWith("/api/jisho"));
+    expect(jishoCalls()).toHaveLength(1);
+
+    highlightSurfaces(view, 0, 1);
+    await view.updateComplete;
+    expect(jishoCalls()).toHaveLength(1);
+  });
+});
+
 // The selection rules in index.css key off this markup: the overlay stays inert,
 // the line opts back into pointer events, and the reading is a separate element
 // that `user-select: none` can exclude. jsdom has no CSS cascade, so what is
