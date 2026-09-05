@@ -388,3 +388,186 @@ describe("WatchView local media boundary", () => {
     await vi.waitFor(() => expect(play).toHaveBeenCalled());
   });
 });
+
+describe("WatchView syllabus dictionary lookups", () => {
+  const jishoEntry = {
+    success: true,
+    data: {
+      term: "もったいない",
+      entries: [
+        {
+          slug: "勿体無い",
+          isCommon: true,
+          jlpt: [],
+          forms: [{ word: "勿体無い", reading: "もったいない" }],
+          senses: [{ englishDefinitions: ["wasteful"], partsOfSpeech: ["I-adjective"], tags: [], seeAlso: [] }],
+        },
+      ],
+    },
+  };
+
+  const syllabusItem = (label: string) => ({
+    candidateId: `candidate-${label}`,
+    knowledgePointId: null,
+    canonicalKey: `vocabulary:${label}:${label}:noun`,
+    kind: "vocabulary" as const,
+    label,
+    meaning: "wasteful",
+    occurrenceCount: 2,
+    confidence: 0.9,
+  });
+
+  type SyllabusView = HTMLElement & {
+    syllabus: {
+      items: readonly ReturnType<typeof syllabusItem>[];
+      alternates: readonly ReturnType<typeof syllabusItem>[];
+      rejectedCandidateIds: readonly string[];
+    };
+    aiRecommendations: readonly unknown[];
+    readonly updateComplete: Promise<boolean>;
+  };
+
+  const mountWithTargets = async (labels: readonly string[]): Promise<SyllabusView> => {
+    const view = document.createElement("watch-view") as SyllabusView;
+    document.body.append(view);
+    view.syllabus = {
+      items: labels.map(syllabusItem),
+      alternates: [],
+      rejectedCandidateIds: [],
+    };
+    await view.updateComplete;
+    return view;
+  };
+
+  const stubJishoFetch = () =>
+    vi.spyOn(globalThis, "fetch").mockImplementation((input: RequestInfo | URL) =>
+      Promise.resolve(
+        (typeof input === "string" && input.startsWith("/api/jisho")
+          ? { ok: true, status: 200, json: () => Promise.resolve(jishoEntry) }
+          : { ok: true, status: 200, json: () => Promise.resolve({ success: true }) }) as unknown as Response,
+      ),
+    );
+
+  afterEach(() => {
+    tokenState.value = null;
+    document.body.replaceChildren();
+    vi.restoreAllMocks();
+  });
+
+  it("opens the shared lookup modal for a syllabus word", async () => {
+    tokenState.value = "watch-token";
+    const fetchSpy = stubJishoFetch();
+    const view = await mountWithTargets(["もったいない"]);
+
+    const lookup = view.querySelector<HTMLButtonElement>('button[aria-label="Look もったいない up on Jisho"]');
+    expect(lookup?.textContent).toContain("Lookup");
+
+    lookup!.click();
+    await vi.waitFor(async () => {
+      await view.updateComplete;
+      expect(view.querySelector("jisho-lookup-modal")?.textContent).toContain("wasteful");
+    });
+
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "/api/jisho/search?keyword=%E3%82%82%E3%81%A3%E3%81%9F%E3%81%84%E3%81%AA%E3%81%84",
+      expect.objectContaining({ headers: { Authorization: "Bearer watch-token" } }),
+    );
+  });
+
+  it("offers a lookup for every Japanese target in the syllabus", async () => {
+    tokenState.value = "watch-token";
+    stubJishoFetch();
+    const view = await mountWithTargets(["もったいない", "年末"]);
+
+    expect(view.querySelectorAll('button[aria-label^="Look "]')).toHaveLength(2);
+  });
+
+  it("omits the lookup button for a target that is not a Japanese word", async () => {
+    tokenState.value = "watch-token";
+    stubJishoFetch();
+    const view = await mountWithTargets(["one"]);
+
+    expect(view.querySelector('button[aria-label^="Look "]')).toBeNull();
+    expect(view.querySelector("strong")?.textContent).toBe("one");
+  });
+
+  it("reports why a lookup failed instead of opening an empty dialog", async () => {
+    tokenState.value = "watch-token";
+    vi.spyOn(globalThis, "fetch").mockImplementation((input: RequestInfo | URL) =>
+      Promise.resolve(
+        (typeof input === "string" && input.startsWith("/api/jisho")
+          ? { ok: false, status: 502, json: () => Promise.resolve({}) }
+          : { ok: true, status: 200, json: () => Promise.resolve({ success: true }) }) as unknown as Response,
+      ),
+    );
+    const view = await mountWithTargets(["もったいない"]);
+
+    view.querySelector<HTMLButtonElement>('button[aria-label^="Look "]')!.click();
+    await vi.waitFor(async () => {
+      await view.updateComplete;
+      expect(view.querySelector("jisho-lookup-modal")?.textContent)
+        .toContain("Jisho could not be reached right now.");
+    });
+  });
+
+  it("asks an unauthenticated learner to sign in without calling the proxy", async () => {
+    const fetchSpy = stubJishoFetch();
+    const view = await mountWithTargets(["もったいない"]);
+
+    view.querySelector<HTMLButtonElement>('button[aria-label^="Look "]')!.click();
+    await view.updateComplete;
+
+    expect(view.querySelector("jisho-lookup-modal")?.textContent).toContain("Sign in again");
+    expect(fetchSpy.mock.calls.filter(([url]) => typeof url === "string" && url.startsWith("/api/jisho"))).toHaveLength(0);
+  });
+
+  it("closes on Escape without seeking or toggling playback behind the dialog", async () => {
+    tokenState.value = "watch-token";
+    stubJishoFetch();
+    const togglePlayback = vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
+    const view = await mountWithTargets(["もったいない"]);
+
+    view.querySelector<HTMLButtonElement>('button[aria-label^="Look "]')!.click();
+    await vi.waitFor(async () => {
+      await view.updateComplete;
+      expect(view.querySelector("jisho-lookup-modal")).not.toBeNull();
+    });
+
+    document.dispatchEvent(new KeyboardEvent("keydown", { code: "Space", key: " ", bubbles: true }));
+    await view.updateComplete;
+    expect(view.querySelector("jisho-lookup-modal")).not.toBeNull();
+    expect(togglePlayback).not.toHaveBeenCalled();
+
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    await view.updateComplete;
+    expect(view.querySelector("jisho-lookup-modal")).toBeNull();
+  });
+
+  it("looks up an AI recommendation with the same modal", async () => {
+    tokenState.value = "watch-token";
+    stubJishoFetch();
+    const view = document.createElement("watch-view") as SyllabusView;
+    document.body.append(view);
+    view.aiRecommendations = [{
+      candidateId: crypto.randomUUID(),
+      kind: "vocabulary",
+      canonicalKey: "vocabulary:もったいない",
+      reading: "もったいない",
+      meaning: "wasteful",
+      observedForms: ["もったいない"],
+      occurrenceCount: 1,
+      firstTimeSeconds: 120,
+      prerequisiteCanonicalKeys: [],
+      confidence: 0.99,
+      reviewCostClass: "light_vocabulary",
+      evidence: [{ cueId: "cue-1", start: 0, end: 6, observedSurface: "もったいない" }],
+    }];
+    await view.updateComplete;
+
+    view.querySelector<HTMLButtonElement>('button[aria-label="Look もったいない up on Jisho"]')!.click();
+    await vi.waitFor(async () => {
+      await view.updateComplete;
+      expect(view.querySelector("jisho-lookup-modal")?.textContent).toContain("wasteful");
+    });
+  });
+});
