@@ -27,6 +27,9 @@ import {
   suppressedMediaCanonicalKeys,
 } from "../lib/client/stores/mediaCandidatePreferenceStore.ts";
 import { isLoopbackHostname } from "../lib/shared/local-media-helper.ts";
+import "./JishoLookupModal";
+import { requestJishoLookup } from "../lib/client/dictionary/jisho-lookup.ts";
+import { extractJapaneseLookupTerm, type JishoLookupResult } from "../lib/shared/jisho.ts";
 import type { LearningExerciseContent, PrimerContent } from "../lib/server/ai/schema.ts";
 import {
   requestMediaRecommendations,
@@ -129,6 +132,12 @@ export class WatchView extends LitElement {
   } | null = null;
   @state() private learningStatus = "";
   @state() private markersEnabled = true;
+  @state() private jishoLookup: {
+    readonly term: string;
+    readonly status: "loading" | "loaded" | "error";
+    readonly result: JishoLookupResult | null;
+    readonly message: string;
+  } | null = null;
   private canonicalKeys: ReadonlySet<string> = new Set();
   private knownCanonicalKeys: ReadonlySet<string> = new Set();
   private suppressedCanonicalKeys: ReadonlySet<string> = new Set();
@@ -165,6 +174,17 @@ export class WatchView extends LitElement {
   }
 
   private readonly onKeyDown = (event: KeyboardEvent) => {
+    // The lookup dialog owns the keyboard while it is open, so Space cannot
+    // toggle playback behind it. Escape is handled before the focus guard
+    // because the dialog's own close button would otherwise swallow it.
+    if (this.jishoLookup) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        this.jishoLookup = null;
+      }
+      return;
+    }
+
     const target = event.target as HTMLElement | null;
     if (target?.matches("input, button, select, textarea")) return;
     if (event.code === "Space") {
@@ -641,6 +661,51 @@ export class WatchView extends LitElement {
     void runClientPromise(program);
   }
 
+  // Syllabus targets are labelled with their canonical form, so the same term
+  // validation the study session applies to a highlight decides whether a target
+  // is a word Jisho can answer for.
+  private lookupOnJisho(label: string) {
+    const term = extractJapaneseLookupTerm(label);
+    if (!term) return;
+
+    const token = tokenState.value;
+    if (!token) {
+      this.jishoLookup = { term, status: "error", result: null, message: "Sign in again to use dictionary lookups." };
+      return;
+    }
+
+    this.jishoLookup = { term, status: "loading", result: null, message: "" };
+    const program = Effect.gen(this, function* () {
+      const result = yield* requestJishoLookup(token, term);
+      yield* Effect.sync(() => {
+        // A slow lookup must not replace the target the learner opened next.
+        if (this.jishoLookup?.term === term) {
+          this.jishoLookup = { term, status: "loaded", result, message: "" };
+        }
+      });
+      yield* clientLog("info", "[WatchView] Looked a syllabus target up on Jisho.", {
+        term,
+        entryCount: result.entries.length,
+      });
+    }).pipe(Effect.catchAll((error) => Effect.gen(this, function* () {
+      yield* clientLog("warn", "[WatchView] Jisho lookup failed for a syllabus target.", {
+        term,
+        reason: error.message,
+      });
+      yield* Effect.sync(() => {
+        if (this.jishoLookup?.term === term) {
+          this.jishoLookup = { term, status: "error", result: null, message: error.message };
+        }
+      });
+    })));
+    void runClientPromise(program);
+  }
+
+  private renderSyllabusLabel(label: string) {
+    const term = extractJapaneseLookupTerm(label);
+    return html`<div class="flex items-start justify-between gap-2"><strong>${label}</strong>${term ? html`<button class="shrink-0 rounded border border-zinc-600 px-2 py-1 text-xs" aria-label=${`Look ${term} up on Jisho`} @click=${() => this.lookupOnJisho(term)}>Lookup</button>` : ""}</div>`;
+  }
+
   private analyzeRecommendations() {
     const token = tokenState.value;
     const excerpts = selectMediaAnalysisExcerpts(this.cues);
@@ -982,7 +1047,7 @@ export class WatchView extends LitElement {
                 <p class="text-xs ${this.repairedAudioActive ? "text-emerald-300" : "text-zinc-400"}" role="status">${this.audioRepairStatus || (localAudioRepairAvailable ? "Requires FFmpeg on your PATH." : "Run Gafu locally to use the same-machine repair helper.")}</p>
               </div>
             ` : ""}
-            <div class="border-t border-zinc-700 pt-3"><h2 class="font-semibold">Episode syllabus</h2><p class="mb-2 text-xs text-zinc-500">Up to three targets; dialogue is not shown here.${!this.aiRecommendations.length && this.syllabus.alternates.length ? ` ${this.syllabus.alternates.length} more ranked option${this.syllabus.alternates.length === 1 ? "" : "s"} available.` : ""}</p>${this.aiRecommendations.length ? this.aiRecommendations.slice(0, 3).map((item) => { const later = this.isLaterRecommendation(item); return html`<div class="mb-2 space-y-2 rounded bg-zinc-900 p-2"><strong>${recommendationLabel(item)}</strong><p class="text-xs text-zinc-400">${item.reading ? `${item.reading} · ` : ""}${item.meaning} · about ${Math.round(item.firstTimeSeconds / 60)} min · ${item.occurrenceCount} encounters · ${Math.round(item.confidence * 100)}% confidence</p>${later ? html`<label class="flex gap-2 text-xs text-amber-300"><input type="checkbox" .checked=${Boolean(this.laterAccepted[item.candidateId])} @change=${(event: Event) => { this.laterAccepted = { ...this.laterAccepted, [item.candidateId]: (event.target as HTMLInputElement).checked }; }}> This target appears outside the early window; teach it anyway.</label>` : ""}<div class="flex flex-wrap gap-1 text-xs"><button class="rounded bg-emerald-700 px-2 py-1 disabled:opacity-40" ?disabled=${later && !this.laterAccepted[item.candidateId]} @click=${() => this.actOnRecommendation(item, "accept")}>Accept</button><button class="rounded border border-zinc-600 px-2 py-1" @click=${() => this.actOnRecommendation(item, "replace")}>Replace</button><button class="rounded border border-zinc-600 px-2 py-1" @click=${() => this.actOnRecommendation(item, "reduce")}>Reduce</button><button class="rounded border border-zinc-600 px-2 py-1" @click=${() => this.actOnRecommendation(item, "already_known")}>Already known</button><button class="rounded border border-zinc-600 px-2 py-1" @click=${() => this.actOnRecommendation(item, "not_useful")}>Don't suggest again</button></div>${this.candidateStatuses[item.candidateId] ? html`<p class="text-xs text-emerald-300">${this.candidateStatuses[item.candidateId]}</p>` : ""}</div>`; }) : this.syllabus.items.length ? this.syllabus.items.map((item) => html`<div class="mb-2 space-y-2 rounded bg-zinc-900 p-2"><strong>${item.label}</strong><p class="text-xs text-zinc-400">${item.kind} · ${item.occurrenceCount} encounters</p><div class="flex flex-wrap gap-1 text-xs"><button class="rounded border border-zinc-600 px-2 py-1" aria-label=${this.syllabus.alternates.length ? `Skip ${item.label} and show another target` : `Skip ${item.label} for this episode`} @click=${() => this.dismissLocalSyllabusItem(item.candidateId)}>Skip${this.syllabus.alternates.length ? " & show next" : " this episode"}</button>${item.knowledgePointId ? html`<button class="rounded border border-zinc-600 px-2 py-1" @click=${() => this.markLocalSyllabusItemKnown(item)}>Already know</button>` : ""}<button class="rounded border border-rose-900 px-2 py-1 text-rose-300" @click=${() => this.suppressLocalSyllabusItem(item)}>Don't suggest again</button></div></div>`) : html`<p class="text-sm text-zinc-500">${this.cues.length ? "No more local candidates for this episode." : "Load subtitles to analyze candidates."}</p>`}</div>
+            <div class="border-t border-zinc-700 pt-3"><h2 class="font-semibold">Episode syllabus</h2><p class="mb-2 text-xs text-zinc-500">Up to three targets; dialogue is not shown here.${!this.aiRecommendations.length && this.syllabus.alternates.length ? ` ${this.syllabus.alternates.length} more ranked option${this.syllabus.alternates.length === 1 ? "" : "s"} available.` : ""}</p>${this.aiRecommendations.length ? this.aiRecommendations.slice(0, 3).map((item) => { const later = this.isLaterRecommendation(item); return html`<div class="mb-2 space-y-2 rounded bg-zinc-900 p-2">${this.renderSyllabusLabel(recommendationLabel(item))}<p class="text-xs text-zinc-400">${item.reading ? `${item.reading} · ` : ""}${item.meaning} · about ${Math.round(item.firstTimeSeconds / 60)} min · ${item.occurrenceCount} encounters · ${Math.round(item.confidence * 100)}% confidence</p>${later ? html`<label class="flex gap-2 text-xs text-amber-300"><input type="checkbox" .checked=${Boolean(this.laterAccepted[item.candidateId])} @change=${(event: Event) => { this.laterAccepted = { ...this.laterAccepted, [item.candidateId]: (event.target as HTMLInputElement).checked }; }}> This target appears outside the early window; teach it anyway.</label>` : ""}<div class="flex flex-wrap gap-1 text-xs"><button class="rounded bg-emerald-700 px-2 py-1 disabled:opacity-40" ?disabled=${later && !this.laterAccepted[item.candidateId]} @click=${() => this.actOnRecommendation(item, "accept")}>Accept</button><button class="rounded border border-zinc-600 px-2 py-1" @click=${() => this.actOnRecommendation(item, "replace")}>Replace</button><button class="rounded border border-zinc-600 px-2 py-1" @click=${() => this.actOnRecommendation(item, "reduce")}>Reduce</button><button class="rounded border border-zinc-600 px-2 py-1" @click=${() => this.actOnRecommendation(item, "already_known")}>Already known</button><button class="rounded border border-zinc-600 px-2 py-1" @click=${() => this.actOnRecommendation(item, "not_useful")}>Don't suggest again</button></div>${this.candidateStatuses[item.candidateId] ? html`<p class="text-xs text-emerald-300">${this.candidateStatuses[item.candidateId]}</p>` : ""}</div>`; }) : this.syllabus.items.length ? this.syllabus.items.map((item) => html`<div class="mb-2 space-y-2 rounded bg-zinc-900 p-2">${this.renderSyllabusLabel(item.label)}<p class="text-xs text-zinc-400">${item.kind} · ${item.occurrenceCount} encounters</p><div class="flex flex-wrap gap-1 text-xs"><button class="rounded border border-zinc-600 px-2 py-1" aria-label=${this.syllabus.alternates.length ? `Skip ${item.label} and show another target` : `Skip ${item.label} for this episode`} @click=${() => this.dismissLocalSyllabusItem(item.candidateId)}>Skip${this.syllabus.alternates.length ? " & show next" : " this episode"}</button>${item.knowledgePointId ? html`<button class="rounded border border-zinc-600 px-2 py-1" @click=${() => this.markLocalSyllabusItemKnown(item)}>Already know</button>` : ""}<button class="rounded border border-rose-900 px-2 py-1 text-rose-300" @click=${() => this.suppressLocalSyllabusItem(item)}>Don't suggest again</button></div></div>`) : html`<p class="text-sm text-zinc-500">${this.cues.length ? "No more local candidates for this episode." : "Load subtitles to analyze candidates."}</p>`}</div>
             <div class="space-y-2 border-t border-zinc-700 pt-3">
               <label class="flex gap-2 text-xs"><input type="checkbox" .checked=${this.analysisConsent} @change=${(event: Event) => { this.analysisConsent = (event.target as HTMLInputElement).checked; }}> Send at most 12 shortlisted subtitle excerpts for optional AI recommendations. Video and audio are never sent to remote services. Gafu does not store raw excerpts in its database; the configured AI provider's retention policy still applies.</label>
               <button class="rounded border border-zinc-600 px-3 py-2 text-sm disabled:opacity-40" ?disabled=${!this.analysisConsent || this.cues.length === 0} @click=${this.analyzeRecommendations}>Analyze consented excerpts</button>
@@ -1018,6 +1083,16 @@ export class WatchView extends LitElement {
             </article>
           ` : this.pendingCheckouts.length ? html`<div><p class="mb-2 text-sm text-zinc-400">Checkout is available now, including after an early stop or refresh.</p><div class="flex flex-wrap gap-2">${this.pendingCheckouts.map((item) => html`<button class="rounded border border-sky-700 px-3 py-2 text-sm" @click=${() => this.openCheckout(item)}>${item.canonicalKey}</button>`)}</div></div>` : html`<p class="text-sm text-zinc-500">Accept and complete a primer to reserve checkout and next-day priority.</p>`}
         </section>
+
+        ${this.jishoLookup ? html`
+          <jisho-lookup-modal
+            .term=${this.jishoLookup.term}
+            .status=${this.jishoLookup.status}
+            .result=${this.jishoLookup.result}
+            .message=${this.jishoLookup.message}
+            @jisho-close=${() => { this.jishoLookup = null; }}
+          ></jisho-lookup-modal>
+        ` : ""}
       </section>
     `;
   }
