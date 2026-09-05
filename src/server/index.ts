@@ -13,6 +13,7 @@ import { authRoutes } from "./routes/auth";
 import { syncRoutes } from "./routes/sync.ts";
 import { aiRoutes } from "./routes/ai";
 import { ttsRoutes } from "./routes/tts.ts";
+import { jishoRoutes } from "./routes/jisho.ts";
 import { adaptiveMediaRoutes } from "./routes/adaptive-media.ts";
 import { localMediaRoutes, requestBodyLimitBytes } from "./routes/local-media.ts";
 import { db } from "../db/client";
@@ -46,6 +47,7 @@ export const app = new Elysia()
   .use(syncRoutes)
   .use(aiRoutes)
   .use(ttsRoutes)
+  .use(jishoRoutes)
   .use(adaptiveMediaRoutes)
   .use(localMediaRoutes)
   .use(cors({
