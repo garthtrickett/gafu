@@ -14,14 +14,27 @@ import { runClientUnscoped, type BaseClientContext } from "../lib/client/runtime
 import { navigate } from "../lib/client/router";
 import { Effect } from "effect";
 import "./FuriganaSentence";
+import "./JishoLookupModal";
 import { calculateSrsUpdate } from "../lib/shared/srs-scheduling.ts";
 import { submitExerciseReview } from "../lib/client/media/adaptive/learning-content.ts";
+import { tokenState } from "../lib/client/stores/authStore.ts";
+import { requestJishoLookup } from "../lib/client/dictionary/jisho-lookup.ts";
+import { clearSelection, readSelectedBaseText } from "../lib/client/dictionary/selection.ts";
+import { extractJapaneseLookupTerm, type JishoLookupResult } from "../lib/shared/jisho.ts";
 export { calculateSrsUpdate } from "../lib/shared/srs-scheduling.ts";
+
+export interface JishoLookupModel {
+  readonly term: string;
+  readonly status: "loading" | "loaded" | "error";
+  readonly result: JishoLookupResult | null;
+  readonly message: string;
+}
 
 export interface StudySessionModel {
   readonly audioPlaying: boolean;
   readonly explanationVisible: boolean;
   readonly japaneseVisible: boolean;
+  readonly lookup: JishoLookupModel | null;
 }
 
 export type StudySessionAction =
@@ -29,12 +42,17 @@ export type StudySessionAction =
   | { type: "SUBMIT_GRADE"; knowledgePointId: string; isCorrect: boolean }
   | { type: "TOGGLE_EXPLANATION" }
   | { type: "TOGGLE_JAPANESE" }
-  | { type: "FORCE_MASTER"; knowledgePointId: string };
+  | { type: "FORCE_MASTER"; knowledgePointId: string }
+  | { type: "LOOKUP_TERM"; term: string }
+  | { type: "LOOKUP_SUCCEEDED"; term: string; result: JishoLookupResult }
+  | { type: "LOOKUP_FAILED"; term: string; message: string }
+  | { type: "CLOSE_LOOKUP" };
 
 const initialModel: StudySessionModel = {
   audioPlaying: false,
   explanationVisible: false,
   japaneseVisible: false,
+  lookup: null,
 };
 
 const update = (model: StudySessionModel, action: StudySessionAction): StudySessionModel => {
@@ -51,6 +69,7 @@ const update = (model: StudySessionModel, action: StudySessionAction): StudySess
         audioPlaying: false,
         explanationVisible: false,
         japaneseVisible: false,
+        lookup: null,
       };
     case "TOGGLE_EXPLANATION":
       return {
@@ -61,6 +80,27 @@ const update = (model: StudySessionModel, action: StudySessionAction): StudySess
       return {
         ...model,
         japaneseVisible: !model.japaneseVisible,
+        // Hiding the sentence removes the text the open lookup came from.
+        lookup: model.japaneseVisible ? null : model.lookup,
+      };
+    case "LOOKUP_TERM":
+      return {
+        ...model,
+        lookup: { term: action.term, status: "loading", result: null, message: "" },
+      };
+    case "LOOKUP_SUCCEEDED":
+      // A superseded lookup must not overwrite the highlight the learner is on.
+      return model.lookup?.term === action.term
+        ? { ...model, lookup: { ...model.lookup, status: "loaded", result: action.result, message: "" } }
+        : model;
+    case "LOOKUP_FAILED":
+      return model.lookup?.term === action.term
+        ? { ...model, lookup: { ...model.lookup, status: "error", result: null, message: action.message } }
+        : model;
+    case "CLOSE_LOOKUP":
+      return {
+        ...model,
+        lookup: null,
       };
     default:
       return model;
@@ -96,6 +136,16 @@ export class StudySession extends LitElement {
 
     const key = event.key.toLowerCase();
     const currentCard = activeSessionStore.currentCard.peek();
+
+    // The lookup modal owns the keyboard while it is open, so a grade or a
+    // reveal cannot fire behind it.
+    if (this.controller.model.lookup) {
+      if (key === "escape") {
+        event.preventDefault();
+        this.closeLookup();
+      }
+      return;
+    }
 
     if (key === "j" && currentCard) {
       event.preventDefault();
@@ -175,6 +225,31 @@ export class StudySession extends LitElement {
     });
   };
 
+  private closeLookup = () => {
+    clearSelection(window.getSelection());
+    this.controller.propose({ type: "CLOSE_LOOKUP" });
+  };
+
+  // A drag frequently ends outside the sentence box, so the listener lives on the
+  // document and the range itself decides whether the highlight is in scope.
+  private handleSelectionLookup = () => {
+    if (this.controller.model.lookup) return;
+
+    const container = this.querySelector("#japanese-sentence");
+    if (!container) return;
+
+    const selected = readSelectedBaseText(window.getSelection(), container);
+    if (selected === null) return;
+
+    const term = extractJapaneseLookupTerm(selected);
+    if (term === null) return;
+
+    runClientUnscoped(
+      clientLog("info", `[StudySession] Highlighted term queued for a Jisho lookup: ${term}.`),
+    );
+    this.controller.propose({ type: "LOOKUP_TERM", term });
+  };
+
   protected override createRenderRoot() {
     return this;
   }
@@ -201,6 +276,8 @@ export class StudySession extends LitElement {
       "keydown",
       this.handleKeyboardShortcut,
     );
+    document.addEventListener("mouseup", this.handleSelectionLookup);
+    document.addEventListener("touchend", this.handleSelectionLookup);
 
     // Play native audio for the first card immediately if present
     const firstCard = activeSessionStore.currentCard.value;
@@ -215,6 +292,8 @@ export class StudySession extends LitElement {
       "keydown",
       this.handleKeyboardShortcut,
     );
+    document.removeEventListener("mouseup", this.handleSelectionLookup);
+    document.removeEventListener("touchend", this.handleSelectionLookup);
     if (this.audioInstance) {
       this.audioInstance.pause();
       this.audioInstance = null;
@@ -226,12 +305,39 @@ export class StudySession extends LitElement {
   private handleAction(
     action: StudySessionAction,
     _model: StudySessionModel,
-    _propose: (action: StudySessionAction) => void
+    propose: (action: StudySessionAction) => void
   ): Effect.Effect<void, never, BaseClientContext> {
     // eslint-disable-next-line @typescript-eslint/no-this-alias
     const self = this;
     const program = Effect.gen(function* () {
       yield* clientLog("info", `[StudySession] Action processed: ${action.type}`);
+
+      if (action.type === "LOOKUP_TERM") {
+        const { term } = action;
+        const token = tokenState.peek();
+        if (!token) {
+          propose({
+            type: "LOOKUP_FAILED",
+            term,
+            message: "Sign in again to use dictionary lookups.",
+          });
+          return;
+        }
+
+        const lookup = yield* Effect.either(requestJishoLookup(token, term));
+        if (lookup._tag === "Left") {
+          yield* clientLog("warn", `[StudySession] Jisho lookup failed for term=${term}.`, lookup.left);
+          propose({ type: "LOOKUP_FAILED", term, message: lookup.left.message });
+          return;
+        }
+
+        yield* clientLog(
+          "info",
+          `[StudySession] Jisho returned ${lookup.right.entries.length} entries for term=${term}.`,
+        );
+        propose({ type: "LOOKUP_SUCCEEDED", term, result: lookup.right });
+        return;
+      }
 
       if (action.type === "PLAY_AUDIO") {
         yield* Effect.sync(() => {
@@ -304,7 +410,7 @@ export class StudySession extends LitElement {
           activeSessionStore.next();
           const nextCard = activeSessionStore.currentCard.value;
           if (nextCard && typeof nextCard.audioUrl === "string") {
-            _propose({ type: "PLAY_AUDIO", audioUrl: nextCard.audioUrl });
+            propose({ type: "PLAY_AUDIO", audioUrl: nextCard.audioUrl });
           }
         });
       }
@@ -347,7 +453,7 @@ export class StudySession extends LitElement {
             activeSessionStore.next();
             self.cardStartedAt = Date.now();
             const nextCard = activeSessionStore.currentCard.value;
-            if (nextCard && typeof nextCard.audioUrl === "string") _propose({ type: "PLAY_AUDIO", audioUrl: nextCard.audioUrl });
+            if (nextCard && typeof nextCard.audioUrl === "string") propose({ type: "PLAY_AUDIO", audioUrl: nextCard.audioUrl });
           });
           return;
         }
@@ -411,7 +517,7 @@ export class StudySession extends LitElement {
           self.cardStartedAt = Date.now();
           const nextCard = activeSessionStore.currentCard.value;
           if (nextCard && typeof nextCard.audioUrl === "string") {
-            _propose({ type: "PLAY_AUDIO", audioUrl: nextCard.audioUrl });
+            propose({ type: "PLAY_AUDIO", audioUrl: nextCard.audioUrl });
           }
         });
       }
@@ -433,6 +539,7 @@ export class StudySession extends LitElement {
     const {
       explanationVisible,
       japaneseVisible,
+      lookup,
     } = this.controller.model;
 
     if (isFinished) {
@@ -537,7 +644,9 @@ export class StudySession extends LitElement {
             <div class="space-y-3 w-full border-t border-zinc-900/60 pt-6">
               <div class="flex items-center justify-between gap-3">
                 <span class="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Japanese</span>
-                <span class="text-[10px] font-medium text-zinc-600 uppercase tracking-widest">Shortcut: J</span>
+                <span class="text-[10px] font-medium text-zinc-600 uppercase tracking-widest">
+                  ${japaneseVisible ? "Highlight a word for Jisho" : "Shortcut: J"}
+                </span>
               </div>
               ${japaneseVisible
                 ? html`
@@ -642,6 +751,18 @@ export class StudySession extends LitElement {
             </button>`}
           </div>
         </div>
+
+        ${lookup
+          ? html`
+              <jisho-lookup-modal
+                .term=${lookup.term}
+                .status=${lookup.status}
+                .result=${lookup.result}
+                .message=${lookup.message}
+                @jisho-close=${this.closeLookup}
+              ></jisho-lookup-modal>
+            `
+          : ""}
       </div>
     `;
   }
