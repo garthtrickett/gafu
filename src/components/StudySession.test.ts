@@ -357,7 +357,11 @@ describe("StudySession Component State Logic", () => {
 
     controller.propose({ type: "SUBMIT_GRADE", knowledgePointId: "gp-hlc-test", isCorrect: true });
     
-    await new Promise((resolve) => setTimeout(resolve, 30));
+    // The grade is persisted asynchronously; wait for the record rather than a
+    // fixed delay a loaded worker can outrun.
+    await vi.waitFor(() => {
+      expect(grammarPointStore.state.peek().find((p) => p.id === "gp-hlc-test")).toBeDefined();
+    });
 
     const progress = grammarPointStore.state.peek().find((p) => p.id === "gp-hlc-test");
     expect(progress).toBeDefined();
@@ -374,8 +378,10 @@ describe("StudySession Component State Logic", () => {
     await runClientPromise(hlcStore.load());
 
     controller.propose({ type: "FORCE_MASTER", knowledgePointId: "gp-hlc-test-force" });
-    
-    await new Promise((resolve) => setTimeout(resolve, 30));
+
+    await vi.waitFor(() => {
+      expect(grammarPointStore.state.peek().find((p) => p.id === "gp-hlc-test-force")).toBeDefined();
+    });
 
     const progress = grammarPointStore.state.peek().find((p) => p.id === "gp-hlc-test-force");
     expect(progress).toBeDefined();
