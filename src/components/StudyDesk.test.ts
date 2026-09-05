@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { runClientPromise } from "../lib/client/runtime.ts";
 import { grammarPointStore, grammarPointCatalogStore } from "../lib/client/stores/grammarPointStore.ts";
 import { activeSessionStore } from "../lib/client/stores/activeSessionStore.ts";
@@ -97,7 +97,12 @@ describe("StudyDesk component and activeSessionStore pacing presentation", () =>
     // 3. Instantiate and append element
     const desk = document.createElement("study-desk");
     document.body.appendChild(desk);
-    await new Promise(resolve => setTimeout(resolve, 50));
+    // The seeded stores round-trip through IndexedDB before the desk renders,
+    // so wait for the gate itself rather than a fixed delay a loaded worker can
+    // outrun.
+    await vi.waitFor(() => {
+      expect(document.body.innerHTML).toContain("id=\"mastery-gate-alert\"");
+    });
 
     // Verify Mastery Gate Card and unmastered rules render correctly
     let htmlContent = document.body.innerHTML;
@@ -119,7 +124,10 @@ describe("StudyDesk component and activeSessionStore pacing presentation", () =>
     toggle.dispatchEvent(new Event("change"));
     // @ts-ignore
     await desk.updateComplete;
-    await new Promise(resolve => setTimeout(resolve, 50));
+    // The preference write is persisted before the gate re-renders.
+    await vi.waitFor(() => {
+      expect(document.body.innerHTML).not.toContain("id=\"mastery-gate-alert\"");
+    });
 
     // Mastery Gate alert should be hidden immediately
     htmlContent = document.body.innerHTML;

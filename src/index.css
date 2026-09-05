@@ -26,6 +26,9 @@
 [data-subtitle-cue] {
   display: grid;
   gap: 0.12em;
+  /* Line boxes hug their text so the band the overlay makes interactive is only
+     as wide as the subtitle itself. */
+  justify-items: center;
 }
 
 [data-subtitle-cue] + [data-subtitle-cue] {
@@ -35,6 +38,13 @@
 [data-subtitle-line] {
   padding-top: 0;
   line-height: 2.05;
+  /* The overlay itself stays inert so the video's own controls remain clickable
+     through it. The line opts back in, which is the smallest target that still
+     makes a drag across the subtitle feel like dragging across text. */
+  pointer-events: auto;
+  cursor: text;
+  -webkit-user-select: text;
+  user-select: text;
 }
 
 [data-subtitle-token] {
@@ -59,4 +69,11 @@
   font-weight: 600;
   line-height: 1;
   white-space: nowrap;
+  /* Furigana is a reading aid rather than part of the sentence, so it is left
+     out of the selection: dragging over 年末 copies 年末, not ねんまつ年末. The
+     reading still sits inside the line's hit area, so starting a drag on it
+     selects the kanji underneath. */
+  pointer-events: none;
+  -webkit-user-select: none;
+  user-select: none;
 }

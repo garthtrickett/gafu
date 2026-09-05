@@ -389,6 +389,72 @@ describe("WatchView local media boundary", () => {
   });
 });
 
+// The selection rules in index.css key off this markup: the overlay stays inert,
+// the line opts back into pointer events, and the reading is a separate element
+// that `user-select: none` can exclude. jsdom has no CSS cascade, so what is
+// asserted here is the structure those rules depend on staying put.
+describe("WatchView subtitle selection markup", () => {
+  const cueWithFurigana = () => {
+    const base = fallbackTokens("年")[0]!;
+    return {
+      ...parseSrt("1\n00:00:01,000 --> 00:00:02,000\n年末には", "subtitle-selection")[0]!,
+      tokens: ["年", "末", "に", "は"].map((surface, index) => ({
+        ...base,
+        surface,
+        lemma: surface,
+        reading: ["ねん", "まつ", "に", "は"][index]!,
+        span: { ...base.span, start: index, end: index + 1 },
+      })),
+    };
+  };
+
+  afterEach(() => {
+    document.body.replaceChildren();
+    vi.restoreAllMocks();
+  });
+
+  const mountCue = async () => {
+    const view = document.createElement("watch-view") as unknown as HTMLElement & {
+      activeCues: readonly ReturnType<typeof cueWithFurigana>[];
+      furigana: boolean;
+      readonly updateComplete: Promise<boolean>;
+    };
+    document.body.append(view);
+    view.activeCues = [cueWithFurigana()];
+    await view.updateComplete;
+    return view;
+  };
+
+  it("keeps the reading out of the surface element so it can be excluded from a selection", async () => {
+    const view = await mountCue();
+
+    const token = view.querySelector("[data-subtitle-token]")!;
+    expect(token.querySelector("[data-subtitle-reading]")?.textContent).toBe("ねん");
+    expect(token.querySelector("[data-subtitle-surface]")?.textContent).toBe("年");
+
+    const surfaces = Array.from(view.querySelectorAll("[data-subtitle-surface]"))
+      .map((element) => element.textContent)
+      .join("");
+    expect(surfaces).toBe("年末には");
+  });
+
+  it("leaves the overlay inert so the video's own controls stay reachable", async () => {
+    const view = await mountCue();
+
+    expect(view.querySelector("[data-subtitle-overlay]")?.className).toContain("pointer-events-none");
+    expect(view.querySelector("[data-subtitle-line]")).not.toBeNull();
+  });
+
+  it("emits no reading element when furigana is switched off", async () => {
+    const view = await mountCue();
+    view.furigana = false;
+    await view.updateComplete;
+
+    expect(view.querySelector("[data-subtitle-reading]")).toBeNull();
+    expect(view.querySelector("[data-subtitle-surface]")?.textContent).toBe("年");
+  });
+});
+
 describe("WatchView syllabus dictionary lookups", () => {
   const jishoEntry = {
     success: true,
