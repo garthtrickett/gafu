@@ -29,6 +29,7 @@ import {
 import { isLoopbackHostname } from "../lib/shared/local-media-helper.ts";
 import "./JishoLookupModal";
 import { requestJishoLookup } from "../lib/client/dictionary/jisho-lookup.ts";
+import { clearSelection, readSelectedBaseText } from "../lib/client/dictionary/selection.ts";
 import { extractJapaneseLookupTerm, type JishoLookupResult } from "../lib/shared/jisho.ts";
 import type { LearningExerciseContent, PrimerContent } from "../lib/server/ai/schema.ts";
 import {
@@ -152,11 +153,15 @@ export class WatchView extends LitElement {
   override connectedCallback() {
     super.connectedCallback();
     document.addEventListener("keydown", this.onKeyDown);
+    document.addEventListener("mouseup", this.onSubtitleSelection);
+    document.addEventListener("touchend", this.onSubtitleSelection);
     this.refreshPendingCheckouts();
   }
 
   override disconnectedCallback() {
     document.removeEventListener("keydown", this.onKeyDown);
+    document.removeEventListener("mouseup", this.onSubtitleSelection);
+    document.removeEventListener("touchend", this.onSubtitleSelection);
     const token = tokenState.value;
     if (token) for (const target of this.acceptedTargets.filter((item) => item.primed)) {
       void runClientPromise(submitLearningEvent(token, {
@@ -173,6 +178,24 @@ export class WatchView extends LitElement {
     super.disconnectedCallback();
   }
 
+  // A drag across a subtitle regularly ends outside the overlay, so the listener
+  // lives on the document and the range decides whether the highlight is in
+  // scope. A plain click collapses the selection first, so tapping a subtitle to
+  // pause does not raise a lookup.
+  private readonly onSubtitleSelection = () => {
+    if (this.jishoLookup) return;
+    const overlay = this.subtitleOverlay;
+    if (!overlay) return;
+
+    const selected = readSelectedBaseText(window.getSelection(), overlay);
+    if (selected !== null) this.lookupOnJisho(selected);
+  };
+
+  private readonly closeJishoLookup = () => {
+    clearSelection(window.getSelection());
+    this.jishoLookup = null;
+  };
+
   private readonly onKeyDown = (event: KeyboardEvent) => {
     // The lookup dialog owns the keyboard while it is open, so Space cannot
     // toggle playback behind it. Escape is handled before the focus guard
@@ -180,7 +203,7 @@ export class WatchView extends LitElement {
     if (this.jishoLookup) {
       if (event.key === "Escape") {
         event.preventDefault();
-        this.jishoLookup = null;
+        this.closeJishoLookup();
       }
       return;
     }
@@ -1090,7 +1113,7 @@ export class WatchView extends LitElement {
             .status=${this.jishoLookup.status}
             .result=${this.jishoLookup.result}
             .message=${this.jishoLookup.message}
-            @jisho-close=${() => { this.jishoLookup = null; }}
+            @jisho-close=${this.closeJishoLookup}
           ></jisho-lookup-modal>
         ` : ""}
       </section>
