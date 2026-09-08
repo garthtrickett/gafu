@@ -35,3 +35,8 @@ Learning Material containing either only language the learner already knows
 (`i`) or known language plus the one target Card being taught or tested
 (`i+1`).
 _Avoid_: Multi-target exercise, arbitrary generated sentence
+
+**Subtitle Capture**:
+A learner-initiated action that turns one selected vocabulary item in a subtitle
+into a Vocabulary Card while preserving ordinary text selection and copying.
+_Avoid_: Automatic mining, lookup on selection, sentence Card
