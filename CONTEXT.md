@@ -19,3 +19,13 @@ _Avoid_: Grammar point record, grammar sentence
 A Card for one Japanese lemma or fixed expression in one meaning. Inflected and
 surface forms are evidence for the same Card rather than separate Cards.
 _Avoid_: Word record, token card
+
+**Learning Material**:
+A fresh AI-generated presentation that teaches or tests one Card without owning
+the learner's progress.
+_Avoid_: Card, permanent sentence, saved flashcard
+
+**Generation Word Bank**:
+The controlled pool of supporting vocabulary available when AI generates
+Learning Material, initially seeded with Kaishi 1.5k.
+_Avoid_: Card bank, vocabulary deck, known-word list
