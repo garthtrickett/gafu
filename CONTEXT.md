@@ -25,7 +25,13 @@ A fresh AI-generated presentation that teaches or tests one Card without owning
 the learner's progress.
 _Avoid_: Card, permanent sentence, saved flashcard
 
-**Generation Word Bank**:
-The controlled pool of supporting vocabulary available when AI generates
-Learning Material, initially seeded with Kaishi 1.5k.
-_Avoid_: Card bank, vocabulary deck, known-word list
+**Known Word Bank**:
+The learner's trusted pool of already-known vocabulary. It begins with Kaishi
+1.5k and supplies the supporting words used to generate Learning Material.
+_Avoid_: Generation Word Bank, Card bank, vocabulary deck
+
+**i/i+1 Presentation**:
+Learning Material containing either only language the learner already knows
+(`i`) or known language plus the one target Card being taught or tested
+(`i+1`).
+_Avoid_: Multi-target exercise, arbitrary generated sentence
