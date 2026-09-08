@@ -123,7 +123,7 @@ describe("DailySessionGenerationService", () => {
     expect(agent.generate).not.toHaveBeenCalled();
   });
 
-  it("rejects missing, duplicate, or reordered queue IDs", async () => {
+  it("rejects missing or duplicated queue IDs", async () => {
     const invalidResult = {
       cards: [validProviderResult.cards[1], validProviderResult.cards[1]],
     };
@@ -136,6 +136,39 @@ describe("DailySessionGenerationService", () => {
       _tag: "Left",
       left: { code: "invalid_result" },
     });
+  });
+
+  it("rejects cards for IDs that were never requested", async () => {
+    const invalidResult = {
+      cards: [
+        validProviderResult.cards[0],
+        {
+          ...validProviderResult.cards[1],
+          grammar_point_id: "point-3",
+        },
+      ],
+    };
+
+    const result = await Effect.runPromise(
+      Effect.either(generateDailySession(request, makeAgent(invalidResult))),
+    );
+
+    expect(result).toMatchObject({
+      _tag: "Left",
+      left: { code: "invalid_result" },
+    });
+  });
+
+  it("restores queue order when the provider returns every requested card out of order", async () => {
+    const reorderedResult = {
+      cards: [validProviderResult.cards[1], validProviderResult.cards[0]],
+    };
+
+    const result = await Effect.runPromise(
+      generateDailySession(request, makeAgent(reorderedResult)),
+    );
+
+    expect(result).toEqual(validDraftResult);
   });
 
   it("rejects cards that do not attest to the pre-utterance context contract", async () => {
