@@ -65,6 +65,71 @@ const loadAgent = (): Effect.Effect<
     return agent;
   });
 
+type DailySessionDraftCard = DailySessionGenerationDraft["cards"][number];
+
+const countIds = (ids: readonly string[]): Map<string, number> => {
+  const counts = new Map<string, number>();
+  for (const id of ids) {
+    counts.set(id, (counts.get(id) ?? 0) + 1);
+  }
+  return counts;
+};
+
+/**
+ * Describes how the generated IDs differ from the requested queue as a multiset,
+ * or returns null when the provider returned exactly one card per queue item.
+ * Order is deliberately excluded here because it is repairable.
+ */
+const describeIdMismatch = (
+  expectedIds: readonly string[],
+  generatedIds: readonly string[],
+): string | null => {
+  const expectedCounts = countIds(expectedIds);
+  const generatedCounts = countIds(generatedIds);
+  const problems: string[] = [];
+
+  if (expectedIds.length !== generatedIds.length) {
+    problems.push(
+      `count expected=${expectedIds.length} generated=${generatedIds.length}`,
+    );
+  }
+  for (const [id, expected] of expectedCounts) {
+    const generated = generatedCounts.get(id) ?? 0;
+    if (generated < expected) {
+      problems.push(`missing=${id} expected=${expected} generated=${generated}`);
+    }
+  }
+  for (const [id, generated] of generatedCounts) {
+    const expected = expectedCounts.get(id) ?? 0;
+    if (expected === 0) {
+      problems.push(`unrequested=${id}`);
+    } else if (generated > expected) {
+      problems.push(
+        `duplicated=${id} expected=${expected} generated=${generated}`,
+      );
+    }
+  }
+
+  return problems.length > 0 ? problems.join("; ") : null;
+};
+
+const restoreQueueOrder = (
+  expectedIds: readonly string[],
+  cards: readonly DailySessionDraftCard[],
+): DailySessionDraftCard[] => {
+  const cardsById = new Map<string, DailySessionDraftCard[]>();
+  for (const card of cards) {
+    const bucket = cardsById.get(card.grammar_point_id);
+    if (bucket) {
+      bucket.push(card);
+    } else {
+      cardsById.set(card.grammar_point_id, [card]);
+    }
+  }
+  // Safe because the caller has already proven the ID multisets match exactly.
+  return expectedIds.map((id) => cardsById.get(id)!.shift()!);
+};
+
 const validateGeneratedCards = (
   request: DailySessionGenerationRequest,
   generated: DailySessionGenerationDraft,
@@ -76,21 +141,25 @@ const validateGeneratedCards = (
     const generatedIds = generated.cards.map(
       (card) => card.grammar_point_id,
     );
-    const uniqueGeneratedIds = new Set(generatedIds);
 
-    if (
-      generatedIds.length !== expectedIds.length ||
-      uniqueGeneratedIds.size !== generatedIds.length ||
-      generatedIds.some(
-        (generatedId, index) => generatedId !== expectedIds[index],
-      )
-    ) {
+    const mismatch = describeIdMismatch(expectedIds, generatedIds);
+    if (mismatch) {
       yield* Effect.logWarning(
-        "[DailySessionGeneration] Generated card IDs did not exactly match the requested queue.",
+        `[DailySessionGeneration] Generated card IDs did not match the requested queue: ${mismatch}`,
       );
       return yield* Effect.fail(
         new DailySessionGenerationError({ code: "invalid_result" }),
       );
+    }
+
+    // The provider was asked to preserve queue order, but order carries no
+    // meaning downstream: cards are matched back to progress by ID on import.
+    // Repair the order instead of discarding an otherwise complete session.
+    if (generatedIds.some((id, index) => id !== expectedIds[index])) {
+      yield* Effect.logInfo(
+        `[DailySessionGeneration] Provider returned the requested ${expectedIds.length} cards out of queue order; restoring queue order.`,
+      );
+      return { cards: restoreQueueOrder(expectedIds, generated.cards) };
     }
 
     return generated;
