@@ -40,3 +40,23 @@ _Avoid_: Multi-target exercise, arbitrary generated sentence
 A learner-initiated action that turns one selected vocabulary item in a subtitle
 into a Vocabulary Card while preserving ordinary text selection and copying.
 _Avoid_: Automatic mining, lookup on selection, sentence Card
+
+**Subtitle Set**:
+An ordered collection of one or more subtitle files that the learner intends to
+prepare for as one body of media.
+_Avoid_: SRS files, deck, permanent corpus
+
+**Preparation Gap**:
+The comprehension-relevant grammar and vocabulary found in a Subtitle Set that
+the learner does not already know and is not already learning.
+_Avoid_: Every subtitle token, unknown count, generated deck
+
+**Preparation Plan**:
+A learner-specific path that reuses or creates Cards for a Preparation Gap and
+stages their study before the corresponding media is watched.
+_Avoid_: Episode Plan, Card, subtitle analysis
+
+**New Cards per Day**:
+The learner's single SRS limit for how many previously unseen Cards may enter
+study each day, shared by Grammar Cards and Vocabulary Cards from every source.
+_Avoid_: Daily new rule limit, Preparation Plan pace, review limit
